@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 INVENTORY_SCRIPT="$ROOT/src/build/test/check_gc_migration_inventory.sh"
 LOCK_FILE="$ROOT/toolchain/toolchain.lock.json"
 TOOLCHAIN_BIN="$ROOT/bin/do-toolchain"
+WASM_TOOLS_BIN="$(jq -r '.wasm_tools.path' "$ROOT/toolchain/toolchain.lock.json" 2>/dev/null || true)"
 
 if [[ -n "${DO_TOOLCHAIN_BIN+x}" || -n "${DO_TOOLCHAIN_LOCK+x}" ]]; then
     printf 'toolchain adapter/lock overrides are not permitted\n' >&2
@@ -153,7 +154,8 @@ run_gate() {
     # Gates often print the temporary artifact path before cleaning it. Keep
     # every such path in the manifest so profile checks never silently ignore
     # an artifact merely because it was outside evidence_dir.
-    rg -o "/[^[:space:]\"]+\.(wat|core\.wat|wasm|component\.wasm)" "$output" >> "$evidence_dir/artifact-paths.log" || true
+    rg -o "/[^[:space:]\"]+\.(wat|core\.wat|wasm|component\.wasm)" "$output" |
+        rg -v '/negative(-|\.)|/self-test/' >> "$evidence_dir/artifact-paths.log" || true
 }
 
 verify_paths() {
@@ -188,13 +190,25 @@ check_common_artifacts() {
         [[ -n "$file" ]] || continue
         [[ ${seen[$file]+x} ]] && continue
         seen[$file]=1
-        [[ -f "$file" ]] || continue
+        [[ -f "$file" ]] || {
+            printf 'referenced artifact is missing: %s\n' "$file" >&2
+            return 1
+        }
         printf '%s\n' "$file" >> "$evidence_dir/artifact-check.log"
         if rg -n -q '__arc_|arc-runtime|arc-layout|arc-overwrite|arc-release|arc-fallthrough-release|arc-block-release' "$file"; then
             printf 'ARC marker in admitted artifact: %s\n' "$file" >&2
             return 1
         fi
         case "$file" in
+            *.wasm|*.component.wasm)
+                local printed="$evidence_dir/$(basename "$file").printed.wat"
+                [[ -x "$WASM_TOOLS_BIN" ]] || { printf 'missing pinned wasm-tools: %s\n' "$WASM_TOOLS_BIN" >&2; return 1; }
+                "$WASM_TOOLS_BIN" print "$file" -o "$printed" 2>/dev/null || "$TOOLCHAIN_BIN" component-wit "$file" > "$printed"
+                if rg -U -P -n -q '\(import[\s\S]*?\(ref|\(import[\s\S]*?\(type\s+\$' "$printed"; then
+                    printf 'GC reference in binary canonical import artifact: %s\n' "$file" >&2
+                    return 1
+                fi
+                ;;
             *.wat|*.core.wat)
                 if rg -U -P -n -q '\(import[\s\S]*?\(ref|\(import[\s\S]*?\(type\s+\$' "$file"; then
                     printf 'GC reference in canonical import artifact: %s\n' "$file" >&2
@@ -211,10 +225,10 @@ check_common_artifacts() {
 check_profile_artifacts() {
     case "$profile" in
         S)
-            check_common_artifacts
+            check_common_artifacts || return 1
             ;;
         H)
-            check_common_artifacts
+            check_common_artifacts || return 1
             rg -q 'parse-core|embed-component|new-component|validate-component' "$evidence_dir"/g5b-*.log || {
                 printf 'H profile missing Component parse/embed/new/validate evidence\n' >&2
                 return 1
@@ -225,20 +239,28 @@ check_profile_artifacts() {
             }
             ;;
         A)
-            check_common_artifacts
-            local lifecycle_logs
-            lifecycle_logs=$(printf '%s\n' "$evidence_dir"/g5a-*.log "$evidence_dir"/g5b-*.log)
+            check_common_artifacts || return 1
+            local -a lifecycle_logs=("$evidence_dir"/g5a-*.log "$evidence_dir"/g5b-*.log)
             case "$row" in
                 future_stream_frames)
-                    rg -q 'pending-polls=[0-9]+' $lifecycle_logs
-                    rg -q 'external-wakes=[0-9]+' $lifecycle_logs
-                    rg -q 'completions=[0-9]+' $lifecycle_logs
+                    rg -q 'ready|immediate-ready' "${lifecycle_logs[@]}"
+                    rg -q 'pending-polls=4' "${lifecycle_logs[@]}"
+                    rg -q 'parallel-calls=2' "${lifecycle_logs[@]}"
+                    rg -q 'external-wakes=4' "${lifecycle_logs[@]}"
+                    rg -q 'completions=4' "${lifecycle_logs[@]}"
+                    rg -q 'repeat' "${lifecycle_logs[@]}"
                     ;;
                 resource_terminal_cleanup)
-                    rg -qi 'pending.*(passed|adapter)|error.*(passed|adapter)' $lifecycle_logs
-                    rg -q 'request drop=[0-9]+' $lifecycle_logs
-                    rg -q 'response drop=[0-9]+' $lifecycle_logs
-                    rg -q 'table-empty=' $lifecycle_logs
+                    rg -qi 'pending.*(passed|adapter)' "${lifecycle_logs[@]}"
+                    rg -qi 'error.*(passed|adapter)' "${lifecycle_logs[@]}"
+                    rg -q 'cancel|cancellation' "${lifecycle_logs[@]}"
+                    rg -q 'early-drop|early drop|pending future drops=1' "${lifecycle_logs[@]}"
+                    rg -q 'repeat' "${lifecycle_logs[@]}"
+                    rg -q 'request consumed=([12])' "${lifecycle_logs[@]}"
+                    rg -q 'response (create|drop)=([02])' "${lifecycle_logs[@]}"
+                    if rg -q 'response drop=1' "${lifecycle_logs[@]}"; then return 1; fi
+                    rg -q 'pending future drops=1' "${lifecycle_logs[@]}"
+                    rg -q 'table-empty=true' "${lifecycle_logs[@]}"
                     ;;
                 *)
                     printf 'A profile has no lifecycle schema: %s\n' "$row" >&2
@@ -259,11 +281,56 @@ run_self_tests() {
     printf '(module (import "env" "f" (func (param i32))) (func $x))\n' > "$artifact"
     printf 'parse-core embed-component new-component validate-component\n' > "$evidence_dir/g5b-self.log"
     profile=H
-    check_profile_artifacts
-    printf 'pending-polls=4 external-wakes=4 completions=4\n' > "$evidence_dir/g5a-self.log"
+    if ! check_profile_artifacts; then
+        printf 'self-test failed: positive H profile was rejected\n' >&2
+        return 1
+    fi
+    printf '(module (import "env" "f" (func (param (ref null $x)))) (type $x (struct)))\n' > "$test_dir/forbidden.wat"
+    printf '%s\n' "$test_dir/forbidden.wat" > "$evidence_dir/artifact-paths.log"
+    if check_profile_artifacts; then
+        printf 'self-test failed: H forbidden ref was accepted\n' >&2
+        return 1
+    fi
+    printf 'not-a-wasm-component\n' > "$test_dir/binary.component.wasm"
+    printf '%s\n' "$test_dir/binary.component.wasm" > "$evidence_dir/artifact-paths.log"
+    if check_profile_artifacts; then
+        printf 'self-test failed: invalid binary H artifact was accepted\n' >&2
+        return 1
+    fi
+    rm -f -- "$test_dir/forbidden.wat" "$test_dir/binary.component.wasm"
+    rm -f -- "$evidence_dir/artifact-paths.log"
+    if check_common_artifacts; then
+        printf '%s\n' "$test_dir/missing.wat" > "$evidence_dir/artifact-paths.log"
+        if check_common_artifacts; then
+            printf 'self-test failed: missing artifact was accepted\n' >&2
+            return 1
+        fi
+    fi
+    rm -f -- "$evidence_dir/artifact-paths.log"
+    printf 'ready pending-polls=4 parallel-calls=2 external-wakes=4 completions=4 repeat\n' > "$evidence_dir/g5a-self.log"
     profile=A
     row=future_stream_frames
-    check_profile_artifacts
+    if ! check_profile_artifacts; then
+        printf 'self-test failed: positive A profile was rejected\n' >&2
+        return 1
+    fi
+    printf 'pending-polls=4\n' > "$evidence_dir/g5a-self.log"
+    if check_profile_artifacts; then
+        printf 'self-test failed: incomplete A lifecycle was accepted\n' >&2
+        return 1
+    fi
+    printf 'pending-polls=4 parallel-calls=2 external-wakes=4 completions=4 ready repeat\n' > "$evidence_dir/g5a-self.log"
+    row=resource_terminal_cleanup
+    printf 'pending adapter error adapter cancel early-drop repeat request consumed=1 pending future drops=1 response create=0 response drop=0 table-empty=true\n' > "$evidence_dir/g5b-self.log"
+    if ! check_profile_artifacts; then
+        printf 'self-test failed: positive resource A profile was rejected\n' >&2
+        return 1
+    fi
+    printf 'pending adapter error adapter cancel early-drop repeat request consumed=1 pending future drops=1 response create=0 response drop=1 table-empty=true\n' > "$evidence_dir/g5b-self.log"
+    if check_profile_artifacts; then
+        printf 'self-test failed: wrong cleanup count was accepted\n' >&2
+        return 1
+    fi
     local outside_artifact="${TMPDIR:-/tmp}/g5c-self-test-$$.wat"
     printf '(module (func $__arc_self_test))\n' > "$outside_artifact"
     printf '%s\n' "$outside_artifact" > "$evidence_dir/artifact-paths.log"
