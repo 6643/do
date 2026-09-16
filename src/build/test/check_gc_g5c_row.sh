@@ -18,6 +18,7 @@ usage() {
 row=''
 profile=''
 evidence_dir=''
+self_test=0
 while (($#)); do
     case "$1" in
         --row)
@@ -34,6 +35,10 @@ while (($#)); do
             (($# >= 2)) || { usage; exit 2; }
             evidence_dir=$2
             shift 2
+            ;;
+        --self-test)
+            self_test=1
+            shift
             ;;
         *)
             usage
@@ -100,11 +105,15 @@ esac
 
 commands_log="$evidence_dir/commands.log"
 summary_file="$evidence_dir/summary.txt"
+mkdir -p "$evidence_dir/tmp"
 : > "$commands_log"
 printf 'row=%s\nprofile=%s\n' "$row" "$profile" >> "$commands_log"
 printf 'inventory=%s\n' "$row_line" >> "$commands_log"
 printf 'commit=%s\nbranch=%s\n' "$(git -C "$ROOT" rev-parse HEAD)" "$(git -C "$ROOT" branch --show-current)" >> "$commands_log"
 printf 'toolchain_lock=%s\n' "$LOCK_FILE" >> "$commands_log"
+printf 'toolchain_lock_json<<BEGIN\n' >> "$commands_log"
+cat "$LOCK_FILE" >> "$commands_log"
+printf 'toolchain_lock_json<<END\n' >> "$commands_log"
 export DO_TOOLCHAIN_LOCK="$LOCK_FILE"
 
 probe_file="$evidence_dir/toolchain-probe.json"
@@ -133,7 +142,7 @@ run_gate() {
     printf ' %q' "$@" >> "$commands_log"
     printf '\n' >> "$commands_log"
     set +e
-    (cd "$ROOT" && ZIG_GLOBAL_CACHE_DIR="$evidence_dir/zig-cache" "$@") >"$output" 2>&1
+    (cd "$ROOT" && TMPDIR="$evidence_dir/tmp" ZIG_GLOBAL_CACHE_DIR="$evidence_dir/zig-cache" "$@") >"$output" 2>&1
     local rc=$?
     set -e
     printf '%s expected_exit=0 actual_exit=%d output=%s\n' "$name" "$rc" "$output" >> "$commands_log"
@@ -141,6 +150,10 @@ run_gate() {
         printf '%s failed (exit %d); see %s\n' "$name" "$rc" "$output" >&2
         return 1
     fi
+    # Gates often print the temporary artifact path before cleaning it. Keep
+    # every such path in the manifest so profile checks never silently ignore
+    # an artifact merely because it was outside evidence_dir.
+    rg -o "/[^[:space:]\"]+\.(wat|core\.wat|wasm|component\.wasm)" "$output" >> "$evidence_dir/artifact-paths.log" || true
 }
 
 verify_paths() {
@@ -169,48 +182,105 @@ verify_paths() {
 
 check_common_artifacts() {
     local file
-    while IFS= read -r -d '' file; do
+    : > "$evidence_dir/artifact-check.log"
+    declare -A seen=()
+    while IFS= read -r file; do
+        [[ -n "$file" ]] || continue
+        [[ ${seen[$file]+x} ]] && continue
+        seen[$file]=1
+        [[ -f "$file" ]] || continue
+        printf '%s\n' "$file" >> "$evidence_dir/artifact-check.log"
         if rg -n -q '__arc_|arc-runtime|arc-layout|arc-overwrite|arc-release|arc-fallthrough-release|arc-block-release' "$file"; then
             printf 'ARC marker in admitted artifact: %s\n' "$file" >&2
             return 1
         fi
-    done < <(find "$evidence_dir" -type f \( -name '*.wat' -o -name '*.core.wat' \) -print0)
+        case "$file" in
+            *.wat|*.core.wat)
+                if rg -U -P -n -q '\(import[\s\S]*?\(ref|\(import[\s\S]*?\(type\s+\$' "$file"; then
+                    printf 'GC reference in canonical import artifact: %s\n' "$file" >&2
+                    return 1
+                fi
+                ;;
+        esac
+    done < <(
+        find "$evidence_dir" -type f \( -name '*.wat' -o -name '*.core.wat' -o -name '*.wasm' -o -name '*.component.wasm' \) -print
+        [[ -f "$evidence_dir/artifact-paths.log" ]] && sed '/^$/d' "$evidence_dir/artifact-paths.log"
+    )
 }
 
 check_profile_artifacts() {
-    local all_logs="$evidence_dir/profile-input.log"
-    : > "$all_logs"
-    cat "$evidence_dir"/*.log >> "$all_logs" 2>/dev/null || true
     case "$profile" in
         S)
             check_common_artifacts
             ;;
         H)
             check_common_artifacts
-            if rg -n -q '^.*\(import.*\(ref|canonical.*\(ref|\(ref[^)]*canonical' "$all_logs"; then
-                printf 'GC reference at canonical boundary\n' >&2
-                return 1
-            fi
-            rg -q 'parse-core|embed-component|new-component|validate-component' "$all_logs" || {
+            rg -q 'parse-core|embed-component|new-component|validate-component' "$evidence_dir"/g5b-*.log || {
                 printf 'H profile missing Component parse/embed/new/validate evidence\n' >&2
+                return 1
+            }
+            [[ -s "$evidence_dir/artifact-check.log" ]] || {
+                printf 'H profile has no generated artifact to inspect\n' >&2
                 return 1
             }
             ;;
         A)
             check_common_artifacts
-            for marker in pending error cancel drop cleanup; do
-                rg -qi "$marker" "$all_logs" || {
-                    printf 'A profile missing lifecycle marker: %s\n' "$marker" >&2
+            local lifecycle_logs
+            lifecycle_logs=$(printf '%s\n' "$evidence_dir"/g5a-*.log "$evidence_dir"/g5b-*.log)
+            case "$row" in
+                future_stream_frames)
+                    rg -q 'pending-polls=[0-9]+' $lifecycle_logs
+                    rg -q 'external-wakes=[0-9]+' $lifecycle_logs
+                    rg -q 'completions=[0-9]+' $lifecycle_logs
+                    ;;
+                resource_terminal_cleanup)
+                    rg -qi 'pending.*(passed|adapter)|error.*(passed|adapter)' $lifecycle_logs
+                    rg -q 'request drop=[0-9]+' $lifecycle_logs
+                    rg -q 'response drop=[0-9]+' $lifecycle_logs
+                    rg -q 'table-empty=' $lifecycle_logs
+                    ;;
+                *)
+                    printf 'A profile has no lifecycle schema: %s\n' "$row" >&2
                     return 1
-                }
-            done
-            rg -qi 'exactly[- ]once|once.*cleanup|cleanup.*once' "$all_logs" || {
-                printf 'A profile missing exactly-once cleanup evidence\n' >&2
+                    ;;
+            esac || {
+                printf 'A profile lifecycle observations incomplete for row: %s\n' "$row" >&2
                 return 1
             }
             ;;
     esac
 }
+
+run_self_tests() {
+    local test_dir="$evidence_dir/self-test"
+    local artifact="$test_dir/clean.wat"
+    mkdir -p "$test_dir"
+    printf '(module (import "env" "f" (func (param i32))) (func $x))\n' > "$artifact"
+    printf 'parse-core embed-component new-component validate-component\n' > "$evidence_dir/g5b-self.log"
+    profile=H
+    check_profile_artifacts
+    printf 'pending-polls=4 external-wakes=4 completions=4\n' > "$evidence_dir/g5a-self.log"
+    profile=A
+    row=future_stream_frames
+    check_profile_artifacts
+    local outside_artifact="${TMPDIR:-/tmp}/g5c-self-test-$$.wat"
+    printf '(module (func $__arc_self_test))\n' > "$outside_artifact"
+    printf '%s\n' "$outside_artifact" > "$evidence_dir/artifact-paths.log"
+    profile=S
+    if check_profile_artifacts; then
+        printf 'self-test failed: ARC artifact was accepted\n' >&2
+        rm -f -- "$outside_artifact"
+        return 1
+    fi
+    rm -f -- "$outside_artifact"
+    printf 'row runner profile/artifact self-tests passed\n'
+    exit 0
+}
+
+if ((self_test)); then
+    run_self_tests
+fi
 
 verify_paths g5a_fixture "$g5a_sources"
 verify_paths g5a_probe "$g5a_probes"
