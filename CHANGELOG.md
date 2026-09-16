@@ -1,5 +1,17 @@
 # Changelog
 
+# 2026-09-16 G5c final inventory closeout and release-candidate verification:
+  all 15 G5c migration rows now pass the repository inventory gate:
+  `complete_rows=15 pending_rows=0`, exit code `0`. Fresh verification reports
+  `./src/build/test/run_tests.sh` `14/14 steps; 56/56 tests`, isolated-cache
+  `zig test main.zig` `1743/1743`, GC default gate `87 fixtures`,
+  semantic-equivalence `26 rows; 0 pending`, ARC post-cutover
+  `rows=55 matches=492 unclassified=0 normal_route_matches=0`, and production
+  dependency closure `modules=164 forbidden=0`; ReleaseSmall, release smoke and
+  migration evidence checks pass. This closes the bounded G5c inventory only;
+  generic async/resource/producer lowering and public ownership syntax remain
+  deferred with their existing fail-closed boundaries.
+
 # 2026-09-15 Current-only `do run` toolchain adapter and baseline refresh:
   `do run` now resolves `DO_TOOLCHAIN_BIN` (default `bin/do-toolchain`) and
   invokes its `parse-core` operation; it no longer calls `wasm-tools` directly.

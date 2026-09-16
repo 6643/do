@@ -1,9 +1,17 @@
 # 待处理与阻断清单
 
-更新时间: 2026-09-15
+更新时间: 2026-09-16
 基线: 默认回归由 `./src/build/test/run_tests.sh` 薄入口转发到 Zig harness
 关系: 总规划 `doc/master_plan.md`; 接手 `doc/start_here.md`; 执行状态 `doc/roadmap_status.md`
 约定: **只记未关闭项**; 完成后从本文件删除或移入「已关闭摘要」, 并同步入口文档与 `CHANGELOG.md`。
+
+当前状态（2026-09-16）：G5c 15-row migration inventory 已全部闭环，
+`check_gc_migration_inventory.sh` 为 `complete_rows=15 pending_rows=0`、退出码
+`0`；全量回归、ReleaseSmall/release smoke、GC default、ARC post-cutover、
+semantic-equivalence 和 evidence checker 均通过。本文带日期的旧增量保留当时
+快照；其中出现的 `complete_rows=15 pending_rows=15` 只表示历史状态，不是当前
+阻断。当前未关闭项仅限通用 async/resource、通用 producer/borrowed shape、公开
+ownership syntax 及其他单独列出的 deferred 设计。
 
 > **Superseded by GC-first (2026-08-11, cutover closed 2026-09-09):**
 > `doc/memory.md` 与 `doc/design/2026-08-11-gc-first-memory-decision.md` 已选定
@@ -11,7 +19,7 @@
 > ARC 只保留为显式 test-only equivalence oracle。下文只记录仍未关闭的能力缺口；
 > Component/WIT resource 的 ownership 与 drop 继续是显式 ABI contract, 不由 GC 接管。
 
-### GC-first runtime cutover (已关闭, 2026-09-09)
+### GC-first runtime cutover (已关闭, 2026-09-09；历史快照)
 
 生产入口 `src/build/codegen_runtime_api.zig` 只选择 Wasm GC，ARC runtime/legacy
 emitter 仅由 `src/build/test/gc_arc_equivalence_oracle.zig` 显式引用。fresh
@@ -21,9 +29,10 @@ normal_route_matches=0`，生产依赖闭包 `modules=153 forbidden=0`，GC defa
 `RUN_WASM=1 RUN_GC_CORE=1` harness 均为 `14/14 steps; 53/53 tests`，独立
 `zig test main.zig` 为 `1561/1561`，ReleaseSmall/release smoke 通过。
 
-该项只关闭 backend 选择和 ARC 隔离，不关闭下方 capability inventory；
-`complete_rows=15 pending_rows=15` 仍按设计返回 `1`，通用 async/map/producer/
-resource lowering 与 public `own<T>`/`borrow<T>`/`ref<T>` syntax 继续 pending。
+该项当时只关闭 backend 选择和 ARC 隔离；G5c capability inventory 已在
+2026-09-16 的最终验收中另行闭环为 `complete_rows=15 pending_rows=0`。通用
+async/map/producer/resource lowering 与 public `own<T>`/`borrow<T>`/`ref<T>`
+syntax 仍按各自边界 pending。
 
 ### D2 private `descriptor.read-via-stream` (已关闭, 2026-09-15)
 
