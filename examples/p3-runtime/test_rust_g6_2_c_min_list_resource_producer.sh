@@ -27,14 +27,14 @@ test -f "$runner_dir/Cargo.toml"
 DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$source" \
   --p3-async-component --p3-wit-output "$wit" -o "$wat"
 test -s "$wat"
-grep -Fq '[producer-list-pointer]' "$wat"
-grep -Fq '[producer-list-length]' "$wat"
-grep -Fq '[producer-list-element-stride]' "$wat"
-grep -Fq '[producer-list-ticket-offset]' "$wat"
-grep -Fq '[producer-stream-capacity]' "$wat"
-grep -Fq '[producer-list-transfer]' "$wat"
-grep -Fq '[producer-child-before-parent-cleanup]' "$wat"
-grep -Fq 'export produce: async func(mode: u32)' "$wit"
+rg -Fq '[producer-list-pointer]' "$wat"
+rg -Fq '[producer-list-length]' "$wat"
+rg -Fq '[producer-list-element-stride]' "$wat"
+rg -Fq '[producer-list-ticket-offset]' "$wat"
+rg -Fq '[producer-stream-capacity]' "$wat"
+rg -Fq '[producer-list-transfer]' "$wat"
+rg -Fq '[producer-child-before-parent-cleanup]' "$wat"
+rg -Fq 'export produce: async func(mode: u32)' "$wit"
 
 "$toolchain_bin" parse-core "$wat" -o "$core_wasm"
 "$toolchain_bin" embed-component "$wit" "$core_wasm" c-min-producer \
@@ -55,7 +55,7 @@ run_mode() {
   output=$(cargo run --quiet --locked --manifest-path "$runner_dir/Cargo.toml" \
     --bin "$bin" -- "$component" "$mode")
   for expected in "$@"; do
-    grep -Fq "$expected" <<<"$output"
+    rg -Fq "$expected" <<<"$output"
   done
   printf '%s\n' "$output"
 }
@@ -112,10 +112,10 @@ sed '/;; \[mode-before-transfer\]/a\
 "$toolchain_bin" validate-component "$cancel_component" --features component-async
 cancel_output=$(cargo run --quiet --locked --manifest-path "$runner_dir/Cargo.toml" \
   --bin "$bin" -- "$cancel_component" cancel-before-transfer)
-grep -Fq 'mode=cancel-before-transfer result=Some((Ok(()),)) entries=[]' <<<"$cancel_output"
-grep -Fq 'resource-created=3' <<<"$cancel_output"
-grep -Fq 'resource-drops=3' <<<"$cancel_output"
-grep -Fq 'table-empty=true' <<<"$cancel_output"
+rg -Fq 'mode=cancel-before-transfer result=Some((Ok(()),)) entries=[]' <<<"$cancel_output"
+rg -Fq 'resource-created=3' <<<"$cancel_output"
+rg -Fq 'resource-drops=3' <<<"$cancel_output"
+rg -Fq 'table-empty=true' <<<"$cancel_output"
 printf '%s\n' "$cancel_output"
 
 printf 'G6.2 C-min producer compiler-generated Component/Rust/Wasmtime gate passed\n'

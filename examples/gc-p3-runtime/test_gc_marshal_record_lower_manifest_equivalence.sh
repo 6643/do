@@ -41,7 +41,7 @@ output=$(
     --bin do-p3-gc-marshal-record-lower-equivalence-runner -- \
     "$tmp_dir/gc.component.wasm" "$tmp_dir/arc.component.wasm"
 )
-grep -Fq 'GC/flat scalar record lower equivalence passed results=42/42 write-calls=1/1' <<<"$output"
+rg -Fq 'GC/flat scalar record lower equivalence passed results=42/42 write-calls=1/1' <<<"$output"
 printf '%s\n' "$output"
 
 printf 'manifest-backed GC/flat scalar record lower equivalence passed\n'

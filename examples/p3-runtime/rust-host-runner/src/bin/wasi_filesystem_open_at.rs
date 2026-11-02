@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context as TaskContext, Poll};
 use wasmtime::component::{
-    Accessor, AccessorTask, Component, Linker, Resource, ResourceTable, ResourceType, TypedFunc,
+    Accessor, Component, Linker, Resource, ResourceTable, ResourceType, TypedFunc,
 };
 use wasmtime::{Config, Engine, Store};
 
@@ -179,33 +179,11 @@ type RunFunc = TypedFunc<
     (OpenResult,),
 >;
 
-struct RunTask {
-    run: RunFunc,
-    descriptor: Resource<Descriptor>,
-    path_flags: PathFlags,
-    path: String,
-    open_flags: OpenFlags,
-    descriptor_flags: DescriptorFlags,
-}
-
-impl AccessorTask<State> for RunTask {
-    fn run(self, accessor: &Accessor<State>) -> impl Future<Output = wasmtime::Result<()>> + Send {
-        async move {
-            self.run
-                .call_concurrent(
-                    accessor,
-                    (
-                        self.descriptor,
-                        self.path_flags,
-                        self.path,
-                        self.open_flags,
-                        self.descriptor_flags,
-                    ),
-                )
-                .await
-                .map(|_| ())
-        }
-    }
+macro_rules! spawn_run_task {
+    ($run:expr, $($arg:expr),+ $(,)?) => {{
+        let run = $run;
+        async move |accessor| run.call_concurrent(accessor, ($(($arg),)+)).await.map(|_| ())
+    }};
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -557,14 +535,14 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
             let cancel =
                 map_wasmtime(instance.get_typed_func::<(), ()>(&mut store, &cancel_export))?;
             let descriptor = make_descriptor(&mut store)?;
-            let run_handle = map_wasmtime(store.spawn(RunTask {
+            let run_handle = map_wasmtime(store.spawn(spawn_run_task!(
                 run,
                 descriptor,
                 path_flags,
-                path: path.clone(),
+                path.clone(),
                 open_flags,
-                descriptor_flags,
-            }))?;
+                descriptor_flags
+            )))?;
             map_wasmtime(map_wasmtime(
                 store
                     .run_concurrent(async |_accessor| {

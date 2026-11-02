@@ -36,7 +36,7 @@ run_rejection() {
     printf '[FAIL] %s left a WAT artifact after rejection\n' "$label" >&2
     return 1
   fi
-  if ! grep -Fq "error[$expected]" "$stderr_file"; then
+  if ! rg -Fq "error[$expected]" "$stderr_file"; then
     printf '[FAIL] %s missing diagnostic error[%s]\n' "$label" "$expected" >&2
     cat "$stderr_file" >&2
     return 1
@@ -75,7 +75,7 @@ if [ -e "$unadmitted_wat" ]; then
   printf '[FAIL] unadmitted env host fixture left a WAT artifact after rejection\n' >&2
   exit 1
 fi
-if ! grep -Fq 'error[UnsupportedGcSyncModuleGraph]' "$unadmitted_stderr"; then
+if ! rg -Fq 'error[UnsupportedGcSyncModuleGraph]' "$unadmitted_stderr"; then
   printf '[FAIL] unadmitted env host fixture missing diagnostic error[UnsupportedGcSyncModuleGraph]\n' >&2
   cat "$unadmitted_stderr" >&2
   exit 1

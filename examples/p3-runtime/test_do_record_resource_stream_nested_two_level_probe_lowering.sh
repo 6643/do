@@ -28,7 +28,7 @@ for marker in \
   '"do:record-resource-stream-nested-two-level/source@0.1.0" "[resource-drop]ticket"' \
   '"[async-lower][stream-read-0]read-via-stream"' \
   '"[async-lower][future-read-1]read-via-stream"'; do
-  grep -Fq "$marker" "$core_wat"
+  rg -Fq "$marker" "$core_wat"
 done
 
 "$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"

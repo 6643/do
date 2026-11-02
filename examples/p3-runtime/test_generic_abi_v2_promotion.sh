@@ -26,6 +26,6 @@ if "$do_bin" build "$tmp_dir/scalar_async_main.do" \
   exit 1
 fi
 test ! -e "$rejected_wat"
-grep -Fq 'UnsupportedGenericAbiV2Promotion' "$tmp_dir/scalar-u32.stderr"
+rg -Fq 'UnsupportedGenericAbiV2Promotion' "$tmp_dir/scalar-u32.stderr"
 
 printf 'generic ABI v2 promotion Component/Rust/Wasmtime gates passed\n'

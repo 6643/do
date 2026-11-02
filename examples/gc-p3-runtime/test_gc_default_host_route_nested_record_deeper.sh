@@ -125,7 +125,7 @@ build_and_run() {
     "$cargo_bin" run --quiet --locked --manifest-path "$runner_manifest" \
       --bin "$runner_bin" -- "$component"
   )
-  grep -Fq "$expected" <<<"$output"
+  rg -Fq "$expected" <<<"$output"
   printf '%s\n' "$output"
 }
 

@@ -47,14 +47,14 @@ done
   exit 1
 }
 
-grep -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$wit"
-grep -Fq 'use wasi:clocks/wall-clock@0.3.0-rc-2025-09-16.{datetime};' "$wit"
-grep -Fq 'record descriptor-stat' "$wit"
-grep -Fq 'stat: async func() -> result<descriptor-stat, error-code>;' "$wit"
-grep -Fq 'run: async func(file: own<descriptor>) -> result<descriptor-stat, error-code>;' "$wit"
-grep -Fq 'world stat-probe' "$wit"
-grep -Fq 'world stat-cancel-probe' "$cancel_wit"
-grep -Fq 'cancel: async func();' "$cancel_wit"
+rg -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$wit"
+rg -Fq 'use wasi:clocks/wall-clock@0.3.0-rc-2025-09-16.{datetime};' "$wit"
+rg -Fq 'record descriptor-stat' "$wit"
+rg -Fq 'stat: async func() -> result<descriptor-stat, error-code>;' "$wit"
+rg -Fq 'run: async func(file: own<descriptor>) -> result<descriptor-stat, error-code>;' "$wit"
+rg -Fq 'world stat-probe' "$wit"
+rg -Fq 'world stat-cancel-probe' "$cancel_wit"
+rg -Fq 'cancel: async func();' "$cancel_wit"
 
 tmp_dir=$(mktemp -d /tmp/do-d2-filesystem-stat-abi.XXXXXX)
 trap 'rm -rf -- "$tmp_dir"' EXIT
@@ -72,7 +72,7 @@ cp "$clock_wit" "$tmp_dir/cancel/deps/clocks/wall-clock.wit"
 require_text() {
   local file="$1"
   local fragment="$2"
-  grep -Fq -- "$fragment" "$file" || {
+  rg -Fq -- "$fragment" "$file" || {
     printf 'missing ABI fragment in %s: %s\n' "$file" "$fragment" >&2
     exit 1
   }
@@ -93,7 +93,7 @@ require_regular_dummy() {
     '(import "[export]wasi:filesystem/probe@0.3.0-rc-2025-09-16" "[task-return]run"'; do
     require_text "$file" "$fragment"
   done
-  [[ $(grep -cF '[async-lower][method]' "$file") -eq 1 ]] || {
+  [[ $(rg -cF '[async-lower][method]' "$file") -eq 1 ]] || {
     printf 'unexpected filesystem async method count in %s\n' "$file" >&2
     exit 1
   }
@@ -162,12 +162,12 @@ assemble_component() {
   require_text "$component_wat" '"[async-lower][method]descriptor.stat"'
   require_text "$component_wat" '"[resource-drop]descriptor"'
   require_text "$component_wat" '"[task-return]run"'
-  [[ $(grep -cF '"[async-lower][method]' "$component_wat") -eq 2 ]] || {
+  [[ $(rg -cF '"[async-lower][method]' "$component_wat") -eq 2 ]] || {
     printf 'unexpected filesystem async method count in %s\n' "$component_wat" >&2
     exit 1
   }
   for forbidden in get-type get-flags sync read write; do
-    if grep -Fq "descriptor.$forbidden" "$component_wat"; then
+    if rg -Fq "descriptor.$forbidden" "$component_wat"; then
       printf 'unexpected filesystem method in %s: descriptor.%s\n' \
         "$component_wat" "$forbidden" >&2
       exit 1

@@ -25,9 +25,8 @@ fn main() -> Result<()> {
         .with_context(|| format!("load component {component_path}"))?;
 
     let mut linker: Linker<State> = Linker::new(&engine);
-    let mut api = map_wasmtime(
-        linker.instance("demo:marshal-record-managed-lift-multi/api@1.0.0"),
-    )?;
+    let mut api =
+        map_wasmtime(linker.instance("demo:marshal-record-managed-lift-multi/api@1.0.0"))?;
     map_wasmtime(api.func_new("read", |_store, _ty, params, results| {
         if !params.is_empty() || results.len() != 1 {
             return Err(wasmtime::Error::msg(

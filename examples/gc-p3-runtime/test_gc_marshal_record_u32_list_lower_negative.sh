@@ -38,7 +38,7 @@ for case in "${cases[@]}"; do
     printf '[FAIL] %s left a WAT artifact after rejection\n' "$name" >&2
     exit 1
   fi
-  if ! grep -Fq "error[$expected]" "$stderr_file"; then
+  if ! rg -Fq "error[$expected]" "$stderr_file"; then
     printf '[FAIL] %s missing diagnostic error[%s]\n' "$name" "$expected" >&2
     cat "$stderr_file" >&2
     exit 1

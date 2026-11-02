@@ -40,10 +40,10 @@ test -x "$toolchain_bin"
   --features component-async -o "$cancel_embedded"
 "$toolchain_bin" new-component "$cancel_embedded" -o "$cancel_component"
 "$toolchain_bin" validate-component "$cancel_component" --features component-async
-grep -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$cancel_wit"
-grep -Fq 'cancel: async func();' "$cancel_wit"
-grep -Fq 'world get-type-cancel-probe' "$cancel_wit"
-grep -Fq '"[async-lower][subtask-cancel]"' "$cancel_core_wat"
+rg -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$cancel_wit"
+rg -Fq 'cancel: async func();' "$cancel_wit"
+rg -Fq 'world get-type-cancel-probe' "$cancel_wit"
+rg -Fq '"[async-lower][subtask-cancel]"' "$cancel_core_wat"
 
 "$repo_root/bin/do" build "$repo_root/src/build/test/compile_ok/459_wasi_filesystem_get_type_component.do" \
   --p3-async-component --p3-wit-output "$generated_wit" -o "$generated_core_wat"
@@ -52,9 +52,9 @@ grep -Fq '"[async-lower][subtask-cancel]"' "$cancel_core_wat"
   --features component-async -o "$generated_embedded"
 "$toolchain_bin" new-component "$generated_embedded" -o "$generated_component"
 "$toolchain_bin" validate-component "$generated_component" --features component-async
-grep -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$generated_wit"
-grep -Fq 'get-type: async func()' "$generated_wit"
-grep -Fq 'run: async func(directory: own<descriptor>)' "$generated_wit"
+rg -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$generated_wit"
+rg -Fq 'get-type: async func()' "$generated_wit"
+rg -Fq 'run: async func(directory: own<descriptor>)' "$generated_wit"
 
 runner_source="$runner_dir/src/bin/wasi_filesystem_get_type.rs"
 rustfmt --edition 2024 --check "$runner_source"
@@ -93,14 +93,14 @@ generated_ready_regular=$(run_runner_component "$generated_component" ready-regu
 generated_pending=$(run_runner_component "$generated_component" pending)
 generated_error=$(run_runner_component "$generated_component" error)
 
-grep -Fq 'mode=ready-directory result=Ok(directory) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$ready_directory"
-grep -Fq 'mode=ready-regular result=Ok(regular-file) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$ready_regular"
-grep -Fq 'mode=pending result=Ok(directory) host-calls=1 completion-polls=2 external-wakes=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$pending"
-grep -Fq 'mode=error result=Err(no-entry) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$error"
-grep -Fq 'mode=cancel result=cancelled host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=1 descriptor-drops=1 table-empty=true' <<<"$cancel"
-grep -Fq 'mode=ready-directory result=Ok(directory) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_ready_directory"
-grep -Fq 'mode=ready-regular result=Ok(regular-file) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_ready_regular"
-grep -Fq 'mode=pending result=Ok(directory) host-calls=1 completion-polls=2 external-wakes=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_pending"
-grep -Fq 'mode=error result=Err(no-entry) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_error"
+rg -Fq 'mode=ready-directory result=Ok(directory) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$ready_directory"
+rg -Fq 'mode=ready-regular result=Ok(regular-file) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$ready_regular"
+rg -Fq 'mode=pending result=Ok(directory) host-calls=1 completion-polls=2 external-wakes=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$pending"
+rg -Fq 'mode=error result=Err(no-entry) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$error"
+rg -Fq 'mode=cancel result=cancelled host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=1 descriptor-drops=1 table-empty=true' <<<"$cancel"
+rg -Fq 'mode=ready-directory result=Ok(directory) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_ready_directory"
+rg -Fq 'mode=ready-regular result=Ok(regular-file) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_ready_regular"
+rg -Fq 'mode=pending result=Ok(directory) host-calls=1 completion-polls=2 external-wakes=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_pending"
+rg -Fq 'mode=error result=Err(no-entry) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_error"
 
 printf 'D2 filesystem descriptor.get-type Rust/Wasmtime runtime passed\n'

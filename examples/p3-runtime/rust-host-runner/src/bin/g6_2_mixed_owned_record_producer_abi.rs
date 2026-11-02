@@ -160,7 +160,9 @@ impl Mode {
             Self::SinkErrorAfter => &[(13, 444)],
             Self::CancelAfterTransfer => &[(17, 666)],
             Self::EarlyDropAfterTransfer => &[(21, 888)],
-            Self::SinkErrorBefore | Self::CancelBeforeTransfer | Self::EarlyDropBeforeTransfer
+            Self::SinkErrorBefore
+            | Self::CancelBeforeTransfer
+            | Self::EarlyDropBeforeTransfer
             | Self::Invalid => &[],
             Self::Repeat => &[(7, 111), (7, 111)],
         }
@@ -363,9 +365,7 @@ async fn call_produce(
 ) -> Result<(std::result::Result<(), ErrorCode>,)> {
     Ok(map_wasmtime(map_wasmtime(
         store
-            .run_concurrent(async |accessor| {
-                produce.call_concurrent(&accessor, (input,)).await
-            })
+            .run_concurrent(async |accessor| produce.call_concurrent(&accessor, (input,)).await)
             .await,
     )?)?)
 }
@@ -412,7 +412,9 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
         call_produce(&mut store, &produce, mode.input()).await?
     };
 
-    let snapshot = stats.lock().expect("mixed owned-record final stats mutex poisoned");
+    let snapshot = stats
+        .lock()
+        .expect("mixed owned-record final stats mutex poisoned");
     let expected_result = mode.expected_result();
     let expected_created = mode.expected_invocations();
     let expected_received = mode.expected_received();

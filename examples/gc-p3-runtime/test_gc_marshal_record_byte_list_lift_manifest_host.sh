@@ -64,6 +64,6 @@ output=$( \
   "$cargo_bin" run --quiet --locked --manifest-path "$runner_manifest" \
     --bin do-p3-gc-marshal-record-byte-list-lift-host-runner -- "$tmp_dir/component.wasm"
 )
-grep -Fq 'GC byte-list record lift host adapter passed code=7 payload=[10, 20, 30] result=67 stats=17 read-calls=1 allocations=1 frees=1' <<<"$output"
+rg -Fq 'GC byte-list record lift host adapter passed code=7 payload=[10, 20, 30] result=67 stats=17 read-calls=1 allocations=1 frees=1' <<<"$output"
 printf '%s\n' "$output"
 printf 'manifest-backed byte-list record lift Component host execution passed\n'

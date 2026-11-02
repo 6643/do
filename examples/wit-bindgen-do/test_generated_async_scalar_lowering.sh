@@ -36,7 +36,7 @@ for marker in \
   'call $future-drop-readable' \
   'call $waitable-set-drop' \
   'call $task-return'; do
-  grep -Fq "$marker" "$tmp_dir/runtime.wat"
+  rg -Fq "$marker" "$tmp_dir/runtime.wat"
 done
 
 core_wasm="$tmp_dir/runtime.core.wasm"
@@ -60,13 +60,13 @@ run_runner() {
 }
 
 ready_output=$(DO_GENERIC_ASYNC_SCALAR_MODE=ready run_runner)
-grep -Fq 'mode=ready value=42 polls=2 wakes=0 completions=2 future-drops=2 pending-future-drops=0 frame-drops=1 table-empty=true' <<<"$ready_output"
+rg -Fq 'mode=ready value=42 polls=2 wakes=0 completions=2 future-drops=2 pending-future-drops=0 frame-drops=1 table-empty=true' <<<"$ready_output"
 
 pending_output=$(DO_GENERIC_ASYNC_SCALAR_MODE=pending run_runner)
-grep -Fq 'mode=pending value=42 polls=3 wakes=1 completions=2 future-drops=2 pending-future-drops=0 frame-drops=1 table-empty=true' <<<"$pending_output"
+rg -Fq 'mode=pending value=42 polls=3 wakes=1 completions=2 future-drops=2 pending-future-drops=0 frame-drops=1 table-empty=true' <<<"$pending_output"
 
 cancel_output=$(DO_GENERIC_ASYNC_SCALAR_MODE=cancel run_runner)
-grep -Fq 'mode=cancel value=42 polls=3 wakes=0 completions=1 future-drops=2 pending-future-drops=1 frame-drops=1 table-empty=true' <<<"$cancel_output"
+rg -Fq 'mode=cancel value=42 polls=3 wakes=0 completions=1 future-drops=2 pending-future-drops=1 frame-drops=1 table-empty=true' <<<"$cancel_output"
 
 manifest="$tmp_dir/wit/manifest.json"
 expect_manifest_rejection() {
@@ -108,7 +108,7 @@ expect_manifest_rejection() {
     printf 'manifest mutation %s emitted WAT before rejection\n' "$name" >&2
     exit 1
   fi
-  grep -Fq 'GeneratedWitManifestMismatch' "$stderr"
+  rg -Fq 'GeneratedWitManifestMismatch' "$stderr"
   mv "$tmp_dir/manifest.original" "$manifest"
 }
 

@@ -39,12 +39,12 @@ for marker in \
     '[guest-async-parent-resume]' \
     '[guest-async-child-drop]' \
     '[guest-async-root-terminal]'; do
-    grep -Fq "$marker" "$core_wat"
+    rg -Fq "$marker" "$core_wat"
 done
-test "$(grep -o 'call \$host-work' "$core_wat" | wc -l)" -eq 2
-grep -Fq 'i32.const 7' "$core_wat"
-grep -Fq 'i32.const 20' "$core_wat"
-if grep -Fq '[task-return]helper' "$core_wat" || grep -Fq '[async-lift]helper' "$core_wat"; then
+test "$(rg -o 'call \$host-work' "$core_wat" | wc -l)" -eq 2
+rg -Fq 'i32.const 7' "$core_wat"
+rg -Fq 'i32.const 20' "$core_wat"
+if rg -Fq '[task-return]helper' "$core_wat" || rg -Fq '[async-lift]helper' "$core_wat"; then
     printf 'inline scalar async-call emitted an independent helper endpoint\n' >&2
     exit 1
 fi

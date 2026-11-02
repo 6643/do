@@ -22,12 +22,12 @@ component="$tmp_dir/generated.component.wasm"
 "$toolchain_bin" new-component "$embedded" -o "$component"
 "$toolchain_bin" validate-component "$component" --features component-async
 
-grep -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$generated_wit"
-grep -Fq 'flags descriptor-flags' "$generated_wit"
-grep -Fq 'get-flags: async func() -> result<descriptor-flags, error-code>;' "$generated_wit"
-grep -Fq 'run: async func(directory: own<descriptor>) -> result<descriptor-flags, error-code>;' "$generated_wit"
-grep -Fq '"[async-lower][method]descriptor.get-flags"' "$generated_core_wat"
-grep -Fq '"[resource-drop]descriptor"' "$generated_core_wat"
+rg -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$generated_wit"
+rg -Fq 'flags descriptor-flags' "$generated_wit"
+rg -Fq 'get-flags: async func() -> result<descriptor-flags, error-code>;' "$generated_wit"
+rg -Fq 'run: async func(directory: own<descriptor>) -> result<descriptor-flags, error-code>;' "$generated_wit"
+rg -Fq '"[async-lower][method]descriptor.get-flags"' "$generated_core_wat"
+rg -Fq '"[resource-drop]descriptor"' "$generated_core_wat"
 
 for name in 472_wasi_filesystem_get_flags_unregistered 473_wasi_filesystem_get_flags_wrong_result 474_wasi_filesystem_get_flags_borrowed_payload; do
   if "$repo_root/bin/do" build "$repo_root/src/build/test/compile_err/$name.do" \
@@ -36,8 +36,8 @@ for name in 472_wasi_filesystem_get_flags_unregistered 473_wasi_filesystem_get_f
     exit 1
   fi
 done
-grep -Fq 'UnsupportedP3AsyncComponent' "$tmp_dir/472_wasi_filesystem_get_flags_unregistered.err"
-grep -Fq 'P3AsyncHostSignatureMismatch' "$tmp_dir/473_wasi_filesystem_get_flags_wrong_result.err"
-grep -Fq 'P3AsyncHostSignatureMismatch' "$tmp_dir/474_wasi_filesystem_get_flags_borrowed_payload.err"
+rg -Fq 'UnsupportedP3AsyncComponent' "$tmp_dir/472_wasi_filesystem_get_flags_unregistered.err"
+rg -Fq 'P3AsyncHostSignatureMismatch' "$tmp_dir/473_wasi_filesystem_get_flags_wrong_result.err"
+rg -Fq 'P3AsyncHostSignatureMismatch' "$tmp_dir/474_wasi_filesystem_get_flags_borrowed_payload.err"
 
 printf 'D2 filesystem descriptor.get-flags compiler Component gate passed\n'

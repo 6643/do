@@ -80,7 +80,7 @@ check_output() {
 
 extract_observation() {
   local output=$1
-  printf '%s\n' "$output" | grep -E '^(request consumed|pending polls|pending future drops|response create|response drop|table-empty)='
+  printf '%s\n' "$output" | rg -E '^(request consumed|pending polls|pending future drops|response create|response drop|table-empty)='
 }
 
 output=$("$cargo_bin" run --quiet --manifest-path "$runner_dir/Cargo.toml" \
@@ -127,7 +127,7 @@ check_early_output() {
     'response drop=0' \
     'table-empty=true' \
     'resource lifecycle case=early-drop request consumed=0 pending polls=0 pending future drops=0 response create=0 response drop=0 table-empty=true'; do
-    if ! printf '%s\n' "$output" | grep -Fxq "$marker"; then
+    if ! printf '%s\n' "$output" | rg -Fxq "$marker"; then
       printf 'missing resource early-drop lifecycle marker: %s\n%s\n' "$marker" "$output" >&2
       exit 1
     fi

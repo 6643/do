@@ -23,16 +23,16 @@ if DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$fixture" -o "$tmp_dir/ordinary
   printf 'ordinary do build unexpectedly lowered the await fixture\n' >&2
   exit 1
 fi
-grep -Fq 'AsyncLoweringUnavailable' "$guard_output"
+rg -Fq 'AsyncLoweringUnavailable' "$guard_output"
 
-grep -Fq '"wasi:cli/stdin@0.3.0-rc-2025-09-16" "[async-lower][future-read-1]read-via-stream"' "$core_wat"
-grep -Fq 'call $start-body-request' "$core_wat"
-grep -Fq 'call $start-body-completion' "$core_wat"
-grep -Fq 'call $accept-body-completion' "$core_wat"
-grep -Fq 'struct.set $async-frame $slot-body-completion-result' "$core_wat"
-grep -Fq 'struct.set $async-frame $slot-body-request' "$core_wat"
-grep -Fq 'i32.const 48' "$core_wat"
-if grep -Fq 'call $acquire-body' "$core_wat" && grep -Fq 'call $construct-request' "$core_wat"; then
+rg -Fq '"wasi:cli/stdin@0.3.0-rc-2025-09-16" "[async-lower][future-read-1]read-via-stream"' "$core_wat"
+rg -Fq 'call $start-body-request' "$core_wat"
+rg -Fq 'call $start-body-completion' "$core_wat"
+rg -Fq 'call $accept-body-completion' "$core_wat"
+rg -Fq 'struct.set $async-frame $slot-body-completion-result' "$core_wat"
+rg -Fq 'struct.set $async-frame $slot-body-request' "$core_wat"
+rg -Fq 'i32.const 48' "$core_wat"
+if rg -Fq 'call $acquire-body' "$core_wat" && rg -Fq 'call $construct-request' "$core_wat"; then
   :
 else
   printf 'await lowering is missing the staged body acquisition/constructor path\n' >&2

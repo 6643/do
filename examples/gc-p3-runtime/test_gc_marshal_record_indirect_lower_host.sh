@@ -41,7 +41,7 @@ output=$(
   "$cargo_bin" run --quiet --locked --manifest-path "$runner_manifest" \
     --bin do-p3-gc-marshal-record-indirect-lower-host-runner -- "$tmp_dir/component.wasm"
 )
-grep -Fq 'GC indirect scalar record lower host adapter passed result=42 write-calls=1' <<<"$output"
+rg -Fq 'GC indirect scalar record lower host adapter passed result=42 write-calls=1' <<<"$output"
 printf '%s\n' "$output"
 
 printf 'bounded GC indirect scalar record lower Component host execution passed\n'

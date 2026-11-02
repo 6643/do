@@ -28,9 +28,9 @@ for marker in \
   '"do:record-resource-stream-probe/source@0.1.0" "[resource-drop]ticket"' \
   '"[async-lower][stream-read-0]read-via-stream"' \
   '"[async-lower][future-read-1]read-via-stream"'; do
-  grep -Fq "$marker" "$core_wat"
+  rg -Fq "$marker" "$core_wat"
 done
-if grep -Fq 'directory-entry' "$core_wat"; then
+if rg -Fq 'directory-entry' "$core_wat"; then
   exit 1
 fi
 

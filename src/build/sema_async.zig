@@ -814,7 +814,7 @@ fn async_parameterized_stream_writer_helper_accepts(
             continue;
         const close_params = find_matching(tokens, open_params, "(", ")") catch continue;
         var parameters: [3]AsyncParameterizedParameter = undefined;
-        var seen = [_]bool{false} ** 3;
+        var seen: [3]bool = @splat(false);
         var cursor = open_params + 1;
         var parameter_index: usize = 0;
         var valid = true;
@@ -823,7 +823,7 @@ fn async_parameterized_stream_writer_helper_accepts(
                 valid = false;
                 break;
             };
-            const kind_index = @intFromEnum(parameter.kind);
+            const kind_index = @backingInt(parameter.kind);
             if (seen[kind_index]) {
                 valid = false;
                 break;
@@ -839,8 +839,8 @@ fn async_parameterized_stream_writer_helper_accepts(
                 cursor += 1;
             }
         }
-        if (!valid or cursor != close_params or !seen[@intFromEnum(AsyncParameterizedParameterKind.writer)] or
-            !seen[@intFromEnum(AsyncParameterizedParameterKind.count)] or !seen[@intFromEnum(AsyncParameterizedParameterKind.value)]) continue;
+        if (!valid or cursor != close_params or !seen[@backingInt(AsyncParameterizedParameterKind.writer)] or
+            !seen[@backingInt(AsyncParameterizedParameterKind.count)] or !seen[@backingInt(AsyncParameterizedParameterKind.value)]) continue;
 
         var arg_idx = call_start;
         var writer_arg_idx: ?usize = null;

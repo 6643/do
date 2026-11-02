@@ -10,7 +10,6 @@ TMP_DIR="${DO_RELEASE_SMOKE_TMP_DIR:-$TEST_DIR/tmp/release_smoke}"
 DO_BIN="$ROOT_DIR/bin/do"
 TOOLCHAIN_BIN="${DO_TOOLCHAIN_BIN:-$ROOT_DIR/bin/do-toolchain}"
 ZIG_BIN="${ZIG_BIN:-$(command -v zig || true)}"
-ZIG_BIN="${ZIG_BIN:-/home/_/_/zig/zig}"
 NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
 export DO_TOOLCHAIN_LOCK="${DO_TOOLCHAIN_LOCK:-$ROOT_DIR/toolchain/toolchain.lock.json}"
 
@@ -64,7 +63,7 @@ echo "[INFO] build ReleaseSmall compiler"
     cd "$ROOT_DIR/src"
     ZIG_LOCAL_CACHE_DIR="${ZIG_LOCAL_CACHE_DIR:-/tmp/zig-cache}" \
     ZIG_GLOBAL_CACHE_DIR="${ZIG_GLOBAL_CACHE_DIR:-/tmp/zig-gcache}" \
-    "$ZIG_BIN" build -Doptimize=ReleaseSmall >/dev/null
+    "$ZIG_BIN" build --prefix .. -Doptimize=ReleaseSmall >/dev/null
 )
 require_exec "$DO_BIN" "bin/do"
 pass "ReleaseSmall build"
@@ -77,7 +76,7 @@ if ! DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" build "$BUILD_INPUT" -o "$build_wat" >"$bu
     fail "do build"
 fi
 expect_empty_file "$build_stderr" "do build stderr"
-grep -Fq "ok: $BUILD_INPUT -> $build_wat" "$build_stdout" || fail "do build missing success marker"
+rg -Fq "ok: $BUILD_INPUT -> $build_wat" "$build_stdout" || fail "do build missing success marker"
 [[ -s "$build_wat" ]] || fail "do build output missing"
 pass "do build"
 
@@ -88,8 +87,8 @@ if ! DO_LIB_ROOT="$LIB_DIR" "$DO_BIN" test "$TEST_INPUT" >"$test_stdout" 2>"$tes
     fail "do test"
 fi
 expect_empty_file "$test_stderr" "do test stderr"
-grep -Fq 'test "path get single" ... ok' "$test_stdout" || fail "do test missing case ok"
-grep -Fq 'ok: 1 passed; 0 failed; 0 skipped' "$test_stdout" || fail "do test missing summary"
+rg -Fq 'test "path get single" ... ok' "$test_stdout" || fail "do test missing case ok"
+rg -Fq 'ok: 1 passed; 0 failed; 0 skipped' "$test_stdout" || fail "do test missing summary"
 pass "do test"
 
 compiled_stdout="$TMP_DIR/compiled.stdout"
@@ -113,8 +112,8 @@ expect_empty_file "$compiled_stderr" "do test --compiled stderr"
     fail "compiled test execution"
 }
 expect_empty_file "$compiled_run_stderr" "compiled test stderr"
-grep -Fq 'test "compiled test entry" ... ok' "$compiled_run_stdout" || fail "compiled test missing case ok"
-grep -Fq 'ok: 1 passed; 0 failed' "$compiled_run_stdout" || fail "compiled test missing summary"
+rg -Fq 'test "compiled test entry" ... ok' "$compiled_run_stdout" || fail "compiled test missing case ok"
+rg -Fq 'ok: 1 passed; 0 failed' "$compiled_run_stdout" || fail "compiled test missing summary"
 pass "do test --compiled"
 
 check_stdout="$TMP_DIR/check.stdout"

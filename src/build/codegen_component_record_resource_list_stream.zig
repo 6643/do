@@ -160,7 +160,7 @@ const source_local_names = [_][]const u8{
 
 fn matches_source_plan(tokens: []const lexer.Token) bool {
     var token_index: usize = 0;
-    var bindings: [source_local_names.len]?[]const u8 = [_]?[]const u8{null} ** source_local_names.len;
+    var bindings: [source_local_names.len]?[]const u8 = @splat(null);
     for (exact_source_tokens, 0..) |expected, expected_index| {
         if (expected_index + 1 < exact_source_tokens.len and std.mem.eql(u8, expected, "async") and
             token_index < tokens.len and std.mem.eql(u8, tokens[token_index].lexeme, exact_source_tokens[expected_index + 1])) continue;

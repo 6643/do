@@ -11,7 +11,7 @@ mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/g6-2-owned-record-triple-rust.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -58,15 +58,15 @@ for marker in \
   'producer-child-before-parent-cleanup'; do
   rg -q "^\\s*;; \\[${marker}\\]" "$wat"
 done
-grep -Fq '[producer-record-byte-size] 12' "$wat"
-grep -Fq '[producer-record-left-offset] 0' "$wat"
-grep -Fq '[producer-record-middle-offset] 4' "$wat"
-grep -Fq '[producer-record-right-offset] 8' "$wat"
-grep -Fq '[producer-stream-capacity] 1' "$wat"
-grep -Fq '[producer-input-word-count] 4' "$wat"
-grep -Fq '[producer-seed-order] left then middle then right' "$wat"
-grep -Fq '(func (export "[async-lift]produce")' "$wat"
-if grep -Fq '__arc_' "$wat"; then
+rg -Fq '[producer-record-byte-size] 12' "$wat"
+rg -Fq '[producer-record-left-offset] 0' "$wat"
+rg -Fq '[producer-record-middle-offset] 4' "$wat"
+rg -Fq '[producer-record-right-offset] 8' "$wat"
+rg -Fq '[producer-stream-capacity] 1' "$wat"
+rg -Fq '[producer-input-word-count] 4' "$wat"
+rg -Fq '[producer-seed-order] left then middle then right' "$wat"
+rg -Fq '(func (export "[async-lift]produce")' "$wat"
+if rg -Fq '__arc_' "$wat"; then
   printf 'owned-record triple generated WAT emitted an ARC symbol\n' >&2
   exit 1
 fi
@@ -110,27 +110,27 @@ run_mode() {
   local output
   output=$("$runner" "$component" "$mode" "$left_seed" "$middle_seed" "$right_seed")
   printf '%s\n' "$output"
-  grep -Fq "mode=$mode" <<<"$output"
-  grep -Fq "received=$expected_received" <<<"$output"
-  grep -Fq "result=$expected_result" <<<"$output"
-  grep -Fq "resource-created=$expected_created" <<<"$output"
-  grep -Fq "resource-drops=$expected_drops" <<<"$output"
-  grep -Fq "host-calls=$expected_host_calls" <<<"$output"
-  grep -Fq "pending-polls=$expected_pending" <<<"$output"
-  grep -Fq "stream-drops=$expected_stream_drops" <<<"$output"
-  grep -Fq "future-drops=$expected_future_drops" <<<"$output"
-  grep -Fq "future-polls=$expected_future_polls" <<<"$output"
-  grep -Fq "callback-calls=$expected_callback_calls" <<<"$output"
-  grep -Fq "poll-calls=$expected_poll_calls" <<<"$output"
-  grep -Fq 'finish-calls=0' <<<"$output"
-  grep -Fq "cancel-calls=$expected_cancel_calls" <<<"$output"
-  grep -Fq "pending-future-drops=$expected_pending_future_drops" <<<"$output"
-  grep -Fq "future-completions=$expected_completions" <<<"$output"
-  grep -Fq "left-ticket-seed:$left_seed" <<<"$output"
-  grep -Fq "middle-ticket-seed:$middle_seed" <<<"$output"
-  grep -Fq "right-ticket-seed:$right_seed" <<<"$output"
-  grep -Fq 'layout=record-offset:64 record-byte-size:12 left-offset:0 middle-offset:4 right-offset:8 stream-capacity:1' <<<"$output"
-  grep -Fq 'table-empty=true' <<<"$output"
+  rg -Fq "mode=$mode" <<<"$output"
+  rg -Fq "received=$expected_received" <<<"$output"
+  rg -Fq "result=$expected_result" <<<"$output"
+  rg -Fq "resource-created=$expected_created" <<<"$output"
+  rg -Fq "resource-drops=$expected_drops" <<<"$output"
+  rg -Fq "host-calls=$expected_host_calls" <<<"$output"
+  rg -Fq "pending-polls=$expected_pending" <<<"$output"
+  rg -Fq "stream-drops=$expected_stream_drops" <<<"$output"
+  rg -Fq "future-drops=$expected_future_drops" <<<"$output"
+  rg -Fq "future-polls=$expected_future_polls" <<<"$output"
+  rg -Fq "callback-calls=$expected_callback_calls" <<<"$output"
+  rg -Fq "poll-calls=$expected_poll_calls" <<<"$output"
+  rg -Fq 'finish-calls=0' <<<"$output"
+  rg -Fq "cancel-calls=$expected_cancel_calls" <<<"$output"
+  rg -Fq "pending-future-drops=$expected_pending_future_drops" <<<"$output"
+  rg -Fq "future-completions=$expected_completions" <<<"$output"
+  rg -Fq "left-ticket-seed:$left_seed" <<<"$output"
+  rg -Fq "middle-ticket-seed:$middle_seed" <<<"$output"
+  rg -Fq "right-ticket-seed:$right_seed" <<<"$output"
+  rg -Fq 'layout=record-offset:64 record-byte-size:12 left-offset:0 middle-offset:4 right-offset:8 stream-capacity:1' <<<"$output"
+  rg -Fq 'table-empty=true' <<<"$output"
 }
 
 run_mode ready 111 222 333 '[111, 222, 333]' 'Ok(())' 3 3 1 0 1 1 1 1 0 0 1 1

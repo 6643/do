@@ -25,6 +25,18 @@ test "toolchain adapter rejects identity drift before running a command" {
     );
 }
 
+test "toolchain adapter permits current tool identity when version and hash are not pinned" {
+    const spec = toolchain.ToolSpec{
+        .name = "wasm-tools",
+        .path = "wasm-tools",
+        .version = "",
+        .sha256 = "",
+        .capabilities = &.{"parse-core"},
+    };
+
+    try toolchain.validate_identity(spec, "wasm-tools 1.261.0", "not-a-sha256");
+}
+
 test "toolchain adapter builds only typed operation arguments" {
     const argv = try toolchain.build_argv(std.testing.allocator, .parse_core, .{
         .parse_core = .{ .input = "input.wat", .output = "output.wasm" },
@@ -118,9 +130,9 @@ test "toolchain adapter builds the current async metadata probe arguments" {
     defer toolchain.free_argv(std.testing.allocator, argv);
 
     const expected = [_][]const u8{
-        "component", "embed", "interface.wit", "--world", "probe",
-        "--dummy-names", "legacy", "--async-callback", "--features",
-        "cm-async,cm-more-async-builtins", "-t",
+        "component",     "embed",  "interface.wit",    "--world",    "probe",
+        "--dummy-names", "legacy", "--async-callback", "--features", "cm-async,cm-more-async-builtins",
+        "-t",
     };
     try std.testing.expectEqual(expected.len, argv.len);
     for (expected, 0..) |value, index| {
@@ -190,7 +202,7 @@ test "toolchain adapter maps the combined component async map profile" {
     for (expected, 0..) |value, index| try std.testing.expectEqualStrings(value, argv[index]);
 }
 
-test "toolchain lock records current CLI identities and verified Rust crate upgrade" {
+test "toolchain lock records current CLI capability requirements" {
     var lock = try toolchain.load_lock(
         std.testing.allocator,
         std.testing.io,
@@ -199,9 +211,14 @@ test "toolchain lock records current CLI identities and verified Rust crate upgr
     defer lock.deinit();
 
     try std.testing.expectEqual(@as(u32, 1), lock.value.schema);
-    try std.testing.expectEqualStrings("wasm-tools 1.258.0 (5c6d31c78 2026-08-24)", lock.value.wasm_tools.version);
-    try std.testing.expectEqualStrings("wasmtime 48.0.1 (7bac2c277 2026-08-24)", lock.value.wasmtime.version);
-    try std.testing.expectEqualStrings("verified", lock.value.rust_wasmtime.status);
+    try std.testing.expectEqualStrings("wasm-tools", lock.value.wasm_tools.path);
+    try std.testing.expectEqualStrings("wasmtime", lock.value.wasmtime.path);
+    try std.testing.expectEqualStrings("", lock.value.wasm_tools.version);
+    try std.testing.expectEqualStrings("", lock.value.wasm_tools.sha256);
+    try std.testing.expectEqualStrings("", lock.value.wasmtime.version);
+    try std.testing.expectEqualStrings("", lock.value.wasmtime.sha256);
+    try toolchain.require_capability(lock.value.wasm_tools, "parse-core");
+    try toolchain.require_capability(lock.value.wasmtime, "run-wasmtime");
     try toolchain.verify_tool(std.testing.allocator, std.testing.io, lock.value.wasm_tools);
     try toolchain.verify_tool(std.testing.allocator, std.testing.io, lock.value.wasmtime);
 }

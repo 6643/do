@@ -13,7 +13,7 @@ export ZIG_GLOBAL_CACHE_DIR="${ZIG_GLOBAL_CACHE_DIR:-$repo_root/.tmp/zig-gcache}
 tmp_dir=$(mktemp -d "$tmp_root/g6-2-list-owned-record-producer.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -37,13 +37,13 @@ done
 "$toolchain_bin" probe >/dev/null
 test "$(sha256sum "$wit" | awk '{print $1}')" = \
   cf7d047069cd9b30066debc88ce8edc159c9d2a90a310e56e384bb42c19cd6eb
-grep -Fq 'package do:g6-2-owned-record-list-producer@0.1.0;' "$wit"
-grep -Fq 'world owned-record-list-producer' "$wit"
-grep -Fq 'record list-entry' "$wit"
-grep -Fq 'values: list<u32>' "$wit"
-grep -Fq 'ticket: own<ticket>' "$wit"
-grep -Fq 'data: stream<list-entry>' "$wit"
-grep -Fq 'make-ticket: func(seed: u32) -> own<ticket>;' "$wit"
+rg -Fq 'package do:g6-2-owned-record-list-producer@0.1.0;' "$wit"
+rg -Fq 'world owned-record-list-producer' "$wit"
+rg -Fq 'record list-entry' "$wit"
+rg -Fq 'values: list<u32>' "$wit"
+rg -Fq 'ticket: own<ticket>' "$wit"
+rg -Fq 'data: stream<list-entry>' "$wit"
+rg -Fq 'make-ticket: func(seed: u32) -> own<ticket>;' "$wit"
 
 for marker in \
   'producer-record-byte-size' \
@@ -60,15 +60,15 @@ for marker in \
   'producer-child-before-parent-cleanup'; do
   rg -q "^\\s*;; \\[${marker}\\]" "$wat"
 done
-grep -Fq '[producer-record-byte-size] 12' "$wat"
-grep -Fq '[producer-record-alignment] 4' "$wat"
-grep -Fq '[producer-record-values-pointer-offset] 0' "$wat"
-grep -Fq '[producer-record-values-length-offset] 4' "$wat"
-grep -Fq '[producer-record-ticket-offset] 8' "$wat"
-grep -Fq '[producer-list-stride] 4' "$wat"
-grep -Fq '[producer-list-capacity] 3' "$wat"
-grep -Fq '[producer-stream-capacity] 1' "$wat"
-if grep -Eq '\(ref (null|extern|func|eq|struct|array)' "$wat"; then
+rg -Fq '[producer-record-byte-size] 12' "$wat"
+rg -Fq '[producer-record-alignment] 4' "$wat"
+rg -Fq '[producer-record-values-pointer-offset] 0' "$wat"
+rg -Fq '[producer-record-values-length-offset] 4' "$wat"
+rg -Fq '[producer-record-ticket-offset] 8' "$wat"
+rg -Fq '[producer-list-stride] 4' "$wat"
+rg -Fq '[producer-list-capacity] 3' "$wat"
+rg -Fq '[producer-stream-capacity] 1' "$wat"
+if rg -q '\(ref (null|extern|func|eq|struct|array)' "$wat"; then
   printf 'list-owned-record canonical probe contains a GC reference boundary\n' >&2
   exit 1
 fi
@@ -108,21 +108,21 @@ run_mode() {
   local output
   output=$("$runner" "$component" "$mode")
   printf '%s\n' "$output"
-  grep -Fq "mode=$mode" <<<"$output"
-  grep -Fq "received=$expected_received" <<<"$output"
-  grep -Fq "result=$expected_result" <<<"$output"
-  grep -Fq "resource-created=$expected_created" <<<"$output"
-  grep -Fq "resource-drops=$expected_drops" <<<"$output"
-  grep -Fq "host-calls=$expected_host_calls" <<<"$output"
-  grep -Fq "poll-calls=$expected_poll_calls" <<<"$output"
-  grep -Fq "stream-drops=$expected_stream_drops" <<<"$output"
-  grep -Fq "future-drops=$expected_future_drops" <<<"$output"
-  grep -Fq "pending-polls=$expected_pending" <<<"$output"
-  grep -Fq "pending-future-drops=$expected_pending_future_drops" <<<"$output"
-  grep -Fq "cancel-calls=$expected_cancel_calls" <<<"$output"
-  grep -Fq "list-read-releases=$expected_list_reads" <<<"$output"
-  grep -Fq "list-releases=$expected_list_releases" <<<"$output"
-  grep -Fq 'table-empty=true' <<<"$output"
+  rg -Fq "mode=$mode" <<<"$output"
+  rg -Fq "received=$expected_received" <<<"$output"
+  rg -Fq "result=$expected_result" <<<"$output"
+  rg -Fq "resource-created=$expected_created" <<<"$output"
+  rg -Fq "resource-drops=$expected_drops" <<<"$output"
+  rg -Fq "host-calls=$expected_host_calls" <<<"$output"
+  rg -Fq "poll-calls=$expected_poll_calls" <<<"$output"
+  rg -Fq "stream-drops=$expected_stream_drops" <<<"$output"
+  rg -Fq "future-drops=$expected_future_drops" <<<"$output"
+  rg -Fq "pending-polls=$expected_pending" <<<"$output"
+  rg -Fq "pending-future-drops=$expected_pending_future_drops" <<<"$output"
+  rg -Fq "cancel-calls=$expected_cancel_calls" <<<"$output"
+  rg -Fq "list-read-releases=$expected_list_reads" <<<"$output"
+  rg -Fq "list-releases=$expected_list_releases" <<<"$output"
+  rg -Fq 'table-empty=true' <<<"$output"
 }
 
 run_mode ready '[([], 111)]' 'Ok(())' 1 1 1 1 1 1 0 0 0 1 1

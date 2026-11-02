@@ -18,10 +18,10 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build --p3-async-component \
     "$repo_root/examples/p3-runtime/stream-probe-writer-component.do" \
     -o "$core_path"
 
-grep -Fq 'do:stream-probe/sink@0.1.0' "$core_path"
-grep -Fq 'package do:stream-probe@0.1.0' "$wit_path"
-grep -Fq 'interface sink' "$wit_path"
-grep -Fq 'world stream-writer-probe' "$wit_path"
+rg -Fq 'do:stream-probe/sink@0.1.0' "$core_path"
+rg -Fq 'package do:stream-probe@0.1.0' "$wit_path"
+rg -Fq 'interface sink' "$wit_path"
+rg -Fq 'world stream-writer-probe' "$wit_path"
 
 "$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
 "$toolchain_bin" embed-component "$wit_path" "$core_wasm" stream-writer-probe -o "$embedded_path"

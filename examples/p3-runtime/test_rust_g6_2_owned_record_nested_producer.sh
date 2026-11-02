@@ -11,7 +11,7 @@ mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/g6-2-owned-record-nested-rust.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -53,9 +53,9 @@ for marker in \
   '[producer-record-transfer]' \
   '[producer-resource-drop-exactly-once]' \
   '[producer-child-before-parent-cleanup]'; do
-  grep -Fq ";; $marker" "$wat"
+  rg -Fq ";; $marker" "$wat"
 done
-if grep -Fq '__arc_' "$wat"; then
+if rg -Fq '__arc_' "$wat"; then
   printf 'owned-record nested generated WAT emitted an ARC symbol\n' >&2
   exit 1
 fi
@@ -95,18 +95,18 @@ run_mode() {
   local output
   output=$("$runner" "$component" "$mode")
   printf '%s\n' "$output"
-  grep -Fq "mode=$mode" <<<"$output"
-  grep -Fq "received=$expected_received" <<<"$output"
-  grep -Fq "result=$expected_result" <<<"$output"
-  grep -Fq "resource-created=$expected_created" <<<"$output"
-  grep -Fq "resource-drops=$expected_drops" <<<"$output"
-  grep -Fq "pending-polls=$expected_pending" <<<"$output"
-  grep -Fq "poll-calls=$expected_poll_calls" <<<"$output"
-  grep -Fq "future-completions=$expected_completions" <<<"$output"
-  grep -Fq "pending-future-drops=$expected_pending_future_drops" <<<"$output"
-  grep -Fq "cancel-calls=$expected_cancel_calls" <<<"$output"
-  grep -Fq 'table-empty=true' <<<"$output"
-  grep -Fq 'layout=record-offset:64 record-byte-size:4 nested-ticket-offset:0 stream-capacity:1 ticket-seed:111' <<<"$output"
+  rg -Fq "mode=$mode" <<<"$output"
+  rg -Fq "received=$expected_received" <<<"$output"
+  rg -Fq "result=$expected_result" <<<"$output"
+  rg -Fq "resource-created=$expected_created" <<<"$output"
+  rg -Fq "resource-drops=$expected_drops" <<<"$output"
+  rg -Fq "pending-polls=$expected_pending" <<<"$output"
+  rg -Fq "poll-calls=$expected_poll_calls" <<<"$output"
+  rg -Fq "future-completions=$expected_completions" <<<"$output"
+  rg -Fq "pending-future-drops=$expected_pending_future_drops" <<<"$output"
+  rg -Fq "cancel-calls=$expected_cancel_calls" <<<"$output"
+  rg -Fq 'table-empty=true' <<<"$output"
+  rg -Fq 'layout=record-offset:64 record-byte-size:4 nested-ticket-offset:0 stream-capacity:1 ticket-seed:111' <<<"$output"
 }
 
 run_mode ready '[111]' 'Ok(())' 1 1 0 1 1 0 0

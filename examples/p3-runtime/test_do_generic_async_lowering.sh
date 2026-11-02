@@ -27,7 +27,7 @@ for marker in \
   '[subtask-cancel]' \
   '[subtask-drop]' \
   'generic-async contract'; do
-  grep -Fq "$marker" "$core_wat"
+  rg -Fq "$marker" "$core_wat"
 done
 
 "$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"

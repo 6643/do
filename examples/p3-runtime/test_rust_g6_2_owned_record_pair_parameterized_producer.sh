@@ -11,7 +11,7 @@ mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/g6-2-owned-record-pair-parameterized-rust.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -36,11 +36,11 @@ DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$source" \
 cmp "$wit" "$probe_wit"
 test "$(sha256sum "$wit" | awk '{print $1}')" = \
   e7abd3cf7b7543325865a0b4be4b32ae50a2470ac5083169250719f89b7ce53a
-grep -Fq '[producer-input-word-count] 3' "$wat"
-grep -Fq '[producer-seed-order] left then right' "$wat"
-grep -Fq '[producer-record-transfer]' "$wat"
-grep -Fq '[producer-resource-drop-exactly-once]' "$wat"
-if grep -Fq '__arc_' "$wat"; then
+rg -Fq '[producer-input-word-count] 3' "$wat"
+rg -Fq '[producer-seed-order] left then right' "$wat"
+rg -Fq '[producer-record-transfer]' "$wat"
+rg -Fq '[producer-resource-drop-exactly-once]' "$wat"
+if rg -Fq '__arc_' "$wat"; then
   printf 'parameterized pair producer emitted an ARC symbol\n' >&2
   exit 1
 fi
@@ -83,24 +83,24 @@ run_mode() {
   local output
   output=$("$runner" "$component" "$mode" "$left_seed" "$right_seed")
   printf '%s\n' "$output"
-  grep -Fq "mode=$mode" <<<"$output"
-  grep -Fq "received=$expected_received" <<<"$output"
-  grep -Fq "result=$expected_result" <<<"$output"
-  grep -Fq "resource-created=$expected_created" <<<"$output"
-  grep -Fq "resource-drops=$expected_drops" <<<"$output"
-  grep -Fq "host-calls=$expected_host_calls" <<<"$output"
-  grep -Fq "pending-polls=$expected_pending" <<<"$output"
-  grep -Fq "stream-drops=$expected_stream_drops" <<<"$output"
-  grep -Fq "future-drops=$expected_future_drops" <<<"$output"
-  grep -Fq "callback-calls=$expected_callback_calls" <<<"$output"
-  grep -Fq "poll-calls=$expected_poll_calls" <<<"$output"
-  grep -Fq "finish-calls=$expected_finish_calls" <<<"$output"
-  grep -Fq "cancel-calls=$expected_cancel_calls" <<<"$output"
-  grep -Fq "pending-future-drops=$expected_pending_future_drops" <<<"$output"
-  grep -Fq "future-completions=$expected_completions" <<<"$output"
-  grep -Fq "left-ticket-seed:$left_seed" <<<"$output"
-  grep -Fq "right-ticket-seed:$right_seed" <<<"$output"
-  grep -Fq 'table-empty=true' <<<"$output"
+  rg -Fq "mode=$mode" <<<"$output"
+  rg -Fq "received=$expected_received" <<<"$output"
+  rg -Fq "result=$expected_result" <<<"$output"
+  rg -Fq "resource-created=$expected_created" <<<"$output"
+  rg -Fq "resource-drops=$expected_drops" <<<"$output"
+  rg -Fq "host-calls=$expected_host_calls" <<<"$output"
+  rg -Fq "pending-polls=$expected_pending" <<<"$output"
+  rg -Fq "stream-drops=$expected_stream_drops" <<<"$output"
+  rg -Fq "future-drops=$expected_future_drops" <<<"$output"
+  rg -Fq "callback-calls=$expected_callback_calls" <<<"$output"
+  rg -Fq "poll-calls=$expected_poll_calls" <<<"$output"
+  rg -Fq "finish-calls=$expected_finish_calls" <<<"$output"
+  rg -Fq "cancel-calls=$expected_cancel_calls" <<<"$output"
+  rg -Fq "pending-future-drops=$expected_pending_future_drops" <<<"$output"
+  rg -Fq "future-completions=$expected_completions" <<<"$output"
+  rg -Fq "left-ticket-seed:$left_seed" <<<"$output"
+  rg -Fq "right-ticket-seed:$right_seed" <<<"$output"
+  rg -Fq 'table-empty=true' <<<"$output"
 }
 
 run_mode ready 111 222 '[111, 222]' 'Ok(())' 2 2 1 0 1 1 1 1 0 0 0 1

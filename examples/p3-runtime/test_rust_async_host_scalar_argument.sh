@@ -53,12 +53,12 @@ ready=$(run_mode ready)
 pending=$(run_mode pending)
 cancel=$(run_mode cancel)
 
-grep -Fq 'mode=ready calls=1 argument=7' <<<"$ready"
-grep -Fq 'future-drops=1 pending-drops=0 guest-completed=true table-empty=true' <<<"$ready"
-grep -Fq 'mode=pending calls=1 argument=7' <<<"$pending"
-grep -Fq 'future-drops=1 pending-drops=0 guest-completed=true table-empty=true' <<<"$pending"
-grep -Fq 'mode=cancel calls=1 argument=7' <<<"$cancel"
-grep -Fq 'future-drops=1 pending-drops=1 guest-completed=false table-empty=true' <<<"$cancel"
+rg -Fq 'mode=ready calls=1 argument=7' <<<"$ready"
+rg -Fq 'future-drops=1 pending-drops=0 guest-completed=true table-empty=true' <<<"$ready"
+rg -Fq 'mode=pending calls=1 argument=7' <<<"$pending"
+rg -Fq 'future-drops=1 pending-drops=0 guest-completed=true table-empty=true' <<<"$pending"
+rg -Fq 'mode=cancel calls=1 argument=7' <<<"$cancel"
+rg -Fq 'future-drops=1 pending-drops=1 guest-completed=false table-empty=true' <<<"$cancel"
 
 printf '%s\n' "$ready" "$pending" "$cancel"
 printf 'rust async host scalar argument promotion gate passed\n'

@@ -40,8 +40,8 @@ for case_name in internal-error-none internal-error-some; do
     if [[ "$case_name" == internal-error-some ]]; then
       expected='InternalError(Some("x"))'
     fi
-    grep -Fq "service-probe-gate=green delivery=$delivery case=$case_name observation=$expected" <<<"$output"
-    grep -Fq 'table-empty=true' <<<"$output"
+    rg -Fq "service-probe-gate=green delivery=$delivery case=$case_name observation=$expected" <<<"$output"
+    rg -Fq 'table-empty=true' <<<"$output"
   done
 done
 

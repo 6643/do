@@ -263,7 +263,7 @@ impl StreamConsumer<State> for Sink {
     ) -> Poll<wasmtime::Result<StreamResult>> {
         self.stats
             .lock()
-                .expect("two-list owned-record sink stats mutex poisoned")
+            .expect("two-list owned-record sink stats mutex poisoned")
             .poll_calls += 1;
         if finish {
             self.stats
@@ -294,7 +294,9 @@ impl StreamConsumer<State> for Sink {
 
         let mut items = Vec::with_capacity(remaining);
         source.read(&mut store, &mut items).map_err(|error| {
-            wasmtime::Error::msg(format!("two-list owned-record source lift failed: {error:#}"))
+            wasmtime::Error::msg(format!(
+                "two-list owned-record source lift failed: {error:#}"
+            ))
         })?;
         for entry in items {
             let ticket = Resource::<Ticket>::new_own(entry.ticket.rep());
@@ -470,9 +472,7 @@ async fn call_produce(
 ) -> Result<(std::result::Result<(), ErrorCode>,)> {
     Ok(map_wasmtime(map_wasmtime(
         store
-            .run_concurrent(async |accessor| {
-                produce.call_concurrent(&accessor, (input,)).await
-            })
+            .run_concurrent(async |accessor| produce.call_concurrent(&accessor, (input,)).await)
             .await,
     )?)?)
 }

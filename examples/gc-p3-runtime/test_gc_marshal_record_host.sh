@@ -30,7 +30,7 @@ fi
 "$zig_bin" run "$probe" -- "$wit" "$core_wat" --host
 
 "$toolchain_bin" parse-core "$core_wat" -o "$tmp_dir/core.wasm"
-if grep -E '^[[:space:]]*\(import .*\(ref' "$core_wat" >"$tmp_dir/gc-import.stderr"; then
+if rg -E '^[[:space:]]*\(import .*\(ref' "$core_wat" >"$tmp_dir/gc-import.stderr"; then
   cat "$tmp_dir/gc-import.stderr" >&2
   exit 1
 fi
@@ -38,7 +38,7 @@ fi
 "$toolchain_bin" new-component "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
 "$toolchain_bin" validate-component "$tmp_dir/component.wasm" --features none
 "$toolchain_bin" component-wit "$tmp_dir/component.wasm" >"$tmp_dir/component.wit"
-grep -Fq 'read: func() -> reading' "$tmp_dir/component.wit"
+rg -Fq 'read: func() -> reading' "$tmp_dir/component.wit"
 
 output=$(
   CC="$cc_bin" CXX="$cxx_bin" \
@@ -46,7 +46,7 @@ output=$(
   "$cargo_bin" run --quiet --locked --manifest-path "$runner_manifest" \
     --bin do-p3-gc-marshal-record-host-runner -- "$tmp_dir/component.wasm"
 )
-grep -Fq 'GC scalar record lift host adapter passed sum=42' <<<"$output"
+rg -Fq 'GC scalar record lift host adapter passed sum=42' <<<"$output"
 printf '%s\n' "$output"
 
 printf 'bounded GC scalar record lift Component assembly passed\n'

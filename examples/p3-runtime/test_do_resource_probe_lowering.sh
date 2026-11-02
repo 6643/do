@@ -19,13 +19,13 @@ cmp "$expected_wit" "$tmp_dir/probe.wit"
 "$toolchain_bin" parse-core "$tmp_dir/probe.wat" -o "$tmp_dir/probe.wasm"
 "$toolchain_bin" embed-component "$tmp_dir/probe.wit" "$tmp_dir/probe.wasm" probe -o "$tmp_dir/probe.embedded.wasm"
 "$toolchain_bin" new-component "$tmp_dir/probe.embedded.wasm" -o "$tmp_dir/probe.component.wasm"
-"$toolchain_bin" component-wit "$tmp_dir/probe.component.wasm" | grep -Fq 'borrow-value: func(ticket: borrow<ticket>) -> u32'
+"$toolchain_bin" component-wit "$tmp_dir/probe.component.wasm" | rg -Fq 'borrow-value: func(ticket: borrow<ticket>) -> u32'
 
 sed 's/return value/return seed/' "$source_file" >"$tmp_dir/changed.do"
 if "$do_bin" build "$tmp_dir/changed.do" --p3-resource-probe-component -o "$tmp_dir/changed.wat" >"$tmp_dir/changed.stdout" 2>"$tmp_dir/changed.stderr"; then
   printf 'changed resource probe source unexpectedly lowered\n' >&2
   exit 1
 fi
-grep -Fq 'UnsupportedResourceProbeComponent' "$tmp_dir/changed.stderr"
+rg -Fq 'UnsupportedResourceProbeComponent' "$tmp_dir/changed.stderr"
 
 printf 'resource probe lowering verified\n'

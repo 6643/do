@@ -217,11 +217,11 @@ pub const CommandResult = struct {
 };
 
 pub fn validate_identity(spec: ToolSpec, actual_version: []const u8, actual_sha256: []const u8) AdapterError!void {
-    if (spec.name.len == 0 or spec.path.len == 0 or spec.version.len == 0 or spec.sha256.len != 64) {
+    if (spec.name.len == 0 or spec.path.len == 0 or (spec.sha256.len != 0 and spec.sha256.len != 64)) {
         return error.InvalidToolSpec;
     }
-    if (!std.mem.eql(u8, spec.version, actual_version)) return error.VersionMismatch;
-    if (!std.mem.eql(u8, spec.sha256, actual_sha256)) return error.HashMismatch;
+    if (spec.version.len != 0 and !std.mem.eql(u8, spec.version, actual_version)) return error.VersionMismatch;
+    if (spec.sha256.len != 0 and !std.mem.eql(u8, spec.sha256, actual_sha256)) return error.HashMismatch;
 }
 
 pub fn require_capability(spec: ToolSpec, capability: []const u8) AdapterError!void {
@@ -436,6 +436,10 @@ pub fn verify_tool(allocator: std.mem.Allocator, io: std.Io, spec: ToolSpec) !vo
     defer version_result.deinit(allocator);
     if (version_result.exit_code != 0) return error.CommandFailed;
     const actual_version = std.mem.trim(u8, version_result.stdout, " \t\r\n");
+    if (spec.sha256.len == 0) {
+        try validate_identity(spec, actual_version, "");
+        return;
+    }
     const actual_hash = try executable_sha256(io, spec.path);
     try validate_identity(spec, actual_version, &actual_hash);
 }

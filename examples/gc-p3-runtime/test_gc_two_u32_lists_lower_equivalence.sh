@@ -62,6 +62,6 @@ output=$(
     --bin do-p3-gc-marshal-record-two-u32-lists-lower-equivalence-runner -- \
     "$tmp_dir/gc.component.wasm" "$tmp_dir/arc.component.wasm"
 )
-grep -Fq 'GC/ARC two-u32-list record lower equivalence passed code=7 first=[10, 20, 5] second=[3, 4] allocations=2/2 frees=2/2 write-calls=1/1' <<<"$output"
+rg -Fq 'GC/ARC two-u32-list record lower equivalence passed code=7 first=[10, 20, 5] second=[3, 4] allocations=2/2 frees=2/2 write-calls=1/1' <<<"$output"
 printf '%s\n' "$output"
 printf 'two-u32-list record lower ARC/GC equivalence passed\n'

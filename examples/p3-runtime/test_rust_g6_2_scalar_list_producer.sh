@@ -29,12 +29,12 @@ test -f "$runner_dir/src/bin/g6_2_scalar_list_producer.rs"
 DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$source" \
   --p3-async-component --p3-wit-output "$wit" -o "$wat"
 cmp "$wit" "$probe_wit"
-grep -Fq 'package do:g6-2-scalar-list-producer@0.1.0;' "$wit"
-grep -Fq 'world scalar-list-producer' "$wit"
-grep -Fq 'export produce: async func(count: u32)' "$wit"
-grep -Fq '[producer-list-release-exactly-once]' "$wat"
-grep -Fq '[producer-cancel-before-transfer]' "$wat"
-if grep -Fq '[resource-drop]' "$wat"; then
+rg -Fq 'package do:g6-2-scalar-list-producer@0.1.0;' "$wit"
+rg -Fq 'world scalar-list-producer' "$wit"
+rg -Fq 'export produce: async func(count: u32)' "$wit"
+rg -Fq '[producer-list-release-exactly-once]' "$wat"
+rg -Fq '[producer-cancel-before-transfer]' "$wat"
+if rg -Fq '[resource-drop]' "$wat"; then
   printf 'scalar-list promotion unexpectedly imports resource-drop\n' >&2
   exit 1
 fi
@@ -62,12 +62,12 @@ run_mode() {
   output=$(cargo run --quiet --locked --manifest-path "$runner_dir/Cargo.toml" \
     --bin "$bin" -- "$component" "$mode")
   printf '%s\n' "$output"
-  grep -Fq "mode=$mode" <<<"$output"
-  grep -Fq "values=$expected_values" <<<"$output"
-  grep -Fq "host-calls=$expected_host_calls" <<<"$output"
-  grep -Fq "stream-drops=$expected_stream_drops" <<<"$output"
-  grep -Fq "list-releases=$expected_releases" <<<"$output"
-  grep -Fq 'table-empty=true' <<<"$output"
+  rg -Fq "mode=$mode" <<<"$output"
+  rg -Fq "values=$expected_values" <<<"$output"
+  rg -Fq "host-calls=$expected_host_calls" <<<"$output"
+  rg -Fq "stream-drops=$expected_stream_drops" <<<"$output"
+  rg -Fq "list-releases=$expected_releases" <<<"$output"
+  rg -Fq 'table-empty=true' <<<"$output"
 }
 
 run_mode count-0 '[]' 1 1 1

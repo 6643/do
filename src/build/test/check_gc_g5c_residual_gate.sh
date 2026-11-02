@@ -52,7 +52,7 @@ if [[ "$toolchain_probe_output" != *'"schema":1'* || "$toolchain_probe_output" !
     printf '[FAIL] current toolchain probe returned no wasm-tools identity:\n%s\n' "$toolchain_probe_output" >&2
     exit 1
 fi
-printf '[PASS] pinned wasm-tools identity verified by do-toolchain probe\n'
+printf '[PASS] current wasm-tools identity verified by do-toolchain probe\n'
 
 run_future_frame_equivalence_gate() {
     local gate_output="$TMP_DIR/gc-async-frame-equivalence.output"
@@ -1199,7 +1199,7 @@ if [[ -e "$host_wit_wat" ]]; then
     printf '[FAIL] host/WIT residual fixture left a WAT artifact after rejection: %s\n' "$host_wit_fixture" >&2
     exit 1
 fi
-if ! grep -Fq 'error[UnsupportedGcSyncModuleGraph]' "$host_wit_wat.stderr"; then
+if ! rg -Fq 'error[UnsupportedGcSyncModuleGraph]' "$host_wit_wat.stderr"; then
     printf '[FAIL] host/WIT residual fixture missing diagnostic error[UnsupportedGcSyncModuleGraph]: %s\n' "$host_wit_fixture" >&2
     cat "$host_wit_wat.stderr" >&2
     exit 1

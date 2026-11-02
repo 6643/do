@@ -14,7 +14,7 @@ mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/g6-2-owned-record-triple-equivalence.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -53,7 +53,7 @@ cmp "$generated_wit" "$probe_wit"
 test "$(sha256sum "$generated_wit" | awk '{print $1}')" = \
   73fd57dc8f34f13023b48f2b82e439b212eab52192886f0d07a37d86e63658b1
 cmp "$generated_wat" "$canonical_wat"
-if grep -Fq '__arc_' "$generated_wat"; then
+if rg -Fq '__arc_' "$generated_wat"; then
   printf 'owned-record triple generated WAT emitted an ARC symbol\n' >&2
   exit 1
 fi
@@ -96,27 +96,27 @@ run_equivalent() {
   "$runner" "$generated_component" "$mode" "$left_seed" "$middle_seed" "$right_seed" >"$generated_output"
   diff -u "$canonical_output" "$generated_output"
 
-  grep -Fq "mode=$mode" "$canonical_output"
-  grep -Fq "received=$expected_received" "$canonical_output"
-  grep -Fq "result=$expected_result" "$canonical_output"
-  grep -Fq "resource-created=$expected_created" "$canonical_output"
-  grep -Fq "resource-drops=$expected_drops" "$canonical_output"
-  grep -Fq "host-calls=$expected_host_calls" "$canonical_output"
-  grep -Fq "pending-polls=$expected_pending" "$canonical_output"
-  grep -Fq "stream-drops=$expected_stream_drops" "$canonical_output"
-  grep -Fq "future-drops=$expected_future_drops" "$canonical_output"
-  grep -Fq "future-polls=$expected_future_polls" "$canonical_output"
-  grep -Fq "callback-calls=$expected_callback_calls" "$canonical_output"
-  grep -Fq "poll-calls=$expected_poll_calls" "$canonical_output"
-  grep -Fq 'finish-calls=0' "$canonical_output"
-  grep -Fq "cancel-calls=$expected_cancel_calls" "$canonical_output"
-  grep -Fq "pending-future-drops=$expected_pending_future_drops" "$canonical_output"
-  grep -Fq "future-completions=$expected_completions" "$canonical_output"
-  grep -Fq "left-ticket-seed:$left_seed" "$canonical_output"
-  grep -Fq "middle-ticket-seed:$middle_seed" "$canonical_output"
-  grep -Fq "right-ticket-seed:$right_seed" "$canonical_output"
-  grep -Fq 'layout=record-offset:64 record-byte-size:12 left-offset:0 middle-offset:4 right-offset:8 stream-capacity:1' "$canonical_output"
-  grep -Fq 'table-empty=true' "$canonical_output"
+  rg -Fq "mode=$mode" "$canonical_output"
+  rg -Fq "received=$expected_received" "$canonical_output"
+  rg -Fq "result=$expected_result" "$canonical_output"
+  rg -Fq "resource-created=$expected_created" "$canonical_output"
+  rg -Fq "resource-drops=$expected_drops" "$canonical_output"
+  rg -Fq "host-calls=$expected_host_calls" "$canonical_output"
+  rg -Fq "pending-polls=$expected_pending" "$canonical_output"
+  rg -Fq "stream-drops=$expected_stream_drops" "$canonical_output"
+  rg -Fq "future-drops=$expected_future_drops" "$canonical_output"
+  rg -Fq "future-polls=$expected_future_polls" "$canonical_output"
+  rg -Fq "callback-calls=$expected_callback_calls" "$canonical_output"
+  rg -Fq "poll-calls=$expected_poll_calls" "$canonical_output"
+  rg -Fq 'finish-calls=0' "$canonical_output"
+  rg -Fq "cancel-calls=$expected_cancel_calls" "$canonical_output"
+  rg -Fq "pending-future-drops=$expected_pending_future_drops" "$canonical_output"
+  rg -Fq "future-completions=$expected_completions" "$canonical_output"
+  rg -Fq "left-ticket-seed:$left_seed" "$canonical_output"
+  rg -Fq "middle-ticket-seed:$middle_seed" "$canonical_output"
+  rg -Fq "right-ticket-seed:$right_seed" "$canonical_output"
+  rg -Fq 'layout=record-offset:64 record-byte-size:12 left-offset:0 middle-offset:4 right-offset:8 stream-capacity:1' "$canonical_output"
+  rg -Fq 'table-empty=true' "$canonical_output"
   printf 'PASS %s: canonical and generated triple lifecycle observations agree\n' "$mode"
 }
 

@@ -46,9 +46,7 @@ fn main() -> Result<()> {
     let engine = map_wasmtime(Engine::new(&config))?;
     let component = map_wasmtime(Component::from_file(&engine, &component_path))?;
     let mut linker: Linker<State> = Linker::new(&engine);
-    let mut api = map_wasmtime(
-        linker.instance("demo:marshal-record-u32-list-lower/api@1.0.0"),
-    )?;
+    let mut api = map_wasmtime(linker.instance("demo:marshal-record-u32-list-lower/api@1.0.0"))?;
     let calls = Arc::new(AtomicU32::new(0));
     let callback_calls = Arc::clone(&calls);
     map_wasmtime(api.func_new("write", move |_store, _ty, params, results| {
@@ -59,15 +57,18 @@ fn main() -> Result<()> {
         }
         let fields = match &params[0] {
             Val::Record(fields) => fields,
-            other => return Err(wasmtime::Error::msg(format!(
-                "u32-list lower parameter was not a record: {other:?}"
-            ))),
+            other => {
+                return Err(wasmtime::Error::msg(format!(
+                    "u32-list lower parameter was not a record: {other:?}"
+                )));
+            }
         };
         let code = match fields.iter().find(|(name, _)| name == "code") {
             Some((_, Val::U32(value))) => *value,
             _ => return Err(wasmtime::Error::msg("u32-list record code was not u32")),
         };
-        let payload = payload_values(fields).map_err(|error| wasmtime::Error::msg(error.to_string()))?;
+        let payload =
+            payload_values(fields).map_err(|error| wasmtime::Error::msg(error.to_string()))?;
         if code != 7 || payload != [10, 20, 30] {
             return Err(wasmtime::Error::msg(format!(
                 "unexpected u32-list record values code={code} payload={payload:?}"

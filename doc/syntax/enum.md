@@ -37,6 +37,15 @@ is_paid(status OrderStatus) -> bool {
 
 规则: `value enum` 的分支值用 `@eq/@ne` 比较; `@is` 只做类型判断, 不用于分支值匹配。
 
+规则: enum 类型没有隐式默认值。enum 的 carrier 值 `0` 不会被自动作为默认值, 即使某个分支的显式值是 `0` 也一样。需要空状态时, 使用 `Enum | nil` 并显式初始化为 `nil`; 需要具体分支时, 必须显式写出分支值。
+
+```do
+Status i32 = Ready(1) | Failed(2)
+
+status Status | nil = nil
+status = Ready
+```
+
 ## 载荷枚举
 
 ```do

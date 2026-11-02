@@ -153,9 +153,14 @@ impl Mode {
 
     fn expected_received(self) -> &'static [u32] {
         match self {
-            Self::Ready | Self::Pending | Self::SinkErrorAfter | Self::CancelAfterTransfer
+            Self::Ready
+            | Self::Pending
+            | Self::SinkErrorAfter
+            | Self::CancelAfterTransfer
             | Self::EarlyDropAfterTransfer => &[TICKET_SEED],
-            Self::SinkErrorBefore | Self::CancelBeforeTransfer | Self::EarlyDropBeforeTransfer
+            Self::SinkErrorBefore
+            | Self::CancelBeforeTransfer
+            | Self::EarlyDropBeforeTransfer
             | Self::Invalid => &[],
             Self::Repeat => &[TICKET_SEED, TICKET_SEED],
         }
@@ -376,9 +381,7 @@ async fn call_produce(
 ) -> Result<(std::result::Result<(), ErrorCode>,)> {
     Ok(map_wasmtime(map_wasmtime(
         store
-            .run_concurrent(async |accessor| {
-                produce.call_concurrent(&accessor, (input,)).await
-            })
+            .run_concurrent(async |accessor| produce.call_concurrent(&accessor, (input,)).await)
             .await,
     )?)?)
 }
@@ -416,13 +419,13 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
             .get_typed_func::<(u32,), (std::result::Result<(), ErrorCode>,)>(&mut store, "produce"),
     )?;
     let counter_mode = std::env::args().nth(3);
-    let callback_counters = matches!(counter_mode.as_deref(), Some("--counter") | Some("--counter-tuple-diagnostic"));
+    let callback_counters = matches!(
+        counter_mode.as_deref(),
+        Some("--counter") | Some("--counter-tuple-diagnostic")
+    );
     let runtime_counters = if counter_mode.as_deref() == Some("--counter-tuple-diagnostic") {
         Some(map_wasmtime(
-            instance.get_typed_func::<(), ((u32, u32, u32, u32),)>(
-                &mut store,
-                "runtime-counters",
-            ),
+            instance.get_typed_func::<(), ((u32, u32, u32, u32),)>(&mut store, "runtime-counters"),
         )?)
     } else {
         None
@@ -434,8 +437,13 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
         None
     };
     let callback_baseline = {
-        let stats = stats.lock().expect("owned record counter baseline mutex poisoned");
-        (stats.counter_frame_alloc_events, stats.counter_frame_free_events)
+        let stats = stats
+            .lock()
+            .expect("owned record counter baseline mutex poisoned");
+        (
+            stats.counter_frame_alloc_events,
+            stats.counter_frame_free_events,
+        )
     };
 
     let result = if mode == Mode::Repeat {
@@ -459,7 +467,9 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
         None
     };
 
-    let snapshot = stats.lock().expect("owned record final stats mutex poisoned");
+    let snapshot = stats
+        .lock()
+        .expect("owned record final stats mutex poisoned");
     let callback_observed = (
         snapshot
             .counter_frame_alloc_events
@@ -505,9 +515,7 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
             table_empty,
         );
     }
-    if callback_counters
-        && callback_observed != (expected_created, expected_created)
-    {
+    if callback_counters && callback_observed != (expected_created, expected_created) {
         bail!(
             "component callback counter mismatch mode={} observed={}/{} expected={}/{}",
             mode.label(),
@@ -517,7 +525,9 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
             expected_created,
         );
     }
-    if let Some((frame_allocations, frame_releases, list_allocations, list_releases)) = observed_counters {
+    if let Some((frame_allocations, frame_releases, list_allocations, list_releases)) =
+        observed_counters
+    {
         let expected_invocations = mode.expected_invocations();
         if frame_allocations != expected_invocations
             || frame_releases != expected_invocations
@@ -561,7 +571,10 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
         STREAM_CAPACITY,
         TICKET_SEED,
         if callback_counters {
-            format!(" counter-source=component-callback frame-allocations={} frame-releases={}", callback_observed.0, callback_observed.1)
+            format!(
+                " counter-source=component-callback frame-allocations={} frame-releases={}",
+                callback_observed.0, callback_observed.1
+            )
         } else {
             observed_counters.map(|(a, b, c, d)| format!(" counter-source=component-tuple-diagnostic frame-allocations={} frame-releases={} list-allocations={} list-releases={}", a, b, c, d)).unwrap_or_default()
         },

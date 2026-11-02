@@ -27,11 +27,11 @@ DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$source" \
 test -s "$core_wat"
 test -s "$wit"
 
-grep -Fq 'package do:g6-2-scalar-list-producer@0.1.0;' "$wit"
-grep -Fq 'consume-via-stream: async func(data: stream<list<u32>>) -> result<_, error-code>;' "$wit"
-grep -Fq 'world scalar-list-producer' "$wit"
-grep -Fq 'export produce: async func(count: u32) -> result<_, error-code>;' "$wit"
-if grep -Eq 'do:g6-2-(c-min|batched|dynamic)-|own<|borrow<|ref<|resource|pointer|reference' "$wit"; then
+rg -Fq 'package do:g6-2-scalar-list-producer@0.1.0;' "$wit"
+rg -Fq 'consume-via-stream: async func(data: stream<list<u32>>) -> result<_, error-code>;' "$wit"
+rg -Fq 'world scalar-list-producer' "$wit"
+rg -Fq 'export produce: async func(count: u32) -> result<_, error-code>;' "$wit"
+if rg -q 'do:g6-2-(c-min|batched|dynamic)-|own<|borrow<|ref<|resource|pointer|reference' "$wit"; then
   printf 'scalar-list producer emitted an out-of-scope package or ownership marker\n' >&2
   exit 1
 fi
@@ -45,7 +45,7 @@ for marker in \
   '[producer-list-transfer]' \
   '[producer-list-release-exactly-once]' \
   '[producer-cancel-before-transfer]'; do
-  grep -Fq "$marker" "$core_wat"
+  rg -Fq "$marker" "$core_wat"
 done
 
 marker_value() {
@@ -63,7 +63,7 @@ test "$(marker_value 'producer-list-element-stride')" = 4
 test "$(marker_value 'producer-list-capacity')" = 3
 test "$(marker_value 'producer-stream-item-slot')" = 0
 
-if grep -Fq '[resource-drop]' "$core_wat"; then
+if rg -Fq '[resource-drop]' "$core_wat"; then
   printf 'scalar-list producer unexpectedly imports resource-drop\n' >&2
   exit 1
 fi

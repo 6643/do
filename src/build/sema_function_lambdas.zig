@@ -101,15 +101,11 @@ pub fn check_lambda_overload_calls(
     try check_bare_overloaded_func_assign(tokens, funcs);
 }
 
-
-
 pub fn is_set_update_lambda_call(call: CallShape) bool {
     if (!std.mem.eql(u8, call.name, "set")) return false;
     if (call.arg_shapes.len < 3) return false;
     return call.arg_shapes[call.arg_shapes.len - 1] == .lambda;
 }
-
-
 
 pub fn count_compatible_function_value_candidates(
     allocator: std.mem.Allocator,
@@ -126,8 +122,6 @@ pub fn count_compatible_function_value_candidates(
     }
     return count;
 }
-
-
 
 pub fn function_value_args_match_func(
     allocator: std.mem.Allocator,
@@ -160,8 +154,6 @@ pub fn function_value_args_match_func(
     return true;
 }
 
-
-
 pub fn count_funcs_matching_target(
     funcs: []const FuncShape,
     name: []const u8,
@@ -175,8 +167,6 @@ pub fn count_funcs_matching_target(
     }
     return count;
 }
-
-
 
 pub fn function_matches_target(func: FuncShape, target: FuncTypeShape) bool {
     if (func.param_shapes.len != target.param_count) return false;
@@ -196,8 +186,6 @@ pub fn function_matches_target(func: FuncShape, target: FuncTypeShape) bool {
     return true;
 }
 
-
-
 pub fn call_has_target_function_value(tokens: []const lexer.Token, funcs: []const FuncShape, call: CallShape) bool {
     for (call.arg_shapes, 0..) |arg, arg_index| {
         if (arg == .lambda and call_has_func_param_candidate_at_index(tokens, funcs, call, arg_index)) return true;
@@ -209,8 +197,6 @@ pub fn call_has_target_function_value(tokens: []const lexer.Token, funcs: []cons
     return false;
 }
 
-
-
 pub fn call_has_func_param_candidate_at_index(tokens: []const lexer.Token, funcs: []const FuncShape, call: CallShape, arg_index: usize) bool {
     for (funcs) |func| {
         if (!std.mem.eql(u8, func.name, call.name)) continue;
@@ -220,8 +206,6 @@ pub fn call_has_func_param_candidate_at_index(tokens: []const lexer.Token, funcs
     }
     return false;
 }
-
-
 
 pub fn func_param_shape_is_function_like(tokens: []const lexer.Token, func: FuncShape, param: FuncParamShape) bool {
     return switch (param) {
@@ -237,8 +221,6 @@ pub fn func_param_shape_is_function_like(tokens: []const lexer.Token, func: Func
         else => false,
     };
 }
-
-
 
 pub fn check_bare_overloaded_func_assign(tokens: []const lexer.Token, funcs: []const FuncShape) !void {
     var i: usize = 0;
@@ -258,8 +240,6 @@ pub fn check_bare_overloaded_func_assign(tokens: []const lexer.Token, funcs: []c
     }
 }
 
-
-
 pub fn count_funcs_by_name(funcs: []const FuncShape, name: []const u8) usize {
     var count: usize = 0;
     for (funcs) |func| {
@@ -267,8 +247,6 @@ pub fn count_funcs_by_name(funcs: []const FuncShape, name: []const u8) usize {
     }
     return count;
 }
-
-
 
 pub fn explicit_lambda_types_match(target_types: []const ?[]const u8, lambda_types: []const ?[]const u8) bool {
     if (target_types.len != lambda_types.len) return false;
@@ -280,15 +258,11 @@ pub fn explicit_lambda_types_match(target_types: []const ?[]const u8, lambda_typ
     return true;
 }
 
-
-
 pub fn lambda_param_open(tokens: []const lexer.Token, start_idx: usize) ?usize {
     if (start_idx >= tokens.len) return null;
     if (tok_eq(tokens[start_idx], "(")) return start_idx;
     return null;
 }
-
-
 
 pub fn is_lambda_call_arg_site(tokens: []const lexer.Token, start_idx: usize) bool {
     if (is_disallowed_set_path_lambda(tokens, start_idx)) return false;
@@ -301,15 +275,11 @@ pub fn is_lambda_call_arg_site(tokens: []const lexer.Token, start_idx: usize) bo
     return before_prev.kind == .ident or tok_eq(before_prev, ")") or tok_eq(before_prev, "]");
 }
 
-
-
 pub fn is_disallowed_set_path_lambda(tokens: []const lexer.Token, start_idx: usize) bool {
     const info = call_arg_info(tokens, start_idx) orelse return false;
     if (!std.mem.eql(u8, info.name, "set")) return false;
     return info.arg_index + 1 < info.arg_count;
 }
-
-
 
 fn skip_lambda_param_type_tail(tokens: []const lexer.Token, start_i: usize, end_idx: usize) !usize {
     var i = start_i;
@@ -378,16 +348,12 @@ pub fn collect_lambda_param_names(
     return out.toOwnedSlice(allocator);
 }
 
-
-
 pub fn is_lambda_param_name_token(tok: lexer.Token) bool {
     if (tok.kind != .ident) return false;
     if (tok.lexeme.len == 0) return false;
     if (tok.lexeme[0] == '_') return false;
     return std.ascii.isLower(tok.lexeme[0]) and !is_reserved_func_name(tok.lexeme);
 }
-
-
 
 pub fn find_lambda_capture(
     allocator: std.mem.Allocator,
@@ -421,8 +387,6 @@ pub fn find_lambda_capture(
     return null;
 }
 
-
-
 pub fn is_lambda_local_bind_name(tokens: []const lexer.Token, idx: usize, body_start: usize) bool {
     if (!is_lower_ident_name(tokens[idx].lexeme)) return false;
     if (is_reserved_func_name(tokens[idx].lexeme)) return false;
@@ -433,15 +397,11 @@ pub fn is_lambda_local_bind_name(tokens: []const lexer.Token, idx: usize, body_s
     return idx < eq_idx;
 }
 
-
-
 pub fn is_as_scalar_type_token(tokens: []const lexer.Token, idx: usize) bool {
     if (!is_scalar_as_target_type_name(tokens[idx].lexeme)) return false;
     const info = call_arg_info(tokens, idx) orelse return false;
     return std.mem.eql(u8, info.name, "as") and (info.arg_index == 0 or info.arg_index == 1);
 }
-
-
 
 pub fn lambda_line_start(tokens: []const lexer.Token, idx: usize, body_start: usize) usize {
     var line_start = idx;
@@ -452,12 +412,10 @@ pub fn lambda_line_start(tokens: []const lexer.Token, idx: usize, body_start: us
     return line_start;
 }
 
-
-
 pub fn is_visible_local_binding_before(tokens: []const lexer.Token, name: []const u8, before_idx: usize) bool {
     if (find_enclosing_func_param_type_name(tokens, before_idx, name) != null) return true;
 
-    var scopes = [_]bool{false} ** 128;
+    var scopes: [128]bool = @splat(false);
     var depth: usize = 0;
     var i: usize = 0;
     while (i < before_idx and i < tokens.len) : (i += 1) {
@@ -484,8 +442,6 @@ pub fn is_visible_local_binding_before(tokens: []const lexer.Token, name: []cons
     }
     return false;
 }
-
-
 
 pub fn is_local_binding_introducer(tokens: []const lexer.Token, idx: usize) bool {
     if (idx >= tokens.len) return false;

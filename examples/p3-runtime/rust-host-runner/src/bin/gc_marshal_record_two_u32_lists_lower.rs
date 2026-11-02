@@ -33,9 +33,9 @@ fn list_values(fields: &[(String, Val)], name: &str) -> Result<Vec<u32>> {
 }
 
 fn main() -> Result<()> {
-    let component_path = std::env::args().nth(1).context(
-        "usage: do-p3-gc-marshal-record-two-u32-lists-lower-host-runner <component>",
-    )?;
+    let component_path = std::env::args()
+        .nth(1)
+        .context("usage: do-p3-gc-marshal-record-two-u32-lists-lower-host-runner <component>")?;
     if std::env::args().nth(2).is_some() {
         bail!("expected one component path");
     }
@@ -47,9 +47,8 @@ fn main() -> Result<()> {
     let component = map_wasmtime(Component::from_file(&engine, &component_path))
         .with_context(|| format!("load component {component_path}"))?;
     let mut linker: Linker<State> = Linker::new(&engine);
-    let mut api = map_wasmtime(
-        linker.instance("demo:marshal-record-two-u32-lists-lower/api@1.0.0"),
-    )?;
+    let mut api =
+        map_wasmtime(linker.instance("demo:marshal-record-two-u32-lists-lower/api@1.0.0"))?;
     let calls = Arc::new(AtomicU32::new(0));
     let callback_calls = Arc::clone(&calls);
     map_wasmtime(api.func_new("write", move |_store, _ty, params, results| {
@@ -60,9 +59,11 @@ fn main() -> Result<()> {
         }
         let fields = match &params[0] {
             Val::Record(fields) => fields,
-            other => return Err(wasmtime::Error::msg(format!(
-                "two-u32-list lower parameter was not a record: {other:?}"
-            ))),
+            other => {
+                return Err(wasmtime::Error::msg(format!(
+                    "two-u32-list lower parameter was not a record: {other:?}"
+                )));
+            }
         };
         if fields.len() != 3 {
             return Err(wasmtime::Error::msg(format!(

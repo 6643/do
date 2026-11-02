@@ -1,5 +1,8 @@
 use anyhow::{Context, Result, bail};
-use std::sync::{Arc, atomic::{AtomicU32, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU32, Ordering},
+};
 use wasmtime::component::{Component, Linker, Val};
 use wasmtime::{Config, Engine, Store};
 
@@ -14,9 +17,8 @@ fn run_component(engine: &Engine, component_path: &str) -> Result<(u32, u32, u32
     let component = map_wasmtime(Component::from_file(engine, component_path))
         .with_context(|| format!("load component {component_path}"))?;
     let mut linker: Linker<State> = Linker::new(engine);
-    let mut api = map_wasmtime(
-        linker.instance("demo:marshal-record-mixed-text-u32-list-lift/api@1.0.0"),
-    )?;
+    let mut api =
+        map_wasmtime(linker.instance("demo:marshal-record-mixed-text-u32-list-lift/api@1.0.0"))?;
     let calls = Arc::new(AtomicU32::new(0));
     let callback_calls = Arc::clone(&calls);
     map_wasmtime(api.func_new("read", move |_store, _ty, params, results| {
@@ -64,9 +66,7 @@ fn main() -> Result<()> {
     if let Some(second_path) = second_path {
         let second = run_component(&engine, &second_path)?;
         if first != (47, 34, 1) || second != (47, 34, 1) {
-            bail!(
-                "expected GC/ARC values/stats/calls=47/34/1, got {first:?}/{second:?}"
-            );
+            bail!("expected GC/ARC values/stats/calls=47/34/1, got {first:?}/{second:?}");
         }
         println!(
             "GC/ARC mixed text/u32-list record lift equivalence passed result=47/47 stats=34/34 read-calls=1/1"

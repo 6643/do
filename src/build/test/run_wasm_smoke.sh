@@ -8,7 +8,6 @@ LIB_DIR="$TEST_DIR/lib"
 TMP_DIR="$TEST_DIR/tmp/wasm_run"
 
 ZIG_BIN="${ZIG_BIN:-$(command -v zig || true)}"
-ZIG_BIN="${ZIG_BIN:-/home/_/_/zig/zig}"
 DO_BIN="$ROOT_DIR/bin/do"
 TOOLCHAIN_BIN="${DO_TOOLCHAIN_BIN:-$ROOT_DIR/bin/do-toolchain}"
 NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
@@ -29,7 +28,7 @@ if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
         cd "$ROOT_DIR/src"
         ZIG_LOCAL_CACHE_DIR=/tmp/zig-cache \
         ZIG_GLOBAL_CACHE_DIR=/tmp/zig-gcache \
-        "$ZIG_BIN" build -Doptimize=Debug >/dev/null
+        "$ZIG_BIN" build --prefix .. -Doptimize=Debug >/dev/null
     )
 fi
 

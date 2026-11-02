@@ -31,5 +31,5 @@ if DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   exit 1
 fi
 
-grep -Fq 'UnsupportedP3AsyncComponent' "$stderr_file"
+rg -Fq 'UnsupportedP3AsyncComponent' "$stderr_file"
 printf 'record-resource list stream WIT acceptance and Do rejection passed\n'

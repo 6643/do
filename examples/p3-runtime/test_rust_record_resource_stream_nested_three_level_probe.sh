@@ -40,8 +40,8 @@ error_case=$(DO_RECORD_RESOURCE_STREAM_VARIANT=nested-three DO_RECORD_RESOURCE_S
   cargo run --quiet --manifest-path "$runner_dir/Cargo.toml" \
   --bin do-p3-record-resource-stream-host-runner -- "$component")
 
-grep -Fq 'Rust generic three-level nested-resource record-stream pending passed entries=[111,222] eof=true stream-reads=3 completion-polls=2 pending-wakes=1 resource-created=2 resource-drops=2 stream-drops=1 future-drops=1 table-empty=true result=Ok' <<<"$pending"
-grep -Fq 'Rust generic three-level nested-resource record-stream ready passed entries=[111,222] eof=true stream-reads=3 completion-polls=1 pending-wakes=0 resource-created=2 resource-drops=2 stream-drops=1 future-drops=1 table-empty=true result=Ok' <<<"$ready"
-grep -Fq 'Rust generic three-level nested-resource record-stream error passed entries=[111,222] eof=true stream-reads=3 completion-polls=1 pending-wakes=0 resource-created=2 resource-drops=2 stream-drops=1 future-drops=1 table-empty=true result=Err(io)' <<<"$error_case"
+rg -Fq 'Rust generic three-level nested-resource record-stream pending passed entries=[111,222] eof=true stream-reads=3 completion-polls=2 pending-wakes=1 resource-created=2 resource-drops=2 stream-drops=1 future-drops=1 table-empty=true result=Ok' <<<"$pending"
+rg -Fq 'Rust generic three-level nested-resource record-stream ready passed entries=[111,222] eof=true stream-reads=3 completion-polls=1 pending-wakes=0 resource-created=2 resource-drops=2 stream-drops=1 future-drops=1 table-empty=true result=Ok' <<<"$ready"
+rg -Fq 'Rust generic three-level nested-resource record-stream error passed entries=[111,222] eof=true stream-reads=3 completion-polls=1 pending-wakes=0 resource-created=2 resource-drops=2 stream-drops=1 future-drops=1 table-empty=true result=Err(io)' <<<"$error_case"
 
 printf 'Rust generic three-level nested-resource record-stream pending/ready/error runtime passed\n'

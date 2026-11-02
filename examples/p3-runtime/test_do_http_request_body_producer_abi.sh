@@ -70,8 +70,8 @@ wrong_component="$tmp_dir/producer-wrong.component.wasm"
 wrong_output="$tmp_dir/producer-wrong.out"
 
 test -f "$wit"
-grep -Fq 'contents: option<stream<u8>>' "$wit"
-grep -Fq 'run: async func() -> result<response, error-code>' "$wit"
+rg -Fq 'contents: option<stream<u8>>' "$wit"
+rg -Fq 'run: async func() -> result<response, error-code>' "$wit"
 
 cat >"$core_wat" <<'WAT'
 (module
@@ -154,7 +154,7 @@ for import_name in \
   '[async-lower][stream-write-0]write-via-stream' \
   '[stream-drop-readable-0]write-via-stream' \
   '[stream-drop-writable-0]write-via-stream'; do
-  grep -Fq "\"$import_name\"" "$core_wat"
+  rg -Fq "\"$import_name\"" "$core_wat"
 done
 
 "$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
@@ -172,7 +172,7 @@ if "$toolchain_bin" new-component "$wrong_embedded" -o "$wrong_component" >"$wro
   printf 'unregistered root stream import unexpectedly assembled\n' >&2
   exit 1
 fi
-grep -Fq 'failed to resolve import' "$wrong_output"
-grep -Fq '[stream-new-0]wrong-stream' "$wrong_output"
+rg -Fq 'failed to resolve import' "$wrong_output"
+rg -Fq '[stream-new-0]wrong-stream' "$wrong_output"
 
 printf 'WASI HTTP request body producer ABI surface passed\n'

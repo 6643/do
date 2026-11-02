@@ -27,10 +27,10 @@ component="$tmp_dir/http-service.component.wasm"
 DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$fixture" \
   --p3-async-component --p3-wit-package-output "$wit_dir" -o "$core_wat"
 
-grep -Fq ';; [error-variant:internal-error]' "$core_wat"
-grep -Fq 'i32.const 16' "$core_wat"
-grep -Fq 'i32.const 20' "$core_wat"
-grep -Fq 'i32.const 24' "$core_wat"
+rg -Fq ';; [error-variant:internal-error]' "$core_wat"
+rg -Fq 'i32.const 16' "$core_wat"
+rg -Fq 'i32.const 20' "$core_wat"
+rg -Fq 'i32.const 24' "$core_wat"
 if rg -U -q 'i32\.const 38\n\s*i32\.eq\n\s*if unreachable end' "$core_wat"; then
   printf 'generated InternalError lowering still traps\n' >&2
   exit 1
@@ -54,10 +54,10 @@ if [[ "$delivery_mode" == pending || "$delivery_mode" == all ]]; then
     if [[ "$case_name" == internal-error-some ]]; then
       expected='InternalError(Some("x"))'
     fi
-    grep -Fq "compiler-gate=green delivery=$delivery case=$case_name observation=$expected" <<<"$output"
-    grep -Fq 'request-consumed=1' <<<"$output"
-    grep -Fq 'response-created=0' <<<"$output"
-    grep -Fq 'table-empty=true' <<<"$output"
+    rg -Fq "compiler-gate=green delivery=$delivery case=$case_name observation=$expected" <<<"$output"
+    rg -Fq 'request-consumed=1' <<<"$output"
+    rg -Fq 'response-created=0' <<<"$output"
+    rg -Fq 'table-empty=true' <<<"$output"
   done
 fi
 
@@ -68,10 +68,10 @@ if [[ "$delivery_mode" == pending || "$delivery_mode" == all ]]; then
     CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$PWD/zig-cc.sh" \
     timeout 30s cargo run --quiet --bin do-p3-http-payload-error-abi-host-runner -- \
       "$component" compiler-service dns-error pending)
-  grep -Fq 'compiler-gate=green delivery=pending case=dns-error observation=DnsError(rcode=Some("EAI"),info-code=Some(7))' <<<"$output"
-  grep -Fq 'request-consumed=1' <<<"$output"
-  grep -Fq 'response-created=0' <<<"$output"
-  grep -Fq 'table-empty=true' <<<"$output"
+  rg -Fq 'compiler-gate=green delivery=pending case=dns-error observation=DnsError(rcode=Some("EAI"),info-code=Some(7))' <<<"$output"
+  rg -Fq 'request-consumed=1' <<<"$output"
+  rg -Fq 'response-created=0' <<<"$output"
+  rg -Fq 'table-empty=true' <<<"$output"
 fi
 
 if [[ "$delivery_mode" == ready || "$delivery_mode" == all ]]; then
@@ -87,10 +87,10 @@ if [[ "$delivery_mode" == ready || "$delivery_mode" == all ]]; then
     if [[ "$case_name" == internal-error-some ]]; then
       expected='InternalError(Some("x"))'
     fi
-    grep -Fq "compiler-gate=green delivery=$delivery case=$case_name observation=$expected" <<<"$output"
-    grep -Fq 'request-consumed=1' <<<"$output"
-    grep -Fq 'response-created=0' <<<"$output"
-    grep -Fq 'table-empty=true' <<<"$output"
+    rg -Fq "compiler-gate=green delivery=$delivery case=$case_name observation=$expected" <<<"$output"
+    rg -Fq 'request-consumed=1' <<<"$output"
+    rg -Fq 'response-created=0' <<<"$output"
+    rg -Fq 'table-empty=true' <<<"$output"
   done
 fi
 

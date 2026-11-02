@@ -1,10 +1,6 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
-    b.resolveInstallPrefix(b.pathFromRoot(".."), .{
-        .exe_dir = "bin",
-    });
-
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const root_module = b.createModule(.{
@@ -32,7 +28,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(toolchain_exe);
 
     const run_cmd = b.addRunArtifact(exe);
-    if (b.args) |args| run_cmd.addArgs(args);
+    run_cmd.addPassthruArgs();
 
     const run_step = b.step("run", "Run do toolchain");
     run_step.dependOn(&run_cmd.step);
@@ -81,10 +77,10 @@ pub fn build(b: *std.Build) void {
         .root_module = harness_module,
     });
     const run_harness = b.addRunArtifact(harness_exe);
-    run_harness.setEnvironmentVariable("DO_HARNESS_REPO_ROOT", b.pathFromRoot(".."));
-    run_harness.setEnvironmentVariable("DO_HARNESS_DO_BIN", b.getInstallPath(.bin, "do"));
-    run_harness.setEnvironmentVariable("DO_HARNESS_TOOLCHAIN_BIN", b.getInstallPath(.bin, "do-toolchain"));
-    run_harness.setEnvironmentVariable("DO_TOOLCHAIN_LOCK", b.pathFromRoot("../toolchain/toolchain.lock.json"));
+    run_harness.setEnvironmentVariable("DO_HARNESS_REPO_ROOT", ".");
+    run_harness.setEnvironmentVariable("DO_HARNESS_DO_BIN", "bin/do");
+    run_harness.setEnvironmentVariable("DO_HARNESS_TOOLCHAIN_BIN", "bin/do-toolchain");
+    run_harness.setEnvironmentVariable("DO_TOOLCHAIN_LOCK", "toolchain/toolchain.lock.json");
     run_harness.setCwd(b.path(".."));
     run_harness.step.dependOn(b.getInstallStep());
 

@@ -17,8 +17,8 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build --p3-async-component \
     --p3-wit-output "$wit_path" \
     "$repo_root/examples/p3-runtime/cli-stream-stdout-component.do" \
     -o "$core_path"
-grep -Fq ';; [async-frame-budget-bytes] 64' "$core_path"
-grep -Fq '(export "byte-budget-limit")' "$core_path"
+rg -Fq ';; [async-frame-budget-bytes] 64' "$core_path"
+rg -Fq '(export "byte-budget-limit")' "$core_path"
 sed -i '/^  export write:/i\\  export byte-budget-limit: func(limit: s64) -> s32;' "$wit_path"
 test -x "$toolchain_bin"
 "$toolchain_bin" parse-core "$core_path" -o "$core_wasm"

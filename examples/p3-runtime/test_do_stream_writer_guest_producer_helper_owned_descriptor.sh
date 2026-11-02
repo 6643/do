@@ -17,8 +17,8 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build --p3-async-component \
   -o "$core_path"
 
 cmp "$wit_path" "$repo_root/examples/p3-runtime/wit/stream-probe-guest-producer.wit"
-grep -Fq '[writer-lease-transfer] async-helper' "$core_path"
-grep -Fq '(data (i32.const 512) "\41\42")' "$core_path"
+rg -Fq '[writer-lease-transfer] async-helper' "$core_path"
+rg -Fq '(data (i32.const 512) "\41\42")' "$core_path"
 "$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
 "$toolchain_bin" embed-component "$wit_path" "$core_wasm" stream-writer-probe -o "$embedded_path"
 "$toolchain_bin" new-component "$embedded_path" -o "$component_path"

@@ -6,7 +6,7 @@ use std::path::Path;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context as TaskContext, Poll};
-use wasmtime::component::{Accessor, AccessorTask, Component, Linker};
+use wasmtime::component::{AccessorTask, Component, Linker};
 use wasmtime::{Config, Engine, Store};
 
 const FIRST_DEADLINE: u64 = 27_815;
@@ -139,9 +139,9 @@ struct ReadyHost {
     stats: Arc<Mutex<Stats>>,
 }
 
-impl AccessorTask<()> for ReadyHost {
-    fn run(self, _accessor: &Accessor<()>) -> impl Future<Output = wasmtime::Result<()>> + Send {
-        async move {
+impl ReadyHost {
+    fn task(self) -> impl for<'a> AccessorTask<'a, ()> {
+        async move |_accessor| {
             self.stats
                 .lock()
                 .expect("two-await stats mutex poisoned")
@@ -151,9 +151,9 @@ impl AccessorTask<()> for ReadyHost {
     }
 }
 
-impl AccessorTask<()> for HostWake {
-    fn run(self, _accessor: &Accessor<()>) -> impl Future<Output = wasmtime::Result<()>> + Send {
-        async move {
+impl HostWake {
+    fn task(self) -> impl for<'a> AccessorTask<'a, ()> {
+        async move |_accessor| {
             self.stats
                 .lock()
                 .expect("two-await stats mutex poisoned")
@@ -243,9 +243,12 @@ async fn run_with_mode(
             drop(stats);
             match lifecycle_mode {
                 Some(LifecycleMode::Ready) => {
-                    let host_event = accessor.spawn(ReadyHost {
-                        stats: Arc::clone(&wait_for_stats),
-                    });
+                    let host_event = accessor.spawn(
+                        ReadyHost {
+                            stats: Arc::clone(&wait_for_stats),
+                        }
+                        .task(),
+                    );
                     return Box::pin(async move {
                         host_event?;
                         Ok(())
@@ -278,10 +281,13 @@ async fn run_with_mode(
                 });
             }
             let (completion_sender, completion) = oneshot::channel();
-            let host_event = accessor.spawn(HostWake {
-                stats: Arc::clone(&wait_for_stats),
-                completion: completion_sender,
-            });
+            let host_event = accessor.spawn(
+                HostWake {
+                    stats: Arc::clone(&wait_for_stats),
+                    completion: completion_sender,
+                }
+                .task(),
+            );
             let wait = ClockWait {
                 stats: Arc::clone(&wait_for_stats),
                 completion,
@@ -305,9 +311,12 @@ async fn run_with_mode(
             drop(stats);
             match lifecycle_mode {
                 Some(LifecycleMode::Ready) => {
-                    let host_event = accessor.spawn(ReadyHost {
-                        stats: Arc::clone(&wait_until_stats),
-                    });
+                    let host_event = accessor.spawn(
+                        ReadyHost {
+                            stats: Arc::clone(&wait_until_stats),
+                        }
+                        .task(),
+                    );
                     return Box::pin(async move {
                         host_event?;
                         Ok(())
@@ -340,10 +349,13 @@ async fn run_with_mode(
                 });
             }
             let (completion_sender, completion) = oneshot::channel();
-            let host_event = accessor.spawn(HostWake {
-                stats: Arc::clone(&wait_until_stats),
-                completion: completion_sender,
-            });
+            let host_event = accessor.spawn(
+                HostWake {
+                    stats: Arc::clone(&wait_until_stats),
+                    completion: completion_sender,
+                }
+                .task(),
+            );
             let wait = ClockWait {
                 stats: Arc::clone(&wait_until_stats),
                 completion,

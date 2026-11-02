@@ -71,6 +71,6 @@ output=$(
     --bin gc_marshal_record_mixed_lower_equivalence -- \
     "$tmp_dir/gc.component.wasm" "$tmp_dir/arc.component.wasm"
 )
-grep -Fq 'GC/flat mixed scalar record lower equivalence passed results=42/42 write-calls=1/1' <<<"$output"
+rg -Fq 'GC/flat mixed scalar record lower equivalence passed results=42/42 write-calls=1/1' <<<"$output"
 printf '%s\n' "$output"
 printf 'default mixed scalar record lower compiler/ARC equivalence passed\n'

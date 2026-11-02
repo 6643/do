@@ -28,14 +28,14 @@ run_checked() {
 run_checked "$tmp_dir/generate.stderr" "$zig_bin" run "$probe" -- "$wit" "$tmp_dir/core.wat" --lower-host
 run_checked "$tmp_dir/parse.stderr" "$toolchain_bin" parse-core "$tmp_dir/core.wat" -o "$tmp_dir/core.wasm"
 
-if grep -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$tmp_dir/core.wat" >"$tmp_dir/gc-import.stderr"; then
+if rg -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$tmp_dir/core.wat" >"$tmp_dir/gc-import.stderr"; then
   cat "$tmp_dir/gc-import.stderr" >&2
   exit 1
 fi
-grep -Fq '(type $canonical_lower (func (param i32 i32)))' "$tmp_dir/core.wat"
-grep -Fq 'struct.get $do_record $field0' "$tmp_dir/core.wat"
-grep -Fq 'struct.get $do_record $field1' "$tmp_dir/core.wat"
-if grep -Fq 'cabi_realloc' "$tmp_dir/core.wat"; then
+rg -Fq '(type $canonical_lower (func (param i32 i32)))' "$tmp_dir/core.wat"
+rg -Fq 'struct.get $do_record $field0' "$tmp_dir/core.wat"
+rg -Fq 'struct.get $do_record $field1' "$tmp_dir/core.wat"
+if rg -Fq 'cabi_realloc' "$tmp_dir/core.wat"; then
   printf 'scalar record lower unexpectedly allocated linear memory\n' >&2
   exit 1
 fi
@@ -44,8 +44,8 @@ run_checked "$tmp_dir/embed.stderr" "$toolchain_bin" embed-component "$wit" "$tm
 run_checked "$tmp_dir/new.stderr" "$toolchain_bin" new-component "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
 run_checked "$tmp_dir/validate.stderr" "$toolchain_bin" validate-component "$tmp_dir/component.wasm" --features none
 run_checked "$tmp_dir/wit.stderr" "$toolchain_bin" component-wit "$tmp_dir/component.wasm" >"$tmp_dir/component.wit"
-grep -Fq 'write: func(value: writing)' "$tmp_dir/component.wit"
-grep -Fq 'run: func() -> u32' "$tmp_dir/component.wit"
+rg -Fq 'write: func(value: writing)' "$tmp_dir/component.wit"
+rg -Fq 'run: func() -> u32' "$tmp_dir/component.wit"
 
 sed 's/write:/renamed:/' "$wit" >"$tmp_dir/renamed.wit"
 run_checked "$tmp_dir/renamed-embed.stderr" "$toolchain_bin" embed-component "$tmp_dir/renamed.wit" "$tmp_dir/core.wasm" probe --features none -o "$tmp_dir/renamed-embedded.wasm"
@@ -53,10 +53,10 @@ if "$toolchain_bin" new-component "$tmp_dir/renamed-embedded.wasm" -o "$tmp_dir/
   printf 'altered WIT member unexpectedly assembled\n' >&2
   exit 1
 fi
-grep -Fq 'missing function `write`' "$tmp_dir/renamed-new.stderr"
+rg -Fq 'missing function `write`' "$tmp_dir/renamed-new.stderr"
 
 sed 's/(func \$canonical_call (type \$canonical_lower))/(func \$canonical_call (param (ref null \$do_record)))/' "$tmp_dir/core.wat" >"$tmp_dir/gc-import.wat"
-if grep -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$tmp_dir/gc-import.wat"; then
+if rg -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$tmp_dir/gc-import.wat"; then
   :
 else
   printf 'GC reference import negative probe did not detect the injected boundary ref\n' >&2

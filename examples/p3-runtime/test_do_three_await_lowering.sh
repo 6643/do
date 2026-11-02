@@ -14,12 +14,12 @@ component_path="$tmp_dir/three-await.component.wasm"
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build "$repo_root/examples/p3-runtime/three-await-component.do" \
   --p3-async-component --p3-wit-output "$wit_path" -o "$core_path"
 
-grep -Fq '(func $third-host-call' "$core_path"
-grep -Fq 'i32.const 3' "$core_path"
-grep -Fq '(table $async-frames 0 (ref null $async-frame))' "$core_path"
-grep -Fq 'wait-for: async func(how-long: u64)' "$wit_path"
-grep -Fq 'wait-until: async func(when: u64)' "$wit_path"
-if [ "$(grep -Fc 'wait-for: async func(how-long: u64)' "$wit_path")" -ne 1 ]; then
+rg -Fq '(func $third-host-call' "$core_path"
+rg -Fq 'i32.const 3' "$core_path"
+rg -Fq '(table $async-frames 0 (ref null $async-frame))' "$core_path"
+rg -Fq 'wait-for: async func(how-long: u64)' "$wit_path"
+rg -Fq 'wait-until: async func(when: u64)' "$wit_path"
+if [ "$(rg -Fc 'wait-for: async func(how-long: u64)' "$wit_path")" -ne 1 ]; then
   printf 'three-await WIT duplicated a reused wait-for import\n' >&2
   exit 1
 fi

@@ -5,7 +5,7 @@ use std::path::Path;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context as TaskContext, Poll};
-use wasmtime::component::{Accessor, AccessorTask, Component, Linker};
+use wasmtime::component::{Component, Linker};
 use wasmtime::{Config, Engine, Store};
 
 const EXPECTED_DURATION: u64 = 27_815;
@@ -52,23 +52,6 @@ impl Future for WaitFor {
             Poll::Ready(Err(_)) => {
                 Poll::Ready(Err(wasmtime::Error::msg("wait-for host event dropped")))
             }
-        }
-    }
-}
-
-struct HostWake {
-    stats: Arc<Mutex<Stats>>,
-    completion: oneshot::Sender<()>,
-}
-
-impl AccessorTask<()> for HostWake {
-    fn run(self, _accessor: &Accessor<()>) -> impl Future<Output = wasmtime::Result<()>> + Send {
-        async move {
-            let mut stats = self.stats.lock().expect("wait-for stats mutex poisoned");
-            stats.external_wakes += 1;
-            drop(stats);
-            let _ = self.completion.send(());
-            Ok(())
         }
     }
 }
@@ -121,9 +104,13 @@ async fn run(component_path: &Path, input_duration: u64, expected_duration: u64)
                 return Box::pin(async move { Ok(()) });
             }
             let (completion_sender, completion) = oneshot::channel();
-            let host_event = accessor.spawn(HostWake {
-                stats: Arc::clone(&host_stats),
-                completion: completion_sender,
+            let task_stats = Arc::clone(&host_stats);
+            let host_event = accessor.spawn(async move |_accessor| {
+                let mut stats = task_stats.lock().expect("wait-for stats mutex poisoned");
+                stats.external_wakes += 1;
+                drop(stats);
+                let _ = completion_sender.send(());
+                Ok(())
             });
             let wait_for = WaitFor {
                 stats: Arc::clone(&host_stats),
@@ -147,9 +134,13 @@ async fn run(component_path: &Path, input_duration: u64, expected_duration: u64)
                 return Box::pin(async move { Ok(()) });
             }
             let (completion_sender, completion) = oneshot::channel();
-            let host_event = accessor.spawn(HostWake {
-                stats: Arc::clone(&host_stats),
-                completion: completion_sender,
+            let task_stats = Arc::clone(&host_stats);
+            let host_event = accessor.spawn(async move |_accessor| {
+                let mut stats = task_stats.lock().expect("wait-until stats mutex poisoned");
+                stats.external_wakes += 1;
+                drop(stats);
+                let _ = completion_sender.send(());
+                Ok(())
             });
             let wait_until = WaitFor {
                 stats: Arc::clone(&host_stats),

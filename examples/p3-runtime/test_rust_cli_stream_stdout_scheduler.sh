@@ -17,9 +17,9 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build --p3-async-component \
     --p3-wit-output "$wit_path" \
     "$repo_root/examples/p3-runtime/cli-stream-stdout-component.do" \
     -o "$core_path"
-grep -Fq '[async-lower]write-via-stream' "$core_path"
-grep -Fq '[stream-new-0]write-via-stream' "$core_path"
-grep -Fq '[stream-drop-writable-0]write-via-stream' "$core_path"
+rg -Fq '[async-lower]write-via-stream' "$core_path"
+rg -Fq '[stream-new-0]write-via-stream' "$core_path"
+rg -Fq '[stream-drop-writable-0]write-via-stream' "$core_path"
 test -x "$toolchain_bin"
 "$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
 bash "$repo_root/examples/p3-runtime/assemble_async_component.sh" \

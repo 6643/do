@@ -14,8 +14,8 @@ component_path="$tmp_dir/loop-countdown-counter-argument.component.wasm"
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build "$repo_root/examples/p3-runtime/loop-countdown-counter-argument-component.do" \
   --p3-async-component --p3-wit-output "$wit_path" -o "$core_path"
 
-grep -Fq 'struct.get $async-frame $slot-remaining' "$core_path"
-grep -Fq 'struct.set $async-frame $slot-remaining' "$core_path"
+rg -Fq 'struct.get $async-frame $slot-remaining' "$core_path"
+rg -Fq 'struct.set $async-frame $slot-remaining' "$core_path"
 
 "$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
 "$toolchain_bin" embed-component "$wit_path" "$core_wasm" probe -o "$embedded_path"

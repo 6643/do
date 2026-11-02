@@ -23,11 +23,11 @@ cp "$source_main" "$tmp_dir/scalar_i64_async_main.do"
   -o "$tmp_dir/runtime.wat"
 
 cmp "$source_wit" "$tmp_dir/generated.wit"
-grep -Fq 'do:generic-async-scalar-i64-probe/host@0.1.0' "$tmp_dir/runtime.wat"
-grep -Fq '[scalar-payload] offset=16 byte-size=8 alignment=8 encoding=core-s64' "$tmp_dir/runtime.wat"
-grep -Fq 'i64.load' "$tmp_dir/runtime.wat"
-grep -Fq 'i64.store' "$tmp_dir/runtime.wat"
-grep -Fq 'i64.const 0' "$tmp_dir/runtime.wat"
+rg -Fq 'do:generic-async-scalar-i64-probe/host@0.1.0' "$tmp_dir/runtime.wat"
+rg -Fq '[scalar-payload] offset=16 byte-size=8 alignment=8 encoding=core-s64' "$tmp_dir/runtime.wat"
+rg -Fq 'i64.load' "$tmp_dir/runtime.wat"
+rg -Fq 'i64.store' "$tmp_dir/runtime.wat"
+rg -Fq 'i64.const 0' "$tmp_dir/runtime.wat"
 
 core_wasm="$tmp_dir/runtime.core.wasm"
 embedded="$tmp_dir/runtime.embedded.wasm"
@@ -50,13 +50,13 @@ run_runner() {
 }
 
 ready_output=$(DO_GENERIC_ASYNC_SCALAR_MODE=ready run_runner)
-grep -Fq 'mode=ready value=42 polls=2 wakes=0 completions=2 future-drops=2 pending-future-drops=0 frame-drops=1 table-empty=true' <<<"$ready_output"
+rg -Fq 'mode=ready value=42 polls=2 wakes=0 completions=2 future-drops=2 pending-future-drops=0 frame-drops=1 table-empty=true' <<<"$ready_output"
 
 pending_output=$(DO_GENERIC_ASYNC_SCALAR_MODE=pending run_runner)
-grep -Fq 'mode=pending value=42 polls=3 wakes=1 completions=2 future-drops=2 pending-future-drops=0 frame-drops=1 table-empty=true' <<<"$pending_output"
+rg -Fq 'mode=pending value=42 polls=3 wakes=1 completions=2 future-drops=2 pending-future-drops=0 frame-drops=1 table-empty=true' <<<"$pending_output"
 
 cancel_output=$(DO_GENERIC_ASYNC_SCALAR_MODE=cancel run_runner)
-grep -Fq 'mode=cancel value=42 polls=3 wakes=0 completions=1 future-drops=2 pending-future-drops=1 frame-drops=1 table-empty=true' <<<"$cancel_output"
+rg -Fq 'mode=cancel value=42 polls=3 wakes=0 completions=1 future-drops=2 pending-future-drops=1 frame-drops=1 table-empty=true' <<<"$cancel_output"
 
 manifest="$tmp_dir/wit/manifest.json"
 cp "$manifest" "$tmp_dir/manifest.original"
@@ -66,6 +66,6 @@ if "$do_bin" build "$tmp_dir/scalar_i64_async_main.do" --p3-async-component -o "
   exit 1
 fi
 test ! -e "$tmp_dir/mutated.wat"
-grep -Fq 'GeneratedWitManifestMismatch' "$tmp_dir/mutated.stderr"
+rg -Fq 'GeneratedWitManifestMismatch' "$tmp_dir/mutated.stderr"
 
 printf 'generated async scalar i64 Component/Rust/Wasmtime gate: PASS\n'

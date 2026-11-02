@@ -14,14 +14,14 @@ component=$(mktemp /tmp/do-stream-probe.XXXXXX.component.wasm)
 trap 'rm -f "$wat" "$wit" "$core" "$embedded" "$component"' EXIT
 
 "$do_bin" build --p3-async-component --p3-wit-output "$wit" "$source" -o "$wat"
-grep -Fq '"do:stream-probe/source@0.1.0" "read-via-stream"' "$wat"
-grep -Fq '"[async-lower][stream-read-0]read-via-stream"' "$wat"
-grep -Fq '"[future-drop-readable-1]read-via-stream"' "$wat"
-if grep -Fq 'wasi:cli/stdin' "$wat"; then
+rg -Fq '"do:stream-probe/source@0.1.0" "read-via-stream"' "$wat"
+rg -Fq '"[async-lower][stream-read-0]read-via-stream"' "$wat"
+rg -Fq '"[future-drop-readable-1]read-via-stream"' "$wat"
+if rg -Fq 'wasi:cli/stdin' "$wat"; then
     exit 1
 fi
-grep -Fq 'package do:stream-probe@0.1.0' "$wit"
-grep -Fq 'world stream-probe' "$wit"
+rg -Fq 'package do:stream-probe@0.1.0' "$wit"
+rg -Fq 'world stream-probe' "$wit"
 
 "$toolchain_bin" parse-core "$wat" -o "$core"
 "$toolchain_bin" embed-component "$wit" "$core" stream-probe -o "$embedded"

@@ -60,6 +60,6 @@ output=$(
   "$cargo_bin" run --quiet --locked --manifest-path "$runner_manifest" \
     --bin do-p3-gc-marshal-record-u32-list-lower-host-runner -- "$tmp_dir/component.wasm"
 )
-grep -Fq 'GC u32-list record lower host adapter passed code=7 payload=[10, 20, 30] result=42 write-calls=1 allocations=1 frees=1' <<<"$output"
+rg -Fq 'GC u32-list record lower host adapter passed code=7 payload=[10, 20, 30] result=42 write-calls=1 allocations=1 frees=1' <<<"$output"
 printf '%s\n' "$output"
 printf 'manifest-backed u32-list record lower Component host execution passed\n'

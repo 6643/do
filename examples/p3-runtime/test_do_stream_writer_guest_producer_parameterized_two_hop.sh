@@ -26,11 +26,11 @@ for marker in \
   '[writer-producer-value-offset] 60' \
   '(type $async-run-i64-i32 (func (param i64 i32) (result i32)))' \
   '(func (export "[async-lift]produce") (type $async-run-i64-i32)'; do
-  grep -Fq "$marker" "$core_path"
+  rg -Fq "$marker" "$core_path"
 done
-if grep -Fq '(func (export "[async-lift]forward_stream")' "$core_path" ||
-  grep -Fq '(func (export "[async-lift]middle_stream")' "$core_path" ||
-  grep -Fq '(func (export "[async-lift]finish_stream")' "$core_path"; then
+if rg -Fq '(func (export "[async-lift]forward_stream")' "$core_path" ||
+  rg -Fq '(func (export "[async-lift]middle_stream")' "$core_path" ||
+  rg -Fq '(func (export "[async-lift]finish_stream")' "$core_path"; then
   printf 'parameterized two-hop helper must not add a helper Component export\n' >&2
   exit 1
 fi

@@ -59,13 +59,13 @@ expect_mode() {
   output=$(cargo run --quiet --manifest-path "$runner_dir/Cargo.toml" \
     --bin do-p3-variant-resource-stream-abi -- "$component_path" "$mode")
   for expected in "$@"; do
-    grep -Fq "$expected" <<<"$output"
+    rg -Fq "$expected" <<<"$output"
   done
-  grep -Fq "observed-event-result-pointer=$result_pointer" <<<"$output"
-  grep -Fq "observed-event-tag-offset=$tag_offset" <<<"$output"
-  grep -Fq "observed-event-payload-offset=$payload_offset" <<<"$output"
-  grep -Fq "observed-event-size=$event_size" <<<"$output"
-  grep -Fq "observed-event-alignment=$event_alignment" <<<"$output"
+  rg -Fq "observed-event-result-pointer=$result_pointer" <<<"$output"
+  rg -Fq "observed-event-tag-offset=$tag_offset" <<<"$output"
+  rg -Fq "observed-event-payload-offset=$payload_offset" <<<"$output"
+  rg -Fq "observed-event-size=$event_size" <<<"$output"
+  rg -Fq "observed-event-alignment=$event_alignment" <<<"$output"
 }
 
 expect_mode "$component" ticket-ready \

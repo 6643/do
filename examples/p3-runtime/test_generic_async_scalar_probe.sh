@@ -35,9 +35,9 @@ if [[ "$actual"$'\n' != "$expected" ]]; then
   exit 1
 fi
 
-grep -Fq 'future<u32>' "$wit"
-grep -Fq 'completion: func()' "$wit"
-grep -Fq 'export run: async func();' "$wit"
+rg -Fq 'future<u32>' "$wit"
+rg -Fq 'completion: func()' "$wit"
+rg -Fq 'export run: async func();' "$wit"
 
 for marker in \
   '"do:generic-async-scalar-probe/host@0.1.0" "completion"' \
@@ -48,9 +48,9 @@ for marker in \
   '"[async-lift]run"' \
   '"[callback][async-lift]run"' \
   '[scalar-payload] offset=12 byte-size=4 alignment=4 encoding=core-u32'; do
-  grep -Fq "$marker" "$core_wat"
+  rg -Fq "$marker" "$core_wat"
 done
-if grep -Fq '"[async-lower]completion"' "$core_wat"; then
+if rg -Fq '"[async-lower]completion"' "$core_wat"; then
   printf 'scalar probe incorrectly async-lowered the future-returning completion import\n' >&2
   exit 1
 fi
@@ -61,9 +61,9 @@ fi
 "$toolchain_bin" validate-component "$component" --features component-async
 component_text="$tmp_dir/component.txt"
 "$toolchain_bin" print-component "$component" > "$component_text"
-grep -Fq '(type (;0;) (future u32))' "$component_text"
-grep -Fq '"[async-lower][future-read-0]completion"' "$component_text"
-grep -Fq '"[async-lower][future-cancel-read-0]completion"' "$component_text"
+rg -Fq '(type (;0;) (future u32))' "$component_text"
+rg -Fq '"[async-lower][future-read-0]completion"' "$component_text"
+rg -Fq '"[async-lower][future-cancel-read-0]completion"' "$component_text"
 
 cargo_bin=${CARGO_BIN:-cargo}
 zig_cc="$repo_root/examples/p3-runtime/rust-host-runner/zig-cc.sh"
@@ -76,12 +76,12 @@ run_runner() {
 }
 
 ready_output=$(DO_GENERIC_ASYNC_SCALAR_MODE=ready run_runner)
-grep -Fq 'mode=ready value=42 polls=2 wakes=0 completions=2 future-drops=2 pending-future-drops=0 frame-drops=1 table-empty=true' <<<"$ready_output"
+rg -Fq 'mode=ready value=42 polls=2 wakes=0 completions=2 future-drops=2 pending-future-drops=0 frame-drops=1 table-empty=true' <<<"$ready_output"
 
 pending_output=$(DO_GENERIC_ASYNC_SCALAR_MODE=pending run_runner)
-grep -Fq 'mode=pending value=42 polls=3 wakes=1 completions=2 future-drops=2 pending-future-drops=0 frame-drops=1 table-empty=true' <<<"$pending_output"
+rg -Fq 'mode=pending value=42 polls=3 wakes=1 completions=2 future-drops=2 pending-future-drops=0 frame-drops=1 table-empty=true' <<<"$pending_output"
 
 cancel_output=$(DO_GENERIC_ASYNC_SCALAR_MODE=cancel run_runner)
-grep -Fq 'mode=cancel value=42 polls=3 wakes=0 completions=1 future-drops=2 pending-future-drops=1 frame-drops=1 table-empty=true' <<<"$cancel_output"
+rg -Fq 'mode=cancel value=42 polls=3 wakes=0 completions=1 future-drops=2 pending-future-drops=1 frame-drops=1 table-empty=true' <<<"$cancel_output"
 
 printf 'generic async scalar probe passed payload-offset=12 byte-size=4 alignment=4 encoding=core-u32\n'

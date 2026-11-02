@@ -17,11 +17,11 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   "$repo_root/examples/p3-runtime/cli-run-result-component.do" \
   --p3-async-component --p3-wit-output "$wit_path" -o "$core_path"
 
-grep -Fq 'wasi:cli/run@0.3.0' "$core_path"
-grep -Fq '[async-lower]run' "$core_path"
-grep -Fq '(type $task-return (func (param i32)))' "$core_path"
-grep -Fq 'i32.eqz' "$core_path"
-grep -Fq 'run: async func() -> result' "$wit_path"
+rg -Fq 'wasi:cli/run@0.3.0' "$core_path"
+rg -Fq '[async-lower]run' "$core_path"
+rg -Fq '(type $task-return (func (param i32)))' "$core_path"
+rg -Fq 'i32.eqz' "$core_path"
+rg -Fq 'run: async func() -> result' "$wit_path"
 
 "$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
 "$toolchain_bin" embed-component "$wit_path" "$core_wasm" probe -o "$embedded_path"

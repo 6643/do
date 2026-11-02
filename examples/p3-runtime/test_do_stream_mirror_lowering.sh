@@ -28,16 +28,16 @@ TMPDIR="$tmp_root" bash "$repo_root/examples/p3-runtime/assemble_async_component
   "$wit_path" "$core_wasm" stream-mirror-probe "$component_path"
 "$toolchain_bin" validate-component "$component_path" --features component-async
 
-grep -Fq '[stream-mirror-source-read]' "$core_wat"
-grep -Fq '[stream-mirror-writer-write]' "$core_wat"
-grep -Fq '[stream-mirror-sink-result]' "$core_wat"
-grep -Fq '[stream-mirror-cancel]' "$core_wat"
-grep -Fq '[stream-mirror-source-cancel] future-drop-readable' "$core_wat"
-grep -Fq '[stream-mirror-frame-size] 96' "$core_wat"
-grep -Fq 'do:stream-probe/source@0.1.0' "$core_wat"
-grep -Fq '[future-drop-readable-1]read-via-stream' "$core_wat"
-grep -Fq '(export "[async-lift]produce")' "$core_wat"
-if grep -Fq '[async-lift]write-via-stream' "$core_wat"; then
+rg -Fq '[stream-mirror-source-read]' "$core_wat"
+rg -Fq '[stream-mirror-writer-write]' "$core_wat"
+rg -Fq '[stream-mirror-sink-result]' "$core_wat"
+rg -Fq '[stream-mirror-cancel]' "$core_wat"
+rg -Fq '[stream-mirror-source-cancel] future-drop-readable' "$core_wat"
+rg -Fq '[stream-mirror-frame-size] 96' "$core_wat"
+rg -Fq 'do:stream-probe/source@0.1.0' "$core_wat"
+rg -Fq '[future-drop-readable-1]read-via-stream' "$core_wat"
+rg -Fq '(export "[async-lift]produce")' "$core_wat"
+if rg -Fq '[async-lift]write-via-stream' "$core_wat"; then
   printf 'stream mirror leaked the sink helper export\n' >&2
   exit 1
 fi
@@ -46,6 +46,6 @@ if DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build "$fixture" -o "$ordina
   printf 'ordinary do build unexpectedly lowered the async fixture\n' >&2
   exit 1
 fi
-grep -Fq 'AsyncLoweringUnavailable' "$ordinary_log"
+rg -Fq 'AsyncLoweringUnavailable' "$ordinary_log"
 
 printf 'stream mirror Do lowering gate passed\n'

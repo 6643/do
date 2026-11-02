@@ -14,12 +14,12 @@ component_path="$tmp_dir/if-await.component.wasm"
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build "$repo_root/examples/p3-runtime/if-await-component.do" \
   --p3-async-component --p3-wit-output "$wit_path" -o "$core_path"
 
-grep -Fq 'i64.const 27815' "$core_path"
-grep -Fq 'i64.eq' "$core_path"
-grep -Fq 'call $first-host-call' "$core_path"
-grep -Fq 'call $second-host-call' "$core_path"
-grep -Fq 'wait-for: async func(how-long: u64)' "$wit_path"
-grep -Fq 'wait-until: async func(when: u64)' "$wit_path"
+rg -Fq 'i64.const 27815' "$core_path"
+rg -Fq 'i64.eq' "$core_path"
+rg -Fq 'call $first-host-call' "$core_path"
+rg -Fq 'call $second-host-call' "$core_path"
+rg -Fq 'wait-for: async func(how-long: u64)' "$wit_path"
+rg -Fq 'wait-until: async func(when: u64)' "$wit_path"
 
 "$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
 "$toolchain_bin" embed-component "$wit_path" "$core_wasm" probe -o "$embedded_path"

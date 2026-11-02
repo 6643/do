@@ -71,9 +71,7 @@ fn main() -> Result<()> {
     if let Some(second_path) = second_path {
         let second = run_component(&engine, &second_path)?;
         if first != (54, 51, 1) || second != (54, 51, 1) {
-            bail!(
-                "expected GC/ARC values/stats/calls=54/51/1, got {first:?}/{second:?}"
-            );
+            bail!("expected GC/ARC values/stats/calls=54/51/1, got {first:?}/{second:?}");
         }
         println!(
             "GC/ARC mixed text/two-u32-lists record lift equivalence passed result=54/54 stats=51/51 read-calls=1/1"

@@ -26,7 +26,7 @@ run_checked() {
 
 assert_no_gc_imports() {
   local file=$1
-  if grep -E '^[[:space:]]*\(import .*\(ref' "$file" >"$tmp_dir/gc-import.stderr"; then
+  if rg -E '^[[:space:]]*\(import .*\(ref' "$file" >"$tmp_dir/gc-import.stderr"; then
     cat "$tmp_dir/gc-import.stderr" >&2
     return 1
   fi
@@ -38,7 +38,7 @@ run_checked "$tmp_dir/embed.stderr" "$toolchain_bin" embed-component "$wit" "$tm
 run_checked "$tmp_dir/new.stderr" "$toolchain_bin" new-component "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
 run_checked "$tmp_dir/validate.stderr" "$toolchain_bin" validate-component "$tmp_dir/component.wasm" --features none
 run_checked "$tmp_dir/wit.stderr" "$toolchain_bin" component-wit "$tmp_dir/component.wasm" >"$tmp_dir/component.wit"
-grep -Fq 'send: func(value: string)' "$tmp_dir/component.wit"
+rg -Fq 'send: func(value: string)' "$tmp_dir/component.wit"
 
 sed 's/send:/renamed:/' "$wit" >"$tmp_dir/renamed.wit"
 run_checked "$tmp_dir/renamed-embed.stderr" "$toolchain_bin" embed-component "$tmp_dir/renamed.wit" "$tmp_dir/core.wasm" probe --features none -o "$tmp_dir/renamed-embedded.wasm"
@@ -46,7 +46,7 @@ if "$toolchain_bin" new-component "$tmp_dir/renamed-embedded.wasm" -o "$tmp_dir/
   printf 'altered WIT member unexpectedly assembled\n' >&2
   exit 1
 fi
-grep -Fq 'missing function `send`' "$tmp_dir/renamed-new.stderr"
+rg -Fq 'missing function `send`' "$tmp_dir/renamed-new.stderr"
 
 sed 's/(func $canonical_call/(func $canonical_call (param (ref null $do_text))/' "$core_wat" >"$tmp_dir/gc-import.wat"
 if assert_no_gc_imports "$tmp_dir/gc-import.wat"; then

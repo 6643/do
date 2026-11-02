@@ -28,20 +28,20 @@ generated_component_wasm="$tmp_dir/service-generated.component.wasm"
 "$toolchain_bin" embed-component-template "$wit_dir" service \
   --features none >"$core_wat"
 
-grep -Fq '"wasi:http/client@0.3.0-rc-2025-09-16" "[async-lower]send"' "$core_wat"
-grep -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[resource-drop]request"' "$core_wat"
-grep -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[resource-drop]response"' "$core_wat"
-grep -Eq '\(type \([^)]*\) \(func \(param i32 i32 i32 i64 i32 i32 i32 i32\)\)\)' "$core_wat"
-grep -Fq '"[task-return]handle"' "$core_wat"
+rg -Fq '"wasi:http/client@0.3.0-rc-2025-09-16" "[async-lower]send"' "$core_wat"
+rg -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[resource-drop]request"' "$core_wat"
+rg -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[resource-drop]response"' "$core_wat"
+rg -q '\(type \([^)]*\) \(func \(param i32 i32 i32 i64 i32 i32 i32 i32\)\)\)' "$core_wat"
+rg -Fq '"[task-return]handle"' "$core_wat"
 
 "$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
 "$toolchain_bin" new-component "$core_wasm" -o "$component_wasm"
 "$toolchain_bin" validate-component "$component_wasm" --features none
 "$toolchain_bin" component-wit "$component_wasm" > "$component_wit"
 
-grep -Fq 'import wasi:http/types@0.3.0-rc-2025-09-16;' "$component_wit"
-grep -Fq 'import wasi:http/client@0.3.0-rc-2025-09-16;' "$component_wit"
-grep -Fq 'export wasi:http/handler@0.3.0-rc-2025-09-16;' "$component_wit"
+rg -Fq 'import wasi:http/types@0.3.0-rc-2025-09-16;' "$component_wit"
+rg -Fq 'import wasi:http/client@0.3.0-rc-2025-09-16;' "$component_wit"
+rg -Fq 'export wasi:http/handler@0.3.0-rc-2025-09-16;' "$component_wit"
 
 "$toolchain_bin" parse-core "$minimal_core_wat" -o "$minimal_core_wasm"
 "$toolchain_bin" embed-component "$wit_dir" "$minimal_core_wasm" service \
@@ -50,9 +50,9 @@ grep -Fq 'export wasi:http/handler@0.3.0-rc-2025-09-16;' "$component_wit"
 "$toolchain_bin" validate-component "$minimal_component_wasm" --features none
 "$toolchain_bin" component-wit "$minimal_component_wasm" > "$minimal_component_wit"
 
-grep -Fq 'import wasi:http/types@0.3.0-rc-2025-09-16;' "$minimal_component_wit"
-grep -Fq 'import wasi:http/client@0.3.0-rc-2025-09-16;' "$minimal_component_wit"
-grep -Fq 'export wasi:http/handler@0.3.0-rc-2025-09-16;' "$minimal_component_wit"
+rg -Fq 'import wasi:http/types@0.3.0-rc-2025-09-16;' "$minimal_component_wit"
+rg -Fq 'import wasi:http/client@0.3.0-rc-2025-09-16;' "$minimal_component_wit"
+rg -Fq 'export wasi:http/handler@0.3.0-rc-2025-09-16;' "$minimal_component_wit"
 
 DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$http_service_source" \
   --p3-async-component --p3-wit-package-output "$generated_wit_dir" -o "$generated_core_wat"

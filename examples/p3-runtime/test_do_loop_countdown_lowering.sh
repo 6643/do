@@ -14,10 +14,10 @@ component_path="$tmp_dir/loop-countdown.component.wasm"
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build "$repo_root/examples/p3-runtime/loop-countdown-component.do" \
   --p3-async-component --p3-wit-output "$wit_path" -o "$core_path"
 
-grep -Fq '(field $slot-remaining (mut i64))' "$core_path"
-grep -Fq 'i64.sub' "$core_path"
-grep -Fq 'struct.set $async-frame $slot-remaining' "$core_path"
-if [ "$(grep -Fc 'wait-for: async func(how-long: u64)' "$wit_path")" -ne 1 ]; then
+rg -Fq '(field $slot-remaining (mut i64))' "$core_path"
+rg -Fq 'i64.sub' "$core_path"
+rg -Fq 'struct.set $async-frame $slot-remaining' "$core_path"
+if [ "$(rg -Fc 'wait-for: async func(how-long: u64)' "$wit_path")" -ne 1 ]; then
   printf 'loop-countdown WIT duplicated wait-for\n' >&2
   exit 1
 fi

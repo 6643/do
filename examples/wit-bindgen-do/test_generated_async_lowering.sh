@@ -34,7 +34,7 @@ for marker in \
   'call $subtask-drop' \
   'call $waitable-set-drop' \
   'call $task-return'; do
-  grep -Fq "$marker" "$tmp_dir/runtime.wat"
+  rg -Fq "$marker" "$tmp_dir/runtime.wat"
 done
 
 core_wasm="$tmp_dir/runtime.core.wasm"
@@ -58,13 +58,13 @@ run_runner() {
 }
 
 pending_output=$(DO_GENERIC_ASYNC_RUNTIME_MODE=pending run_runner)
-grep -Fq 'pending external-wakes=2 completions=2 drops=1' <<<"$pending_output"
+rg -Fq 'pending external-wakes=2 completions=2 drops=1' <<<"$pending_output"
 
 immediate_output=$(DO_GENERIC_ASYNC_RUNTIME_MODE=immediate run_runner)
-grep -Fq 'immediate external-wakes=0 completions=3 drops=0' <<<"$immediate_output"
+rg -Fq 'immediate external-wakes=0 completions=3 drops=0' <<<"$immediate_output"
 
 cancel_output=$(DO_GENERIC_ASYNC_RUNTIME_MODE=cancel run_runner)
-grep -Fq 'cancel cancel-before-completion=1 completions=2' <<<"$cancel_output"
+rg -Fq 'cancel cancel-before-completion=1 completions=2' <<<"$cancel_output"
 
 manifest="$tmp_dir/wit/manifest.json"
 expect_manifest_rejection() {
@@ -106,7 +106,7 @@ expect_manifest_rejection() {
     printf 'manifest mutation %s emitted WAT before rejection\n' "$name" >&2
     exit 1
   fi
-  grep -Fq 'GeneratedWitManifestMismatch' "$stderr"
+  rg -Fq 'GeneratedWitManifestMismatch' "$stderr"
   mv "$tmp_dir/manifest.original" "$manifest"
 }
 

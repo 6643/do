@@ -10,7 +10,7 @@ mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/g6-2-owned-record-producer.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -37,12 +37,12 @@ fi
 
 test "$(sha256sum "$wit" | awk '{print $1}')" = \
   6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace
-grep -Fq 'package do:g6-2-owned-record-producer@0.1.0;' "$wit"
-grep -Fq 'world owned-record-producer' "$wit"
-grep -Fq 'data: stream<resource-entry>' "$wit"
-grep -Fq 'resource-entry { ticket: own<ticket> }' "$wit"
-grep -Fq 'make-ticket: func(seed: u32) -> own<ticket>;' "$wit"
-grep -Fq 'consume-via-stream: async func(' "$wit"
+rg -Fq 'package do:g6-2-owned-record-producer@0.1.0;' "$wit"
+rg -Fq 'world owned-record-producer' "$wit"
+rg -Fq 'data: stream<resource-entry>' "$wit"
+rg -Fq 'resource-entry { ticket: own<ticket> }' "$wit"
+rg -Fq 'make-ticket: func(seed: u32) -> own<ticket>;' "$wit"
+rg -Fq 'consume-via-stream: async func(' "$wit"
 
 for marker in \
   'producer-record-byte-size' \
@@ -91,8 +91,8 @@ for mode in ready pending sink-error-before sink-error-after cancel-before-trans
   output=$(cargo run --quiet --locked --manifest-path "$runner_dir/Cargo.toml" \
     --bin "$bin" -- "$component" "$mode")
   printf '%s\n' "$output"
-  grep -Fq "mode=$mode" <<<"$output"
-  grep -Fq 'table-empty=true' <<<"$output"
+  rg -Fq "mode=$mode" <<<"$output"
+  rg -Fq 'table-empty=true' <<<"$output"
 done
 
 printf 'G6.2 owned record producer canonical ABI probe passed\n'

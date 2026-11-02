@@ -11,7 +11,7 @@ mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/g6-2-owned-record-nested-equivalence.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -58,7 +58,7 @@ cmp "$generated_wat" "$canonical_wat"
 assemble_component "$generated_wat" "$generated_wit" "$generated_core" \
   "$generated_embedded" "$generated_component"
 
-if grep -Fq '__arc_' "$generated_wat" || grep -Fq '__arc_' "$canonical_wat"; then
+if rg -Fq '__arc_' "$generated_wat" || rg -Fq '__arc_' "$canonical_wat"; then
   printf 'owned-record nested parity contains an ARC symbol\n' >&2
   exit 1
 fi

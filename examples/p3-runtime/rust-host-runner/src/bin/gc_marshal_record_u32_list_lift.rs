@@ -1,5 +1,8 @@
 use anyhow::{Context, Result, bail};
-use std::sync::{Arc, atomic::{AtomicU32, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU32, Ordering},
+};
 use wasmtime::component::{Component, Linker, Val};
 use wasmtime::{Config, Engine, Store};
 
@@ -19,11 +22,16 @@ fn run_component(engine: &Engine, component_path: &str) -> Result<(u32, u32, u32
     let callback_calls = Arc::clone(&calls);
     map_wasmtime(api.func_new("read", move |_store, _ty, params, results| {
         if !params.is_empty() || results.len() != 1 {
-            return Err(wasmtime::Error::msg("unexpected u32-list lift host signature"));
+            return Err(wasmtime::Error::msg(
+                "unexpected u32-list lift host signature",
+            ));
         }
         results[0] = Val::Record(vec![
             ("code".to_string(), Val::U32(7)),
-            ("payload".to_string(), Val::List(vec![Val::U32(10), Val::U32(20), Val::U32(30)])),
+            (
+                "payload".to_string(),
+                Val::List(vec![Val::U32(10), Val::U32(20), Val::U32(30)]),
+            ),
         ]);
         callback_calls.fetch_add(1, Ordering::SeqCst);
         Ok(())
@@ -58,12 +66,16 @@ fn main() -> Result<()> {
         if first != (67, 17, 1) || second != (67, 17, 1) {
             bail!("expected GC/ARC values/stats/calls=67/17/1, got {first:?}/{second:?}");
         }
-        println!("GC/ARC u32-list record lift equivalence passed result=67/67 stats=17/17 read-calls=1/1");
+        println!(
+            "GC/ARC u32-list record lift equivalence passed result=67/67 stats=17/17 read-calls=1/1"
+        );
         return Ok(());
     }
     if first != (67, 17, 1) {
         bail!("expected result/stats/read-calls=67/17/1, got {first:?}");
     }
-    println!("GC u32-list record lift host adapter passed code=7 payload=[10, 20, 30] result=67 stats=17 read-calls=1 allocations=1 frees=1");
+    println!(
+        "GC u32-list record lift host adapter passed code=7 payload=[10, 20, 30] result=67 stats=17 read-calls=1 allocations=1 frees=1"
+    );
     Ok(())
 }

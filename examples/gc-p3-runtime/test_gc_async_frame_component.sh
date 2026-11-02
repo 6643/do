@@ -28,7 +28,7 @@ component_path="$tmp_dir/two-await.component.wasm"
   --p3-wait-for-component --p3-wit-output "$wit_path" -o "$wat_path"
 )
 
-if grep -Fq '__arc_' "$wat_path"; then
+if rg -Fq '__arc_' "$wat_path"; then
   printf 'bounded async GC frame output contains ARC markers\n' >&2
   exit 1
 fi
@@ -37,12 +37,12 @@ for marker in \
   '(table $async-frames 0 (ref null $async-frame))' \
   'table.get $async-frames' \
   'struct.get $async-frame $waitable-set'; do
-  if ! grep -Fq "$marker" "$wat_path"; then
+  if ! rg -Fq "$marker" "$wat_path"; then
     printf 'bounded async GC frame output is missing marker: %s\n' "$marker" >&2
     exit 1
   fi
 done
-if grep -Fq 'global $frame-next' "$wat_path"; then
+if rg -Fq 'global $frame-next' "$wat_path"; then
   printf 'bounded async GC frame output still uses linear-memory frame allocation\n' >&2
   exit 1
 fi

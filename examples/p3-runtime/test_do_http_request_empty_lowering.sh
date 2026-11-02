@@ -18,13 +18,13 @@ component="$tmp_dir/request.component.wasm"
 DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$fixture" \
   --p3-async-component --p3-wit-output "$wit" -o "$core_wat"
 
-grep -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[constructor]fields"' "$core_wat"
-grep -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[static]request.new"' "$core_wat"
-grep -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[future-new-1]request-new-payload"' "$core_wat"
-grep -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[future-write-1]request-new-payload"' "$core_wat"
-grep -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[future-drop-writable-1]request-new-payload"' "$core_wat"
-grep -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[future-drop-readable-2]request-new-payload"' "$core_wat"
-grep -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[resource-drop]request"' "$core_wat"
+rg -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[constructor]fields"' "$core_wat"
+rg -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[static]request.new"' "$core_wat"
+rg -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[future-new-1]request-new-payload"' "$core_wat"
+rg -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[future-write-1]request-new-payload"' "$core_wat"
+rg -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[future-drop-writable-1]request-new-payload"' "$core_wat"
+rg -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[future-drop-readable-2]request-new-payload"' "$core_wat"
+rg -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[resource-drop]request"' "$core_wat"
 
 "$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
 "$toolchain_bin" embed-component "$wit" "$core_wasm" \

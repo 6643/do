@@ -23,7 +23,7 @@ pub fn emit_component_wat(
 pub fn emit_component_wit(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]u8 {
     const source = if (has_future_type(tokens, "i64"))
         @embedFile("generated_async_scalar_i64_component.wit")
-        else
+    else
         @embedFile("generated_async_scalar_component.wit");
     return generated_text.alloc_block(allocator, 0, source);
 }
@@ -201,7 +201,7 @@ fn test_graph(allocator: std.mem.Allocator) !imports.ModuleGraph {
         .async_import_module = try allocator.dupe(u8, "do:generic-async-scalar-probe/host@0.1.0"),
         .async_import_name = try allocator.dupe(u8, "[async-lower][future-read-0]completion"),
         .completion = try allocator.dupe(u8, "completion"),
-        .wit_sha256 = [_]u8{0} ** 32,
+        .wit_sha256 = @splat(0),
         .payload = .{
             .core_type = try allocator.dupe(u8, "i32"),
             .offset = 12,
@@ -232,7 +232,7 @@ fn test_i64_graph(allocator: std.mem.Allocator) !imports.ModuleGraph {
         .async_import_module = try allocator.dupe(u8, "do:generic-async-scalar-i64-probe/host@0.1.0"),
         .async_import_name = try allocator.dupe(u8, "[async-lower][future-read-0]completion"),
         .completion = try allocator.dupe(u8, "completion"),
-        .wit_sha256 = [_]u8{0} ** 32,
+        .wit_sha256 = @splat(0),
         .payload = .{
             .core_type = try allocator.dupe(u8, "i64"),
             .offset = 16,

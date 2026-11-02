@@ -17,7 +17,7 @@ component_wit="$tmp_dir/filesystem.component.wit"
   --features component-async > "$wat"
 
 require_wat() {
-  if ! grep -Fq -- "$1" "$wat"; then
+  if ! rg -Fq -- "$1" "$wat"; then
     printf 'missing read-via-stream ABI fragment: %s\n' "$1" >&2
     exit 1
   fi
@@ -27,7 +27,7 @@ require_import_type() {
   local import_name="$1"
   local type_index="$2"
   local line
-  line=$(grep -F "\"wasi:filesystem/types@0.3.0-rc-2025-09-16\" \"$import_name\" (func " "$wat" || true)
+  line=$(rg -F "\"wasi:filesystem/types@0.3.0-rc-2025-09-16\" \"$import_name\" (func " "$wat" || true)
   case "$line" in
     *"(type $type_index)))"*) ;;
     *)
@@ -43,7 +43,7 @@ require_wat '(type (;1;) (func (param i32 i64 i32)))'
 require_wat '"wasi:filesystem/types@0.3.0-rc-2025-09-16" "[method]descriptor.read-via-stream" (func'
 require_import_type '[method]descriptor.read-via-stream' 1
 
-if grep -Fq '[async-lower][method]descriptor.read-via-stream' "$wat"; then
+if rg -Fq '[async-lower][method]descriptor.read-via-stream' "$wat"; then
   printf 'read-via-stream unexpectedly lowered as an async method\n' >&2
   exit 1
 fi
@@ -53,6 +53,6 @@ fi
 "$toolchain_bin" validate-component "$component" --features component-async
 "$toolchain_bin" component-wit "$component" > "$component_wit"
 
-grep -Fq 'read-via-stream: func(offset: filesize) -> tuple<stream<u8>, future<result<_, error-code>>>;' "$component_wit"
+rg -Fq 'read-via-stream: func(offset: filesize) -> tuple<stream<u8>, future<result<_, error-code>>>;' "$component_wit"
 
 printf 'WASI filesystem read-via-stream ABI probe passed\n'

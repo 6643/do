@@ -18,7 +18,7 @@ expect_unsupported() {
     echo "$label unexpectedly lowered" >&2
     exit 1
   fi
-  grep -Fq 'UnsupportedP3AsyncComponent' "$stderr_file"
+  rg -Fq 'UnsupportedP3AsyncComponent' "$stderr_file"
 }
 
 expect_unsupported stream-probe-guest-producer-sixth-forwarding.do seventh-forwarding

@@ -49,7 +49,7 @@ if mutated_output=$($zig_bin run "$probe" -- "$tmp_dir/mutated.wat" "$mutated_ro
   printf 'mutated descriptor source unexpectedly passed the manifest hash gate\n' >&2
   exit 1
 fi
-grep -Fq 'SourceHashMismatch' <<<"$mutated_output"
+rg -Fq 'SourceHashMismatch' <<<"$mutated_output"
 
 output=$(
   CC="$cc_bin" CXX="$cxx_bin" \
@@ -57,7 +57,7 @@ output=$(
   "$cargo_bin" run --quiet --locked --manifest-path "$runner_manifest" \
     --bin do-p3-gc-marshal-record-nested-lower-deeper-host-runner -- "$tmp_dir/component.wasm"
 )
-grep -Fq 'GC four-level nested scalar record lower host adapter passed result=42 write-calls=1' <<<"$output"
+rg -Fq 'GC four-level nested scalar record lower host adapter passed result=42 write-calls=1' <<<"$output"
 printf '%s\n' "$output"
 
 printf 'manifest-backed four-level nested scalar record lower Component host execution passed\n'

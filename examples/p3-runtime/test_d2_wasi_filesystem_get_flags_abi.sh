@@ -19,18 +19,18 @@ done
 test "$(sha256sum "$wit" | awk '{print $1}')" = "$expected_mirror_sha256"
 test "$(sha256sum "$upstream_wit" | awk '{print $1}')" = "$expected_upstream_sha256"
 
-grep -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$wit"
-grep -Fq 'flags descriptor-flags' "$wit"
-grep -Fq 'get-flags: async func() -> result<descriptor-flags, error-code>;' "$wit"
-grep -Fq 'run: async func(directory: own<descriptor>) -> result<descriptor-flags, error-code>;' "$wit"
-grep -Fq 'world get-flags-probe' "$wit"
-grep -Fq 'world get-flags-cancel-probe' "$cancel_wit"
-grep -Fq 'cancel: async func();' "$cancel_wit"
+rg -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$wit"
+rg -Fq 'flags descriptor-flags' "$wit"
+rg -Fq 'get-flags: async func() -> result<descriptor-flags, error-code>;' "$wit"
+rg -Fq 'run: async func(directory: own<descriptor>) -> result<descriptor-flags, error-code>;' "$wit"
+rg -Fq 'world get-flags-probe' "$wit"
+rg -Fq 'world get-flags-cancel-probe' "$cancel_wit"
+rg -Fq 'cancel: async func();' "$cancel_wit"
 
 require_text() {
   local file=$1
   local fragment=$2
-  grep -Fq -- "$fragment" "$file" || {
+  rg -Fq -- "$fragment" "$file" || {
     printf 'missing ABI fragment in %s: %s\n' "$file" "$fragment" >&2
     exit 1
   }

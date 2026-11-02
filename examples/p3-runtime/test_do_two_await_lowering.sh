@@ -14,17 +14,17 @@ component_path="$tmp_dir/two-await.component.wasm"
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build "$repo_root/examples/p3-runtime/two-await-component.do" \
   --p3-async-component --p3-wit-output "$wit_path" -o "$core_path"
 
-grep -Fq '[async-lower]wait-for' "$core_path"
-grep -Fq '[async-lower]wait-until' "$core_path"
-grep -Fq '(type $async-frame (struct' "$core_path"
-grep -Fq '(table $async-frames 0 (ref null $async-frame))' "$core_path"
-grep -Fq 'table.get $async-frames' "$core_path"
-if grep -Fq 'global $frame-next' "$core_path"; then
+rg -Fq '[async-lower]wait-for' "$core_path"
+rg -Fq '[async-lower]wait-until' "$core_path"
+rg -Fq '(type $async-frame (struct' "$core_path"
+rg -Fq '(table $async-frames 0 (ref null $async-frame))' "$core_path"
+rg -Fq 'table.get $async-frames' "$core_path"
+if rg -Fq 'global $frame-next' "$core_path"; then
   printf 'P3 two-await lowering still uses the linear-memory frame allocator\n' >&2
   exit 1
 fi
-grep -Fq 'wait-for: async func(how-long: u64)' "$wit_path"
-grep -Fq 'wait-until: async func(when: u64)' "$wit_path"
+rg -Fq 'wait-for: async func(how-long: u64)' "$wit_path"
+rg -Fq 'wait-until: async func(when: u64)' "$wit_path"
 
 "$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
 "$toolchain_bin" embed-component "$wit_path" "$core_wasm" probe -o "$embedded_path"
@@ -67,11 +67,11 @@ literal_component_path="$tmp_dir/literal-two-await.component.wasm"
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build "$repo_root/examples/p3-runtime/literal-two-await-component.do" \
   --p3-async-component --p3-wit-output "$literal_wit_path" -o "$literal_core_path"
 
-if [ "$(grep -Fc 'i64.const 41' "$literal_core_path")" -lt 2 ]; then
+if [ "$(rg -Fc 'i64.const 41' "$literal_core_path")" -lt 2 ]; then
   printf 'literal two-await lowering did not replay the u64 literal at both host calls\n' >&2
   exit 1
 fi
-if [ "$(grep -Fc 'i64.add' "$literal_core_path")" -lt 2 ]; then
+if [ "$(rg -Fc 'i64.add' "$literal_core_path")" -lt 2 ]; then
   printf 'literal two-await lowering did not replay the u64 addition at both host calls\n' >&2
   exit 1
 fi

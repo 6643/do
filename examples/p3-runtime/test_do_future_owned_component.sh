@@ -33,11 +33,11 @@ for marker in \
     '[future-owned-cancel]' \
     '[task-return]run' \
     '[resource-drop]ticket'; do
-  grep -Fq "$marker" "$core_wat"
+  rg -Fq "$marker" "$core_wat"
 done
-if grep -Fq '[task-return]helper' "$core_wat" ||
-    grep -Fq '[async-lift]helper' "$core_wat" ||
-    grep -Fq 'future<borrow<' "$core_wat"; then
+if rg -Fq '[task-return]helper' "$core_wat" ||
+    rg -Fq '[async-lift]helper' "$core_wat" ||
+    rg -Fq 'future<borrow<' "$core_wat"; then
   printf 'future-owned target emitted an unsupported helper or borrowed future\n' >&2
   exit 1
 fi
@@ -48,8 +48,8 @@ bash "$repo_root/examples/p3-runtime/assemble_async_component.sh" \
 "$toolchain_bin" validate-component "$component"
 component_wit=$tmp_dir/component.wit
 "$toolchain_bin" component-wit "$component" >"$component_wit"
-grep -Fq 'read: func() -> future<ticket>' "$component_wit"
-grep -Fq 'run: async func(mode: u32)' "$component_wit"
+rg -Fq 'read: func() -> future<ticket>' "$component_wit"
+rg -Fq 'run: async func(mode: u32)' "$component_wit"
 
 bash "$repo_root/examples/p3-runtime/test_rust_future_owned_component.sh" "$component"
 
@@ -64,13 +64,13 @@ run_isolation() {
   local status=$?
   set -e
   if [[ "$status" -eq 0 ]]; then
-    if grep -Fq '[future-owned-' "$wat"; then
+    if rg -Fq '[future-owned-' "$wat"; then
       printf '%s target emitted future-owned markers\n' "$name" >&2
       exit 1
     fi
     printf '%s-isolation=accepted-without-future-owned-markers\n' "$name"
   else
-    if ! grep -Eq 'UnsupportedP3|UnsupportedGenericAbiV2Promotion' "$stderr"; then
+    if ! rg -q 'UnsupportedP3|UnsupportedGenericAbiV2Promotion' "$stderr"; then
       cat "$stderr" >&2
       exit 1
     fi
@@ -91,7 +91,7 @@ for conflicting_flag in --component-core --host-export; do
   status=$?
   set -e
   test "$status" -ne 0
-  grep -Fq 'UnexpectedCliArg' "$stderr"
+  rg -Fq 'UnexpectedCliArg' "$stderr"
 done
 
 printf 'do future<own<ticket>> compiler Component gate passed\n'

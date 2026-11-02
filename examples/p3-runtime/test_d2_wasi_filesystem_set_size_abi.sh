@@ -34,13 +34,13 @@ done
   exit 1
 }
 
-grep -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$wit"
-grep -Fq 'type filesize = u64;' "$wit"
-grep -Fq 'set-size: async func(size: filesize) -> result<_, error-code>;' "$wit"
-grep -Fq 'run: async func(file: own<descriptor>, size: filesize) -> result<_, error-code>;' "$wit"
-grep -Fq 'world set-size-probe' "$wit"
-grep -Fq 'world set-size-cancel-probe' "$cancel_wit"
-grep -Fq 'cancel: async func();' "$cancel_wit"
+rg -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$wit"
+rg -Fq 'type filesize = u64;' "$wit"
+rg -Fq 'set-size: async func(size: filesize) -> result<_, error-code>;' "$wit"
+rg -Fq 'run: async func(file: own<descriptor>, size: filesize) -> result<_, error-code>;' "$wit"
+rg -Fq 'world set-size-probe' "$wit"
+rg -Fq 'world set-size-cancel-probe' "$cancel_wit"
+rg -Fq 'cancel: async func();' "$cancel_wit"
 
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-d2-filesystem-set-size-abi.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
@@ -55,7 +55,7 @@ current_cancel_dummy="$tmp_dir/current-cancel-dummy.wat"
 require_text() {
   local file="$1"
   local expected="$2"
-  grep -Fq -- "$expected" "$file" || {
+  rg -Fq -- "$expected" "$file" || {
     printf 'missing ABI fragment in %s: %s\n' "$file" "$expected" >&2
     exit 1
   }
@@ -64,7 +64,7 @@ require_text() {
 require_regex() {
   local file="$1"
   local expression="$2"
-  grep -Eq -- "$expression" "$file" || {
+  rg -q -- "$expression" "$file" || {
     printf 'missing ABI pattern in %s: %s\n' "$file" "$expression" >&2
     exit 1
   }
@@ -76,7 +76,7 @@ require_dummy() {
   require_text "$file" '(import "wasi:filesystem/types@0.3.0-rc-2025-09-16" "[async-lower][method]descriptor.set-size"'
   require_text "$file" '(import "wasi:filesystem/types@0.3.0-rc-2025-09-16" "[resource-drop]descriptor"'
   require_text "$file" '(import "[export]wasi:filesystem/probe@0.3.0-rc-2025-09-16" "[task-return]run"'
-  [[ $(grep -cF '[async-lower][method]' "$file") -eq 1 ]] || {
+  [[ $(rg -cF '[async-lower][method]' "$file") -eq 1 ]] || {
     printf 'unexpected filesystem async method count in %s\n' "$file" >&2
     exit 1
   }
@@ -139,12 +139,12 @@ assemble_component() {
   require_text "$component_wat" '"[async-lower][method]descriptor.set-size"'
   require_text "$component_wat" '"[resource-drop]descriptor"'
   require_text "$component_wat" '"[task-return]run"'
-  [[ $(grep -cF '"[async-lower][method]' "$component_wat") -eq 2 ]] || {
+  [[ $(rg -cF '"[async-lower][method]' "$component_wat") -eq 2 ]] || {
     printf 'unexpected filesystem async method count in %s\n' "$component_wat" >&2
     exit 1
   }
   for forbidden in get-type get-flags sync sync-data stat stat-at metadata-hash metadata-hash-at open-at; do
-    if grep -Fq "descriptor.$forbidden\"" "$component_wat"; then
+    if rg -Fq "descriptor.$forbidden\"" "$component_wat"; then
       printf 'unexpected filesystem method in %s: descriptor.%s\n' \
         "$component_wat" "$forbidden" >&2
       exit 1

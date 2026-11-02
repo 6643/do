@@ -23,14 +23,14 @@ if ! DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   exit 1
 fi
 
-grep -Fq '[async-slot] deadline' "$core_path"
-grep -Fq 'struct.get $async-frame $state' "$core_path"
-if [ "$(grep -Fc 'struct.get $async-frame $slot-deadline' "$core_path")" -lt 2 ] || \
-   ! grep -Fq $'struct.get $async-frame $slot-deadline\n        i64.const 1\n        i64.add' "$core_path"; then
+rg -Fq '[async-slot] deadline' "$core_path"
+rg -Fq 'struct.get $async-frame $state' "$core_path"
+if [ "$(rg -Fc 'struct.get $async-frame $slot-deadline' "$core_path")" -lt 2 ] || \
+   ! rg -Fq $'struct.get $async-frame $slot-deadline\n        i64.const 1\n        i64.add' "$core_path"; then
   printf 'single-await post-compute emitter did not lower the post-await add from the frame slot\n' >&2
   exit 1
 fi
-if [ "$(grep -Fc 'call $first-host-call' "$core_path")" -ne 1 ]; then
+if [ "$(rg -Fc 'call $first-host-call' "$core_path")" -ne 1 ]; then
   printf 'single-await post-compute emitter replayed the host call after await\n' >&2
   exit 1
 fi
@@ -50,5 +50,5 @@ if DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   printf 'ordinary do build unexpectedly lowered async source\n' >&2
   exit 1
 fi
-grep -Fq 'AsyncLoweringUnavailable' "$tmp_dir/ordinary.stderr"
+rg -Fq 'AsyncLoweringUnavailable' "$tmp_dir/ordinary.stderr"
 printf 'single-await post-compute emitter contract passed\n'

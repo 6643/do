@@ -10,7 +10,7 @@ mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/g6-2-owned-record-pair-producer.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -45,7 +45,7 @@ for marker in \
   'producer-child-before-parent-cleanup'; do
   rg -q "^\\s*;; \\[${marker}\\]" "$wat"
 done
-if grep -Fq '__arc_' "$wat"; then
+if rg -Fq '__arc_' "$wat"; then
   printf 'pair producer canonical WAT contains ARC symbol\n' >&2
   exit 1
 fi
@@ -70,8 +70,8 @@ for mode in ready pending sink-error-before sink-error-after cancel-before-trans
   output=$(cargo run --quiet --locked --manifest-path "$runner_dir/Cargo.toml" \
     --bin "$bin" -- "$component" "$mode")
   printf '%s\n' "$output"
-  grep -Fq "mode=$mode" <<<"$output"
-  grep -Fq 'table-empty=true' <<<"$output"
+  rg -Fq "mode=$mode" <<<"$output"
+  rg -Fq 'table-empty=true' <<<"$output"
   case "$mode" in
     ready|pending|sink-error-before|sink-error-after|cancel-before-transfer|cancel-after-transfer|early-drop-before-transfer|early-drop-after-transfer)
       expected_callback=1
@@ -122,12 +122,12 @@ for mode in ready pending sink-error-before sink-error-after cancel-before-trans
       expected_completions=1
       ;;
   esac
-  grep -Fq "callback-calls=$expected_callback" <<<"$output"
-  grep -Fq "poll-calls=$expected_polls" <<<"$output"
-  grep -Fq 'finish-calls=0' <<<"$output"
-  grep -Fq "cancel-calls=$expected_cancel" <<<"$output"
-  grep -Fq "pending-future-drops=$expected_pending_future_drops" <<<"$output"
-  grep -Fq "future-completions=$expected_completions" <<<"$output"
+  rg -Fq "callback-calls=$expected_callback" <<<"$output"
+  rg -Fq "poll-calls=$expected_polls" <<<"$output"
+  rg -Fq 'finish-calls=0' <<<"$output"
+  rg -Fq "cancel-calls=$expected_cancel" <<<"$output"
+  rg -Fq "pending-future-drops=$expected_pending_future_drops" <<<"$output"
+  rg -Fq "future-completions=$expected_completions" <<<"$output"
 done
 
 printf 'G6.2 owned-record pair canonical ABI probe passed modes=10 pair-fields=2 drops=2 table-empty=true\n'

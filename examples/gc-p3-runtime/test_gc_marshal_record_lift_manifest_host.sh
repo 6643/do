@@ -24,7 +24,7 @@ fi
 
 "$zig_bin" run "$probe" -- "$tmp_dir/core.wat" "$repo_root"
 "$toolchain_bin" parse-core "$tmp_dir/core.wat" -o "$tmp_dir/core.wasm"
-if grep -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$tmp_dir/core.wat"; then
+if rg -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$tmp_dir/core.wat"; then
   printf 'GC reference crossed canonical lift import\n' >&2
   exit 1
 fi
@@ -43,7 +43,7 @@ if mutated_output=$("$zig_bin" run "$probe" -- "$tmp_dir/mutated.wat" "$mutated_
   printf 'mutated descriptor source unexpectedly passed the manifest hash gate\n' >&2
   exit 1
 fi
-grep -Fq 'SourceHashMismatch' <<<"$mutated_output"
+rg -Fq 'SourceHashMismatch' <<<"$mutated_output"
 
 output=$(
   CC="$cc_bin" CXX="$cxx_bin" \
@@ -51,7 +51,7 @@ output=$(
   "$cargo_bin" run --quiet --locked --manifest-path "$runner_manifest" \
     --bin do-p3-gc-marshal-record-host-runner -- "$tmp_dir/component.wasm"
 )
-grep -Fq 'GC scalar record lift host adapter passed sum=42' <<<"$output"
+rg -Fq 'GC scalar record lift host adapter passed sum=42' <<<"$output"
 printf '%s\n' "$output"
 
 printf 'manifest-backed scalar record lift Component host execution passed\n'

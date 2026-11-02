@@ -59,6 +59,6 @@ output=$(
     --bin do-p3-gc-marshal-record-mixed-text-byte-list-lift-equivalence-runner -- \
     "$tmp_dir/gc.component.wasm" "$tmp_dir/arc.component.wasm"
 )
-grep -Fq 'GC/ARC mixed text/byte-list record lift equivalence passed result=47/47 stats=34/34 read-calls=1/1' <<<"$output"
+rg -Fq 'GC/ARC mixed text/byte-list record lift equivalence passed result=47/47 stats=34/34 read-calls=1/1' <<<"$output"
 printf '%s\n' "$output"
 printf 'manifest-backed mixed text/byte-list record lift ARC/GC equivalence passed\n'

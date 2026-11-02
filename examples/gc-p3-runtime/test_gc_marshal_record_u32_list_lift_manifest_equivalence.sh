@@ -56,6 +56,6 @@ output=$(
     --bin do-p3-gc-marshal-record-u32-list-lift-equivalence-runner -- \
     "$tmp_dir/gc.component.wasm" "$tmp_dir/arc.component.wasm"
 )
-grep -Fq 'GC/ARC u32-list record lift equivalence passed result=67/67 stats=17/17 read-calls=1/1' <<<"$output"
+rg -Fq 'GC/ARC u32-list record lift equivalence passed result=67/67 stats=17/17 read-calls=1/1' <<<"$output"
 printf '%s\n' "$output"
 printf 'manifest-backed u32-list record lift ARC/GC equivalence passed\n'

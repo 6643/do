@@ -10,7 +10,7 @@ mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/do-g6-2-owned-record-mixed-producer.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -29,17 +29,17 @@ DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$source" \
 test -s "$wat"
 test -s "$wit"
 cmp "$wit" "$probe_wit"
-grep -Fq 'package do:g6-2-owned-record-mixed-producer@0.1.0;' "$wit"
-grep -Fq 'record mixed-entry' "$wit"
-grep -Fq 'data: stream<mixed-entry>' "$wit"
-grep -Fq 'export produce: async func(mode: u32) -> result<_, error-code>;' "$wit"
-grep -Fq ';; [producer-record-byte-size] 8' "$wat"
-grep -Fq ';; [producer-record-code-offset] 0' "$wat"
-grep -Fq ';; [producer-record-ticket-offset] 4' "$wat"
-grep -Fq ';; [producer-stream-capacity] 1' "$wat"
-grep -Fq ';; [producer-record-transfer]' "$wat"
-grep -Fq ';; [producer-resource-drop-exactly-once]' "$wat"
-if grep -Fq '__arc_' "$wat"; then
+rg -Fq 'package do:g6-2-owned-record-mixed-producer@0.1.0;' "$wit"
+rg -Fq 'record mixed-entry' "$wit"
+rg -Fq 'data: stream<mixed-entry>' "$wit"
+rg -Fq 'export produce: async func(mode: u32) -> result<_, error-code>;' "$wit"
+rg -Fq ';; [producer-record-byte-size] 8' "$wat"
+rg -Fq ';; [producer-record-code-offset] 0' "$wat"
+rg -Fq ';; [producer-record-ticket-offset] 4' "$wat"
+rg -Fq ';; [producer-stream-capacity] 1' "$wat"
+rg -Fq ';; [producer-record-transfer]' "$wat"
+rg -Fq ';; [producer-resource-drop-exactly-once]' "$wat"
+if rg -Fq '__arc_' "$wat"; then
   printf 'mixed owned-record producer emitted an ARC symbol\n' >&2
   exit 1
 fi

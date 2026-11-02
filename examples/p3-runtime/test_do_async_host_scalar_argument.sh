@@ -34,12 +34,12 @@ for marker in \
     '[guest-async-context-clear]' \
     '[guest-async-frame-free]' \
     '[task-cancel]'; do
-    grep -Fq "$marker" "$core_wat"
+    rg -Fq "$marker" "$core_wat"
 done
-grep -Fq 'i32.const 20' "$core_wat"
-grep -Fq 'i32.const 12' "$core_wat"
-grep -Fq '[export]$root" "[task-return]run' "$core_wat"
-if grep -Fq '[task-return]helper' "$core_wat" || grep -Fq '[async-lift]helper' "$core_wat"; then
+rg -Fq 'i32.const 20' "$core_wat"
+rg -Fq 'i32.const 12' "$core_wat"
+rg -Fq '[export]$root" "[task-return]run' "$core_wat"
+if rg -Fq '[task-return]helper' "$core_wat" || rg -Fq '[async-lift]helper' "$core_wat"; then
     printf 'async host scalar argument emitted an independent helper endpoint\n' >&2
     exit 1
 fi

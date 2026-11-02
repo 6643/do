@@ -20,11 +20,11 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build --p3-async-component \
   -o "$core_path"
 
 cmp "$wit_path" "$repo_root/examples/p3-runtime/wit/stream-probe-guest-producer-parameterized-reordered-helper.wit"
-grep -Fq '[writer-lease-transfer] async-helper' "$core_path"
-grep -Fq '[writer-producer-index-offset] 52' "$core_path"
-grep -Fq '[writer-producer-value-offset] 60' "$core_path"
-if grep -Fq '(func (export "[async-lift]forward_stream")' "$core_path" ||
-  grep -Fq '(func (export "[async-lift]finish_stream")' "$core_path"; then
+rg -Fq '[writer-lease-transfer] async-helper' "$core_path"
+rg -Fq '[writer-producer-index-offset] 52' "$core_path"
+rg -Fq '[writer-producer-value-offset] 60' "$core_path"
+if rg -Fq '(func (export "[async-lift]forward_stream")' "$core_path" ||
+  rg -Fq '(func (export "[async-lift]finish_stream")' "$core_path"; then
   printf 'reordered parameterized helper must not be exported\n' >&2
   exit 1
 fi

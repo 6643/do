@@ -17,13 +17,13 @@ DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$source" \
   --p3-async-component -o "$core_wat"
 
 test -s "$core_wat"
-grep -Fq '[producer-list-pointer]' "$core_wat"
-grep -Fq '[producer-list-length]' "$core_wat"
-grep -Fq '[producer-list-element-stride]' "$core_wat"
-grep -Fq '[producer-list-ticket-offset]' "$core_wat"
-grep -Fq '[producer-stream-capacity]' "$core_wat"
-grep -Fq '[producer-list-transfer]' "$core_wat"
-grep -Fq '[producer-child-before-parent-cleanup]' "$core_wat"
+rg -Fq '[producer-list-pointer]' "$core_wat"
+rg -Fq '[producer-list-length]' "$core_wat"
+rg -Fq '[producer-list-element-stride]' "$core_wat"
+rg -Fq '[producer-list-ticket-offset]' "$core_wat"
+rg -Fq '[producer-stream-capacity]' "$core_wat"
+rg -Fq '[producer-list-transfer]' "$core_wat"
+rg -Fq '[producer-child-before-parent-cleanup]' "$core_wat"
 
 "$toolchain_bin" parse-core "$core_wat" -o "$tmp_dir/c-min-producer.core.wasm"
 printf 'G6.2 C-min producer compiler gate passed\n'

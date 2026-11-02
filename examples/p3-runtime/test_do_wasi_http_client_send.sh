@@ -18,9 +18,9 @@ component="$tmp_dir/client.component.wasm"
 DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$fixture" \
   --p3-async-component --p3-wit-package-output "$wit_dir" -o "$core_wat"
 
-grep -Fq '"wasi:http/client@0.3.0-rc-2025-09-16" "[async-lower]send"' "$core_wat"
-grep -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[resource-drop]request"' "$core_wat"
-grep -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[resource-drop]response"' "$core_wat"
+rg -Fq '"wasi:http/client@0.3.0-rc-2025-09-16" "[async-lower]send"' "$core_wat"
+rg -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[resource-drop]request"' "$core_wat"
+rg -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[resource-drop]response"' "$core_wat"
 cat >>"$wit_dir/worlds.wit" <<'WIT'
 
 interface probe {

@@ -34,14 +34,14 @@ for path in "$wit" "$cancel_wit" "$upstream_wit" "$core_wat" "$cancel_core_wat";
   }
 done
 
-grep -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$wit"
-grep -Fq 'open-at: async func(' "$wit"
-grep -Fq ') -> result<descriptor, error-code>;' "$wit"
-grep -Fq 'run: async func(' "$wit"
-grep -Fq ') -> result<own<descriptor>, error-code>;' "$wit"
-grep -Fq 'world open-at-probe' "$wit"
-grep -Fq 'world open-at-cancel-probe' "$cancel_wit"
-grep -Fq 'cancel: async func();' "$cancel_wit"
+rg -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$wit"
+rg -Fq 'open-at: async func(' "$wit"
+rg -Fq ') -> result<descriptor, error-code>;' "$wit"
+rg -Fq 'run: async func(' "$wit"
+rg -Fq ') -> result<own<descriptor>, error-code>;' "$wit"
+rg -Fq 'world open-at-probe' "$wit"
+rg -Fq 'world open-at-cancel-probe' "$cancel_wit"
+rg -Fq 'cancel: async func();' "$cancel_wit"
 
 tmp_dir=$(mktemp -d /tmp/do-d2-filesystem-open-at-abi.XXXXXX)
 trap 'rm -rf -- "$tmp_dir"' EXIT
@@ -57,7 +57,7 @@ cp "$cancel_wit" "$tmp_dir/cancel/wasi-filesystem-open-at-cancel.wit"
 require_text() {
   local file="$1"
   local fragment="$2"
-  grep -Fq -- "$fragment" "$file" || {
+  rg -Fq -- "$fragment" "$file" || {
     printf 'missing ABI fragment in %s: %s\n' "$file" "$fragment" >&2
     exit 1
   }
@@ -71,8 +71,8 @@ require_text "$tmp_dir/current-regular.wat" '[resource-drop]descriptor'
 require_text "$tmp_dir/current-regular.wat" '[task-return]run'
 require_text "$tmp_dir/current-cancel.wat" '[subtask-cancel]'
 require_text "$tmp_dir/current-cancel.wat" '[task-return]cancel'
-[[ "$(grep -cF '[async-lower][method]' "$tmp_dir/current-regular.wat")" -eq 1 ]]
-[[ "$(grep -cF '[async-lower][method]' "$tmp_dir/current-cancel.wat")" -eq 1 ]]
+[[ "$(rg -cF '[async-lower][method]' "$tmp_dir/current-regular.wat")" -eq 1 ]]
+[[ "$(rg -cF '[async-lower][method]' "$tmp_dir/current-cancel.wat")" -eq 1 ]]
 
 require_core_layout() {
   local file="$1"
@@ -124,12 +124,12 @@ assemble_component() {
   require_text "$component_wat" '"[async-lower][method]descriptor.open-at"'
   require_text "$component_wat" '"[resource-drop]descriptor"'
   require_text "$component_wat" '"[task-return]run"'
-  [[ "$(grep -cF '"[async-lower][method]' "$component_wat")" -eq 2 ]] || {
+  [[ "$(rg -cF '"[async-lower][method]' "$component_wat")" -eq 2 ]] || {
     printf 'unexpected filesystem async method count in %s\n' "$component_wat" >&2
     exit 1
   }
   for forbidden in stat get-type get-flags sync sync-data metadata-hash stat-at; do
-    if grep -Fq "descriptor.$forbidden" "$component_wat"; then
+    if rg -Fq "descriptor.$forbidden" "$component_wat"; then
       printf 'unexpected filesystem method in %s: descriptor.%s\n' "$component_wat" "$forbidden" >&2
       exit 1
     fi

@@ -5,7 +5,7 @@ use std::path::Path;
 use std::pin::Pin;
 use std::task::{Context as TaskContext, Poll};
 use wasmtime::component::{
-    Accessor, AccessorTask, Component, FutureReader, Linker, Resource, ResourceTable, ResourceType,
+    AccessorTask, Component, FutureReader, Linker, Resource, ResourceTable, ResourceType,
     StreamReader,
 };
 use wasmtime::{Config, Engine, Store};
@@ -122,9 +122,9 @@ impl ProbeCase {
     }
 }
 
-impl AccessorTask<State> for HostWake {
-    fn run(self, _accessor: &Accessor<State>) -> impl Future<Output = wasmtime::Result<()>> + Send {
-        async move {
+impl HostWake {
+    fn task(self) -> impl for<'a> AccessorTask<'a, State> {
+        async move |_accessor| {
             let _ = self.completion.send(());
             Ok(())
         }
@@ -278,9 +278,12 @@ async fn run(
                 Delivery::Pending => {
                     let (completion_sender, completion) = oneshot::channel();
                     Some((
-                        accessor.spawn(HostWake {
-                            completion: completion_sender,
-                        }),
+                        accessor.spawn(
+                            HostWake {
+                                completion: completion_sender,
+                            }
+                            .task(),
+                        ),
                         completion,
                     ))
                 }

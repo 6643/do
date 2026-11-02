@@ -27,10 +27,10 @@ done
   exit 1
 }
 
-grep -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$wit"
-grep -Fq 'get-type: async func() -> result<descriptor-type, error-code>;' "$wit"
-grep -Fq 'run: async func(directory: own<descriptor>) -> result<descriptor-type, error-code>;' "$wit"
-grep -Fq 'world get-type-probe' "$wit"
+rg -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$wit"
+rg -Fq 'get-type: async func() -> result<descriptor-type, error-code>;' "$wit"
+rg -Fq 'run: async func(directory: own<descriptor>) -> result<descriptor-type, error-code>;' "$wit"
+rg -Fq 'world get-type-probe' "$wit"
 
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-d2-filesystem-get-type-abi.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
@@ -48,7 +48,7 @@ component_wit="$tmp_dir/get-type.component.wit"
 require_text() {
   local file="$1"
   local text="$2"
-  grep -Fq -- "$text" "$file" || {
+  rg -Fq -- "$text" "$file" || {
     printf 'missing ABI fragment in %s: %s\n' "$file" "$text" >&2
     exit 1
   }

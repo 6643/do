@@ -37,5 +37,5 @@ output=$(
     --bin do-p3-gc-wasi-random-equivalence-runner -- \
     "$tmp_dir/gc.component.wasm" "$tmp_dir/arc.component.wasm"
 )
-grep -Fq 'GC/ARC WASI random list<u8> equivalence passed lengths=16/16 bytes=16/16 calls=1/1' <<<"$output"
+rg -Fq 'GC/ARC WASI random list<u8> equivalence passed lengths=16/16 bytes=16/16 calls=1/1' <<<"$output"
 printf '%s\n' "$output"

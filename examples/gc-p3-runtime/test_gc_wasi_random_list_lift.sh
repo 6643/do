@@ -16,19 +16,19 @@ trap 'rm -rf -- "$tmp_dir"' EXIT
 
 "$zig_bin" run "$probe" -- "$tmp_dir/core.wat" "$repo_root"
 "$toolchain_bin" parse-core "$tmp_dir/core.wat" -o "$tmp_dir/core.wasm"
-if grep -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$tmp_dir/core.wat" >"$tmp_dir/gc-import.stderr"; then
+if rg -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$tmp_dir/core.wat" >"$tmp_dir/gc-import.stderr"; then
   cat "$tmp_dir/gc-import.stderr" >&2
   exit 1
 fi
-grep -Fq '(type $canonical_lift (func (param i64 i32)))' "$tmp_dir/core.wat"
-grep -Fq 'i64.const 16' "$tmp_dir/core.wat"
+rg -Fq '(type $canonical_lift (func (param i64 i32)))' "$tmp_dir/core.wat"
+rg -Fq 'i64.const 16' "$tmp_dir/core.wat"
 
 "$toolchain_bin" embed-component "$wit_dir" "$tmp_dir/core.wasm" probe --features none -o "$tmp_dir/embedded.wasm"
 "$toolchain_bin" new-component "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
 "$toolchain_bin" validate-component "$tmp_dir/component.wasm" --features none
 "$toolchain_bin" component-wit "$tmp_dir/component.wasm" >"$tmp_dir/component.wit"
-grep -Fq 'get-random-bytes: func(len: u64) -> list<u8>' "$tmp_dir/component.wit"
-grep -Fq 'export run: func() -> u32' "$tmp_dir/component.wit"
+rg -Fq 'get-random-bytes: func(len: u64) -> list<u8>' "$tmp_dir/component.wit"
+rg -Fq 'export run: func() -> u32' "$tmp_dir/component.wit"
 
 mutated_root="$tmp_dir/mutated-repository"
 random_relative='src/build/p3_wit/wasi-http-0.3.0-rc-2025-09-16/deps/random/random.wit'
@@ -41,7 +41,7 @@ if mutated_output=$("$zig_bin" run "$probe" -- "$tmp_dir/mutated.wat" "$mutated_
   printf 'mutated descriptor source unexpectedly passed the manifest hash gate\n' >&2
   exit 1
 fi
-grep -Fq 'SourceHashMismatch' <<<"$mutated_output"
+rg -Fq 'SourceHashMismatch' <<<"$mutated_output"
 
 output=$(
   CC="$runner_cc" CXX="$runner_cc" \
@@ -49,6 +49,6 @@ output=$(
   "$cargo_bin" run --quiet --locked --manifest-path "$runner_manifest" \
     --bin do-p3-gc-wasi-random-host-runner -- "$tmp_dir/component.wasm"
 )
-grep -Fq 'GC WASI random list<u8> host lift passed length=16 bytes=16' <<<"$output"
+rg -Fq 'GC WASI random list<u8> host lift passed length=16 bytes=16' <<<"$output"
 printf '%s\n' "$output"
 printf 'bounded WASI random list<u8> GC Component lift passed\n'

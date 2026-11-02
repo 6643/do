@@ -19,8 +19,8 @@ wrong_component="$tmp_dir/request-body-wrong.component.wasm"
 wrong_output="$tmp_dir/request-body-wrong.out"
 
 test -f "$wit"
-grep -Fq 'contents: option<stream<u8>>' "$wit"
-grep -Fq 'acquire: func() -> tuple<stream<u8>, future<result<_, error-code>>>' "$wit"
+rg -Fq 'contents: option<stream<u8>>' "$wit"
+rg -Fq 'acquire: func() -> tuple<stream<u8>, future<result<_, error-code>>>' "$wit"
 
 # This is a canonical async Component core surface. The stream helper imports
 # are deliberately referenced even though the probe does not execute a read;
@@ -127,10 +127,10 @@ for import_name in \
   '[async-lower][stream-read-0]acquire' \
   '[async-lower][stream-write-0]acquire' \
   '[future-drop-readable-1]acquire'; do
-  grep -Fq "\"$import_name\"" "$core_wat"
+  rg -Fq "\"$import_name\"" "$core_wat"
 done
-grep -Fq '(func $request-new (param i32 i32 i32 i32 i32 i32 i32))' "$core_wat"
-grep -Fq '(func $body-acquire (param i32))' "$core_wat"
+rg -Fq '(func $request-new (param i32 i32 i32 i32 i32 i32 i32))' "$core_wat"
+rg -Fq '(func $body-acquire (param i32))' "$core_wat"
 
 "$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
 "$toolchain_bin" embed-component "$wit" "$core_wasm" \
@@ -149,7 +149,7 @@ if "$toolchain_bin" new-component "$wrong_embedded" -o "$wrong_component" >"$wro
   printf 'unregistered body stream import unexpectedly assembled\n' >&2
   exit 1
 fi
-grep -Fq 'failed to resolve import' "$wrong_output"
-grep -Fq '[stream-new-0]body' "$wrong_output"
+rg -Fq 'failed to resolve import' "$wrong_output"
+rg -Fq '[stream-new-0]body' "$wrong_output"
 
 printf 'WASI HTTP request body ABI surface passed\n'

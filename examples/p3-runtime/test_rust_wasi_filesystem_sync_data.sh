@@ -49,11 +49,11 @@ test -x "$toolchain_bin"
   --features component-async -o "$generated_embedded"
 "$toolchain_bin" new-component "$generated_embedded" -o "$generated_component"
 "$toolchain_bin" validate-component "$generated_component" --features component-async
-grep -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$generated_wit"
-grep -Fq 'sync-data: async func()' "$generated_wit"
-grep -Fq 'run: async func(file: own<descriptor>)' "$generated_wit"
-grep -Fq '"[async-lower][method]descriptor.sync-data"' "$generated_core_wat"
-grep -Fq '"[resource-drop]descriptor"' "$generated_core_wat"
+rg -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$generated_wit"
+rg -Fq 'sync-data: async func()' "$generated_wit"
+rg -Fq 'run: async func(file: own<descriptor>)' "$generated_wit"
+rg -Fq '"[async-lower][method]descriptor.sync-data"' "$generated_core_wat"
+rg -Fq '"[resource-drop]descriptor"' "$generated_core_wat"
 
 runner_source="$runner_dir/src/bin/wasi_filesystem_sync_data.rs"
 rustfmt --edition 2024 --check "$runner_source"
@@ -93,15 +93,15 @@ generated_pending=$(run_runner_component "$generated_component" pending)
 generated_error=$(run_runner_component "$generated_component" error)
 generated_repeat=$(run_runner_component "$generated_component" repeat)
 
-grep -Fq 'mode=ready result=Ok host-calls=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$ready"
-grep -Fq 'mode=pending result=Ok host-calls=1 completion-polls=2 external-wakes=1 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$pending"
-grep -Fq 'mode=error result=Err(no-entry) host-calls=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$error"
-grep -Fq 'mode=cancel result=cancelled host-calls=1 completion-polls=1 external-wakes=0 completions=0 future-drops=1 pending-future-drops=1 descriptor-drops=1 table-empty=true' <<<"$cancel"
-grep -Fq 'mode=early-drop result=store-discarded host-calls=1 completion-polls=2 external-wakes=0 completions=0 future-drops=1 pending-future-drops=1 descriptor-drops=0 table-empty=not-applicable' <<<"$early_drop"
-grep -Fq 'mode=repeat results=Ok,Ok host-calls=2 completion-polls=2 external-wakes=0 completions=2 future-drops=2 pending-future-drops=0 descriptor-drops=2 table-empty=true' <<<"$repeat"
-grep -Fq 'mode=ready result=Ok host-calls=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_ready"
-grep -Fq 'mode=pending result=Ok host-calls=1 completion-polls=2 external-wakes=1 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_pending"
-grep -Fq 'mode=error result=Err(no-entry) host-calls=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_error"
-grep -Fq 'mode=repeat results=Ok,Ok host-calls=2 completion-polls=2 external-wakes=0 completions=2 future-drops=2 pending-future-drops=0 descriptor-drops=2 table-empty=true' <<<"$generated_repeat"
+rg -Fq 'mode=ready result=Ok host-calls=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$ready"
+rg -Fq 'mode=pending result=Ok host-calls=1 completion-polls=2 external-wakes=1 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$pending"
+rg -Fq 'mode=error result=Err(no-entry) host-calls=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$error"
+rg -Fq 'mode=cancel result=cancelled host-calls=1 completion-polls=1 external-wakes=0 completions=0 future-drops=1 pending-future-drops=1 descriptor-drops=1 table-empty=true' <<<"$cancel"
+rg -Fq 'mode=early-drop result=store-discarded host-calls=1 completion-polls=2 external-wakes=0 completions=0 future-drops=1 pending-future-drops=1 descriptor-drops=0 table-empty=not-applicable' <<<"$early_drop"
+rg -Fq 'mode=repeat results=Ok,Ok host-calls=2 completion-polls=2 external-wakes=0 completions=2 future-drops=2 pending-future-drops=0 descriptor-drops=2 table-empty=true' <<<"$repeat"
+rg -Fq 'mode=ready result=Ok host-calls=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_ready"
+rg -Fq 'mode=pending result=Ok host-calls=1 completion-polls=2 external-wakes=1 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_pending"
+rg -Fq 'mode=error result=Err(no-entry) host-calls=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_error"
+rg -Fq 'mode=repeat results=Ok,Ok host-calls=2 completion-polls=2 external-wakes=0 completions=2 future-drops=2 pending-future-drops=0 descriptor-drops=2 table-empty=true' <<<"$generated_repeat"
 
 printf 'D2 filesystem descriptor.sync-data Rust/Wasmtime runtime passed\n'

@@ -29,10 +29,10 @@ for marker in \
   'call $future-drop-readable' \
   'call $stream-drop-readable' \
   'call $descriptor-drop'; do
-  grep -Fq "$marker" "$core_wat"
+  rg -Fq "$marker" "$core_wat"
 done
 
-grep -Fq 'record directory-entry {' "$wit"
-grep -Fq 'read-directory: async func() -> tuple<stream<directory-entry>, future<result<_, error-code>>>;' "$wit"
+rg -Fq 'record directory-entry {' "$wit"
+rg -Fq 'read-directory: async func() -> tuple<stream<directory-entry>, future<result<_, error-code>>>;' "$wit"
 
 printf 'WASI G6.2 read-directory lowering passed\n'

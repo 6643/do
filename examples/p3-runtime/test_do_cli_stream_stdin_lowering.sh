@@ -21,18 +21,18 @@ trap 'rm -f "$wat" "$wit" "$core" "$embedded" "$component" "$bounded_wat" "$boun
 
 "$do_bin" build --p3-async-component --p3-wit-output "$wit" "$source" -o "$wat"
 
-grep -Fq '[stream-acquire]read-via-stream' "$wat"
-grep -Fq 'stream.read' "$wat"
-if grep -Fq 'future-cancel-read' "$wat"; then
+rg -Fq '[stream-acquire]read-via-stream' "$wat"
+rg -Fq 'stream.read' "$wat"
+if rg -Fq 'future-cancel-read' "$wat"; then
     exit 1
 fi
-grep -Fq '[stream-eof]Err(nil)' "$wat"
-grep -Fq '[stream-drop-readable]' "$wat"
-grep -Fq 'future-drop-readable' "$wat"
-if grep -Fq '[async-lower][future-read-1]' "$wat"; then
+rg -Fq '[stream-eof]Err(nil)' "$wat"
+rg -Fq '[stream-drop-readable]' "$wat"
+rg -Fq 'future-drop-readable' "$wat"
+if rg -Fq '[async-lower][future-read-1]' "$wat"; then
     exit 1
 fi
-if grep -Fq '__stream_completion_global' "$wat"; then
+if rg -Fq '__stream_completion_global' "$wat"; then
     exit 1
 fi
 
@@ -43,13 +43,13 @@ fi
 "$toolchain_bin" validate-component "$component" --features component-async
 
 "$do_bin" build --p3-async-component --p3-wit-output "$bounded_wit" "$bounded_source" -o "$bounded_wat"
-grep -Fq '(export "[async-lift]read-once"' "$bounded_wat"
-grep -Fq '(export "[callback][async-lift]read-once"' "$bounded_wat"
-grep -Fq 'i32.const 1' "$bounded_wat"
-if grep -Fq '[stream-read-count]' "$bounded_wat"; then
+rg -Fq '(export "[async-lift]read-once"' "$bounded_wat"
+rg -Fq '(export "[callback][async-lift]read-once"' "$bounded_wat"
+rg -Fq 'i32.const 1' "$bounded_wat"
+if rg -Fq '[stream-read-count]' "$bounded_wat"; then
     exit 1
 fi
-grep -Fq 'export read-once: async func()' "$bounded_wit"
+rg -Fq 'export read-once: async func()' "$bounded_wit"
 "$toolchain_bin" parse-core "$bounded_wat" -o "$bounded_core"
 "$toolchain_bin" embed-component "$bounded_wit" "$bounded_core" stream-stdin-probe \
     -o "$bounded_embedded"

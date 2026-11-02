@@ -428,6 +428,6 @@ test "GC struct prelude rejects names colliding after lowering" {
 test "GC sync prelude omits unused u32 array type" {
     var out = std.ArrayList(u8).empty;
     defer out.deinit(std.testing.allocator);
-    try emit_gc_sync_prelude(std.testing.allocator, &out, &.{}, &.{}, false, [_]bool{false} ** gc_layout.scalar_array_specs.len, &.{});
+    try emit_gc_sync_prelude(std.testing.allocator, &out, &.{}, &.{}, false, @splat(false), &.{});
     try std.testing.expect(std.mem.indexOf(u8, out.items, "$do_u32") == null);
 }

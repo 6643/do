@@ -42,7 +42,7 @@ run_rejection() {
     printf '[FAIL] %s left a WAT artifact after rejection\n' "$label" >&2
     return 1
   fi
-  if ! grep -Fq "error[$expected]" "$stderr_file"; then
+  if ! rg -Fq "error[$expected]" "$stderr_file"; then
     printf '[FAIL] %s missing diagnostic error[%s]\n' "$label" "$expected" >&2
     cat "$stderr_file" >&2
     return 1

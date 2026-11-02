@@ -11,9 +11,9 @@ test -x "$toolchain_bin"
 test -f "$wit"
 test -f "$core_wat"
 
-grep -Fq 'package do:async-call-arg-probe@0.1.0;' "$wit"
-grep -Fq 'work: async func(value: u32);' "$wit"
-grep -Fq 'export run: async func();' "$wit"
+rg -Fq 'package do:async-call-arg-probe@0.1.0;' "$wit"
+rg -Fq 'work: async func(value: u32);' "$wit"
+rg -Fq 'export run: async func();' "$wit"
 wit_sha256=$(sha256sum "$wit" | awk '{print $1}')
 
 for marker in \
@@ -25,10 +25,10 @@ for marker in \
   '[guest-async-waitable-drop]' \
   '[guest-async-context-clear]' \
   '[guest-async-frame-free]'; do
-  grep -Fq "$marker" "$core_wat"
+  rg -Fq "$marker" "$core_wat"
 done
 for forbidden in '[task-return]helper' '[resource-drop]' 'stream-' 'list-'; do
-  if grep -Fq "$forbidden" "$core_wat"; then
+  if rg -Fq "$forbidden" "$core_wat"; then
     printf 'forbidden canonical marker: %s\n' "$forbidden" >&2
     exit 1
   fi
@@ -45,7 +45,7 @@ component="$tmp_dir/component.wasm"
 
 "$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
 "$toolchain_bin" embed-component-template "$wit" probe > "$tmp_dir/dummy.wat"
-custom_line=$(grep '^  (@custom "component-type"' "$tmp_dir/dummy.wat" || true)
+custom_line=$(rg '^  (@custom "component-type"' "$tmp_dir/dummy.wat" || true)
 test -n "$custom_line"
 "$toolchain_bin" strip-core "$core_wasm" -o "$stripped_wasm"
 "$toolchain_bin" print-component "$stripped_wasm" > "$stripped_wat"
@@ -66,7 +66,7 @@ for shape in u64 two-params; do
     sed -i 's/value: u32/value: u32, extra: u32/' "$mutated_wit"
   fi
   "$toolchain_bin" embed-component-template "$mutated_wit" probe > "$tmp_dir/$shape.dummy.wat"
-  mutated_line=$(grep '^  (@custom "component-type"' "$tmp_dir/$shape.dummy.wat" || true)
+  mutated_line=$(rg '^  (@custom "component-type"' "$tmp_dir/$shape.dummy.wat" || true)
   test -n "$mutated_line"
   mutated_wat="$tmp_dir/$shape.custom.wat"
   mutated_wasm="$tmp_dir/$shape.custom.wasm"

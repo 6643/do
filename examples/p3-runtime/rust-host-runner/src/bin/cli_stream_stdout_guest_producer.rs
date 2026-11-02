@@ -32,6 +32,7 @@ fn debug(message: &str) {
 )]
 #[component(enum)]
 #[repr(u8)]
+#[allow(dead_code)]
 enum ErrorCode {
     #[component(name = "io")]
     Io,

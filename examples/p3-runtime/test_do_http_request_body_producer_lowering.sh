@@ -24,14 +24,14 @@ for import_name in \
   '"wasi:cli/stdout@0.3.0-rc-2025-09-16" "[stream-drop-writable-0]write-via-stream"' \
   '"wasi:http/types@0.3.0-rc-2025-09-16" "[static]request.new"' \
   '"wasi:http/client@0.3.0-rc-2025-09-16" "[async-lower]send"'; do
-  grep -Fq "$import_name" "$core_wat"
+  rg -Fq "$import_name" "$core_wat"
 done
 
-grep -Fq 'call $start-producer' "$core_wat"
-grep -Fq 'call $construct-producer-request' "$core_wat"
-grep -Fq 'call $start-producer-send' "$core_wat"
-grep -Fq '[future-drop-readable-2]request-new-payload' "$core_wat"
-grep -Fq '(export "[async-lift]wasi:http/probe@0.3.0-rc-2025-09-16#run")' "$core_wat"
+rg -Fq 'call $start-producer' "$core_wat"
+rg -Fq 'call $construct-producer-request' "$core_wat"
+rg -Fq 'call $start-producer-send' "$core_wat"
+rg -Fq '[future-drop-readable-2]request-new-payload' "$core_wat"
+rg -Fq '(export "[async-lift]wasi:http/probe@0.3.0-rc-2025-09-16#run")' "$core_wat"
 
 request_line=$(awk '/\(func \$construct-producer-request/{inside=1} inside && /call \$producer-request-new/{print NR; exit}' "$core_wat")
 close_line=$(awk '/\(func \$start-producer-write/{inside=1} inside && /call \$producer-stream-drop-writable/{print NR; exit}' "$core_wat")

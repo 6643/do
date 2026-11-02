@@ -11,7 +11,7 @@ mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/g6-2-owned-record-producer-rust.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -37,9 +37,9 @@ DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$source" \
 cmp "$wit" "$probe_wit"
 test "$(sha256sum "$wit" | awk '{print $1}')" = \
   6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace
-grep -Fq '[producer-record-transfer]' "$wat"
-grep -Fq '[producer-resource-drop-exactly-once]' "$wat"
-if grep -Fq '__arc_' "$wat"; then
+rg -Fq '[producer-record-transfer]' "$wat"
+rg -Fq '[producer-resource-drop-exactly-once]' "$wat"
+if rg -Fq '__arc_' "$wat"; then
   printf 'owned-record producer emitted an ARC symbol\n' >&2
   exit 1
 fi
@@ -70,15 +70,15 @@ run_mode() {
   output=$(cargo run --quiet --locked --manifest-path "$runner_dir/Cargo.toml" \
     --bin "$bin" -- "$component" "$mode")
   printf '%s\n' "$output"
-  grep -Fq "mode=$mode" <<<"$output"
-  grep -Fq "received=$expected_received" <<<"$output"
-  grep -Fq "result=$expected_result" <<<"$output"
-  grep -Fq "resource-created=$expected_created" <<<"$output"
-  grep -Fq "resource-drops=$expected_drops" <<<"$output"
-  grep -Fq "pending-polls=$expected_pending" <<<"$output"
-  grep -Fq "stream-drops=$expected_stream_drops" <<<"$output"
-  grep -Fq "future-drops=$expected_future_drops" <<<"$output"
-  grep -Fq 'table-empty=true' <<<"$output"
+  rg -Fq "mode=$mode" <<<"$output"
+  rg -Fq "received=$expected_received" <<<"$output"
+  rg -Fq "result=$expected_result" <<<"$output"
+  rg -Fq "resource-created=$expected_created" <<<"$output"
+  rg -Fq "resource-drops=$expected_drops" <<<"$output"
+  rg -Fq "pending-polls=$expected_pending" <<<"$output"
+  rg -Fq "stream-drops=$expected_stream_drops" <<<"$output"
+  rg -Fq "future-drops=$expected_future_drops" <<<"$output"
+  rg -Fq 'table-empty=true' <<<"$output"
 }
 
 run_mode ready '[111]' 'Ok(())' 1 1 0 1 1

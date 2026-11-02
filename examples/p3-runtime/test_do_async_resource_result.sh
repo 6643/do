@@ -18,17 +18,17 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build "$fixture" \
   --p3-async-component --p3-wit-output "$wit_path" -o "$core_path"
 
 cmp "$wit" "$wit_path"
-grep -Fq '[async-lower]send' "$core_path"
-grep -Fq '[resource-drop]request' "$core_path"
-grep -Fq '[resource-drop]response' "$core_path"
-grep -Fq '[task-return]run' "$core_path"
-grep -Fq '(type $async-frame (struct' "$core_path"
-grep -Fq '(field $slot-result-ptr (mut i32))' "$core_path"
-grep -Fq '(table $async-frames 0 (ref null $async-frame))' "$core_path"
-grep -Fq '$result-buffer-for-handle' "$core_path"
-grep -Fq '[resource-result-error-terminal]' "$core_path"
-grep -Fq 'i32.const 0' "$core_path"
-if grep -Fq 'global $frame-next' "$core_path"; then
+rg -Fq '[async-lower]send' "$core_path"
+rg -Fq '[resource-drop]request' "$core_path"
+rg -Fq '[resource-drop]response' "$core_path"
+rg -Fq '[task-return]run' "$core_path"
+rg -Fq '(type $async-frame (struct' "$core_path"
+rg -Fq '(field $slot-result-ptr (mut i32))' "$core_path"
+rg -Fq '(table $async-frames 0 (ref null $async-frame))' "$core_path"
+rg -Fq '$result-buffer-for-handle' "$core_path"
+rg -Fq '[resource-result-error-terminal]' "$core_path"
+rg -Fq 'i32.const 0' "$core_path"
+if rg -Fq 'global $frame-next' "$core_path"; then
   printf 'async resource Result lowering still uses the linear-memory frame allocator\n' >&2
   exit 1
 fi

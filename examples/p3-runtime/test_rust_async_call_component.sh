@@ -17,20 +17,20 @@ for mode in ready pending cancel-inline cancel-child; do
         --bin do-p3-async-call-component-host-runner -- "$component" "$mode")
     case "$mode" in
         ready)
-            grep -Fq 'mode=ready child-completions=2 child-drops=2 host-future-drops=2 table-empty=true' <<<"$output"
+            rg -Fq 'mode=ready child-completions=2 child-drops=2 host-future-drops=2 table-empty=true' <<<"$output"
             ;;
         pending)
-            grep -Fq 'mode=pending child-completions=2 child-drops=2 host-future-drops=2 table-empty=true' <<<"$output"
+            rg -Fq 'mode=pending child-completions=2 child-drops=2 host-future-drops=2 table-empty=true' <<<"$output"
             ;;
         cancel-inline)
-            grep -Fq 'mode=cancel-inline child-cancellations=1 child-drops=1 host-future-drops=1 table-empty=true' <<<"$output"
+            rg -Fq 'mode=cancel-inline child-cancellations=1 child-drops=1 host-future-drops=1 table-empty=true' <<<"$output"
             ;;
         cancel-child)
-            grep -Fq 'mode=cancel-child child-cancellations=1 child-drops=2 host-future-drops=2 table-empty=true' <<<"$output"
+            rg -Fq 'mode=cancel-child child-cancellations=1 child-drops=2 host-future-drops=2 table-empty=true' <<<"$output"
             ;;
     esac
     if [[ "$mode" == ready || "$mode" == pending ]]; then
-        grep -Fq 'async-call root-terminal=1 duplicate-drop=0' <<<"$output"
+        rg -Fq 'async-call root-terminal=1 duplicate-drop=0' <<<"$output"
     fi
     printf '%s\n' "$output"
 done

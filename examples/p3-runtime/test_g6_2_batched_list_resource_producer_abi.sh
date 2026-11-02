@@ -29,12 +29,12 @@ if [[ ! -f "$wit" ]]; then
   exit 1
 fi
 
-grep -Fq 'package do:g6-2-batched-list-producer@0.1.0;' "$wit"
-grep -Fq 'world batched-list-producer' "$wit"
-grep -Fq 'data: stream<list<resource-entry>>' "$wit"
-grep -Fq 'i32.const 111' "$wat"
-grep -Fq 'i32.const 222' "$wat"
-grep -Fq 'i32.const 333' "$wat"
+rg -Fq 'package do:g6-2-batched-list-producer@0.1.0;' "$wit"
+rg -Fq 'world batched-list-producer' "$wit"
+rg -Fq 'data: stream<list<resource-entry>>' "$wit"
+rg -Fq 'i32.const 111' "$wat"
+rg -Fq 'i32.const 222' "$wat"
+rg -Fq 'i32.const 333' "$wat"
 for marker in \
   'producer-batch-0' \
   'producer-batch-1' \
@@ -77,7 +77,7 @@ for mode in ready pending sink-error-first sink-error-second cancel-before-first
   output=$(cargo run --quiet --manifest-path "$runner_dir/Cargo.toml" \
     --bin "$bin" -- "$component" "$mode")
   printf '%s\n' "$output"
-  grep -Fq 'table-empty=true' <<<"$output"
+  rg -Fq 'table-empty=true' <<<"$output"
 done
 
 printf 'G6.2 batched list resource producer canonical ABI probe passed\n'

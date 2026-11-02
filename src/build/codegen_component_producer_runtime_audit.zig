@@ -199,10 +199,10 @@ fn validate_fields(runtime: RuntimeAudit) AuditError!void {
 }
 
 fn validate_ownership_states(states: []const OwnershipState) AuditError!void {
-    var seen_kinds = [_]bool{false} ** @typeInfo(StateKind).@"enum".fields.len;
+    var seen_kinds: [@typeInfo(StateKind).@"enum".field_names.len]bool = @splat(false);
     for (states, 0..) |state, index| {
         if (state.name.len == 0) return error.InvalidRuntimeField;
-        const kind_index = @intFromEnum(state.kind);
+        const kind_index = @backingInt(state.kind);
         if (seen_kinds[kind_index]) return error.DuplicateStateValue;
         seen_kinds[kind_index] = true;
         for (states[0..index]) |prior| {
@@ -253,11 +253,11 @@ fn validate_bindings(runtime: RuntimeAudit) AuditError!void {
 fn validate_cleanup(runtime: RuntimeAudit) AuditError!void {
     if (runtime.cleanup_steps.len == 0) return error.InvalidCleanupOrder;
 
-    var seen = [_]bool{false} ** @typeInfo(producer_contract.CleanupStage).@"enum".fields.len;
+    var seen: [@typeInfo(producer_contract.CleanupStage).@"enum".field_names.len]bool = @splat(false);
     var previous: ?u8 = null;
     for (runtime.cleanup_steps) |step| {
         if (step.symbol.len == 0) return error.MissingCleanupSymbol;
-        const ordinal = @intFromEnum(step.stage);
+        const ordinal = @backingInt(step.stage);
         if (seen[ordinal]) return error.DuplicateCleanupStage;
         seen[ordinal] = true;
         if (previous) |prior| {

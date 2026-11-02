@@ -7,7 +7,7 @@ publish = false
 [dependencies]
 anyhow = "1"
 futures = "0.3"
-wasmtime = { version = "=48.0.1", default-features = false, features = ["cranelift", "runtime", "wat", "gc-drc", "component-model-async"] }
+wasmtime = { version = "50", default-features = false, features = ["cranelift", "runtime", "wat", "gc-drc", "component-model-async"] }
 
 [[bin]]
 name = "do-p3-resource-probe-host-runner"
@@ -255,7 +255,7 @@ path = "src/bin/gc_marshal_record_mixed_text_u32_list_lift.rs"
 
 [[bin]]
 name = "do-p3-gc-marshal-record-mixed-text-u32-list-lift-equivalence-runner"
-path = "src/bin/gc_marshal_record_mixed_text_u32_list_lift.rs"
+path = "src/bin/gc_marshal_record_mixed_text_u32_list_lift_equivalence.rs"
 
 [[bin]]
 name = "do-p3-gc-marshal-record-mixed-text-two-u32-lists-lift-host-runner"
@@ -263,7 +263,7 @@ path = "src/bin/gc_marshal_record_mixed_text_two_u32_lists_lift.rs"
 
 [[bin]]
 name = "do-p3-gc-marshal-record-mixed-text-two-u32-lists-lift-equivalence-runner"
-path = "src/bin/gc_marshal_record_mixed_text_two_u32_lists_lift.rs"
+path = "src/bin/gc_marshal_record_mixed_text_two_u32_lists_lift_equivalence.rs"
 
 [[bin]]
 name = "do-p3-gc-marshal-record-mixed-text-byte-list-lift-host-runner"
@@ -271,7 +271,7 @@ path = "src/bin/gc_marshal_record_mixed_text_byte_list_lift.rs"
 
 [[bin]]
 name = "do-p3-gc-marshal-record-mixed-text-byte-list-lift-equivalence-runner"
-path = "src/bin/gc_marshal_record_mixed_text_byte_list_lift.rs"
+path = "src/bin/gc_marshal_record_mixed_text_byte_list_lift_equivalence.rs"
 
 [[bin]]
 name = "do-p3-gc-marshal-record-nested-host-runner"
@@ -395,7 +395,7 @@ path = "src/bin/gc_marshal_record_u32_list_lift.rs"
 
 [[bin]]
 name = "do-p3-gc-marshal-record-u32-list-lift-equivalence-runner"
-path = "src/bin/gc_marshal_record_u32_list_lift.rs"
+path = "src/bin/gc_marshal_record_u32_list_lift_equivalence.rs"
 
 [[bin]]
 name = "do-p3-gc-marshal-record-byte-list-lift-host-runner"
@@ -403,7 +403,7 @@ path = "src/bin/gc_marshal_record_byte_list_lift.rs"
 
 [[bin]]
 name = "do-p3-gc-marshal-record-byte-list-lift-equivalence-runner"
-path = "src/bin/gc_marshal_record_byte_list_lift.rs"
+path = "src/bin/gc_marshal_record_byte_list_lift_equivalence.rs"
 
 [[bin]]
 name = "do-p3-gc-marshal-record-indirect-lower-host-runner"

@@ -37,8 +37,8 @@ ready=$(DO_STREAM_WRITER_VARIANT=custom DO_STREAM_WRITER_CALLBACK_READY=1 cargo 
 error_case=$(DO_STREAM_WRITER_VARIANT=custom DO_STREAM_WRITER_ERROR=1 cargo run --quiet \
   --manifest-path "$runner_dir/Cargo.toml" --bin do-p3-cli-stream-stdout-host-runner -- "$component_path")
 
-grep -Fq 'Rust custom stream writer producer passed items=[65, 66] host-call-count=1 stream-dropped=true' <<<"$output"
-grep -Fq 'Rust custom stream writer producer immediate passed result=ok host-call-count=1' <<<"$ready"
-grep -Fq 'Rust custom stream writer producer error passed result=err:pipe host-call-count=1 stream-dropped=true' <<<"$error_case"
+rg -Fq 'Rust custom stream writer producer passed items=[65, 66] host-call-count=1 stream-dropped=true' <<<"$output"
+rg -Fq 'Rust custom stream writer producer immediate passed result=ok host-call-count=1' <<<"$ready"
+rg -Fq 'Rust custom stream writer producer error passed result=err:pipe host-call-count=1 stream-dropped=true' <<<"$error_case"
 
 printf 'two-hop async-helper producer lease pending/ready/error runtime passed\n'

@@ -24,9 +24,9 @@ for protocol in tcp udp; do
     --p3-wit-output "$wit" \
     -o "$wat" >/dev/null
 
-  grep -Fq "[static]${protocol}-socket.create" "$wat"
-  grep -Fq "[method]${protocol}-socket.bind" "$wat"
-  grep -Fq "[resource-drop]${protocol}-socket" "$wat"
+  rg -Fq "[static]${protocol}-socket.create" "$wat"
+  rg -Fq "[method]${protocol}-socket.bind" "$wat"
+  rg -Fq "[resource-drop]${protocol}-socket" "$wat"
   "$toolchain_bin" parse-core "$wat" -o "$core"
   "$toolchain_bin" embed-component "$wit" "$core" socket-probe -o "$embedded"
   "$toolchain_bin" new-component "$embedded" -o "$component"
@@ -42,6 +42,6 @@ if DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   printf 'negative socket target unexpectedly compiled\n' >&2
   exit 1
 fi
-grep -Fq 'UnsupportedP3WasiSocketsCreateBindDropComponent' "$negative_stderr"
+rg -Fq 'UnsupportedP3WasiSocketsCreateBindDropComponent' "$negative_stderr"
 
 printf 'D2 socket Component assembly passed tcp+udp\n'

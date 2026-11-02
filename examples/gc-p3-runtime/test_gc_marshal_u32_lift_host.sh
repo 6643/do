@@ -33,7 +33,7 @@ fi
 
 gc_core_wat="$tmp_dir/generated-gc.core.wat"
 "$zig_bin" run "$probe" -- "$gc_core_wat" "$repo_root"
-if grep -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$gc_core_wat" >"$tmp_dir/gc-import.stderr"; then
+if rg -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$gc_core_wat" >"$tmp_dir/gc-import.stderr"; then
   cat "$tmp_dir/gc-import.stderr" >&2
   exit 1
 fi
@@ -42,7 +42,7 @@ fi
 "$toolchain_bin" new-component "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
 "$toolchain_bin" validate-component "$tmp_dir/component.wasm" --features none
 "$toolchain_bin" component-wit "$tmp_dir/component.wasm" >"$tmp_dir/component.wit"
-grep -Fq 'receive: func() -> list<u32>' "$tmp_dir/component.wit"
+rg -Fq 'receive: func() -> list<u32>' "$tmp_dir/component.wit"
 
 output=$(
   CC="$cc_bin" CXX="$cxx_bin" \
@@ -50,6 +50,6 @@ output=$(
   "$cargo_bin" run --quiet --locked --manifest-path "$runner_manifest" \
     --bin do-p3-gc-marshal-u32-lift-host-runner -- "$tmp_dir/component.wasm"
 )
-grep -Fq 'GC list<u32> lift host adapter passed checksum=60' <<<"$output"
+rg -Fq 'GC list<u32> lift host adapter passed checksum=60' <<<"$output"
 printf '%s\n' "$output"
 printf 'manifest-backed bounded GC list<u32> lift Component assembly passed\n'

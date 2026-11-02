@@ -43,10 +43,10 @@ generated_component="$tmp_dir/generated.component.wasm"
   --features component-async -o "$generated_embedded"
 "$toolchain_bin" new-component "$generated_embedded" -o "$generated_component"
 "$toolchain_bin" validate-component "$generated_component" --features component-async
-grep -Fq 'get-flags: async func() -> result<descriptor-flags, error-code>;' "$generated_wit"
-grep -Fq 'run: async func(directory: own<descriptor>) -> result<descriptor-flags, error-code>;' "$generated_wit"
-grep -Fq '"[async-lower][method]descriptor.get-flags"' "$generated_core_wat"
-grep -Fq '"[resource-drop]descriptor"' "$generated_core_wat"
+rg -Fq 'get-flags: async func() -> result<descriptor-flags, error-code>;' "$generated_wit"
+rg -Fq 'run: async func(directory: own<descriptor>) -> result<descriptor-flags, error-code>;' "$generated_wit"
+rg -Fq '"[async-lower][method]descriptor.get-flags"' "$generated_core_wat"
+rg -Fq '"[resource-drop]descriptor"' "$generated_core_wat"
 
 rustfmt --edition 2024 --check "$runner_source"
 
@@ -84,13 +84,13 @@ generated_ready=$(run_runner "$generated_component" ready)
 generated_pending=$(run_runner "$generated_component" pending)
 generated_error=$(run_runner "$generated_component" error)
 
-grep -Fq 'mode=ready result=Ok(read|write) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$ready"
-grep -Fq 'mode=pending result=Ok(read|write) host-calls=1 completion-polls=2 external-wakes=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$pending"
-grep -Fq 'mode=error result=Err(no-entry) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$error"
-grep -Fq 'mode=cancel result=cancelled host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=1 descriptor-drops=1 table-empty=true' <<<"$cancel"
-grep -Fq 'mode=ready result=Ok(read|write) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_ready"
-grep -Fq 'mode=pending result=Ok(read|write) host-calls=1 completion-polls=2 external-wakes=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_pending"
-grep -Fq 'mode=error result=Err(no-entry) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_error"
+rg -Fq 'mode=ready result=Ok(read|write) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$ready"
+rg -Fq 'mode=pending result=Ok(read|write) host-calls=1 completion-polls=2 external-wakes=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$pending"
+rg -Fq 'mode=error result=Err(no-entry) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$error"
+rg -Fq 'mode=cancel result=cancelled host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=1 descriptor-drops=1 table-empty=true' <<<"$cancel"
+rg -Fq 'mode=ready result=Ok(read|write) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_ready"
+rg -Fq 'mode=pending result=Ok(read|write) host-calls=1 completion-polls=2 external-wakes=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_pending"
+rg -Fq 'mode=error result=Err(no-entry) host-calls=1 completion-polls=1 external-wakes=0 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_error"
 
 printf '%s\n' "$ready" "$pending" "$error" "$cancel" "$generated_ready" "$generated_pending" "$generated_error"
 printf 'D2 filesystem descriptor.get-flags Rust/Wasmtime runtime passed\n'

@@ -21,7 +21,7 @@ for marker in \
   '[open-at-ready]' \
   '[open-at-error]' \
   '[open-at-pending]'; do
-  grep -Fq "$marker" "$output" || {
+  rg -Fq "$marker" "$output" || {
     printf 'missing compiler marker: %s\n' "$marker" >&2
     exit 1
   }

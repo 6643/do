@@ -21,9 +21,9 @@ component_target=${DO_P3_ASYNC_COMPONENT_TARGET:---p3-async-component}
 
 DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$component_target" "$fixture" \
   --p3-wit-output "$wit_file" -o "$wat_file"
-grep -Fq '[event-tag-offset]' "$wat_file"
-grep -Fq '[event-payload-offset]' "$wat_file"
-grep -Fq '[resource-drop]ticket' "$wat_file"
+rg -Fq '[event-tag-offset]' "$wat_file"
+rg -Fq '[event-payload-offset]' "$wat_file"
+rg -Fq '[resource-drop]ticket' "$wat_file"
 
 "$toolchain_bin" parse-core "$wat_file" -o "$core_wasm"
 "$toolchain_bin" embed-component "$wit_file" "$core_wasm" \
@@ -44,7 +44,7 @@ run_mode() {
   output=$(cargo run --quiet --manifest-path "$runner_dir/Cargo.toml" \
     --bin do-p3-variant-resource-stream-abi -- "$component" "$mode")
   for expected in "$@"; do
-    grep -Fq "$expected" <<<"$output"
+    rg -Fq "$expected" <<<"$output"
   done
 }
 

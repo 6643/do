@@ -21,9 +21,9 @@ run_mode() {
   local output
   output=$("$cargo_bin" run --quiet --locked --manifest-path "$runner_dir/Cargo.toml" \
     --bin do-p3-future-owned-canonical-abi -- "$component" "$mode")
-  grep -Fq "$expected" <<<"$output"
-  grep -Fq 'observed-payload-offset=12' <<<"$output"
-  grep -Fq 'observed-ticket-present-offset=20' <<<"$output"
+  rg -Fq "$expected" <<<"$output"
+  rg -Fq 'observed-payload-offset=12' <<<"$output"
+  rg -Fq 'observed-ticket-present-offset=20' <<<"$output"
   printf '%s\n' "$output"
 }
 

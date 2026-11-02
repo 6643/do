@@ -31,10 +31,10 @@ cmp -s "$canonical_template" "$compiler_template"
 
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   --p3-async-component "$fixture" --p3-wit-output "$wit" -o "$wat"
-grep -Fq 'do:record-resource-list-stream-probe/source@0.1.0' "$wat"
-grep -Fq 'do:record-resource-list-stream-probe/probe@0.1.0' "$wat"
-grep -Fq 'stream<list<resource-entry>>' "$wit"
-grep -Fq 'ticket: own<ticket>' "$wit"
+rg -Fq 'do:record-resource-list-stream-probe/source@0.1.0' "$wat"
+rg -Fq 'do:record-resource-list-stream-probe/probe@0.1.0' "$wat"
+rg -Fq 'stream<list<resource-entry>>' "$wit"
+rg -Fq 'ticket: own<ticket>' "$wit"
 
 marker_value() {
   local marker="$1"
@@ -77,10 +77,10 @@ expect_ready() {
   local created="$3"
   local output
   output=$(run_generated "$component" "$mode")
-  grep -Fq "entries=$entries resource-created=$created resource-drops=$created" <<<"$output"
-  grep -Fq 'table-empty=true' <<<"$output"
-  grep -Fq "observed-list-pointer=$pointer observed-list-length-offset=$length_offset" <<<"$output"
-  grep -Fq "observed-list-element-stride=$stride observed-list-ticket-offset=$ticket_offset" <<<"$output"
+  rg -Fq "entries=$entries resource-created=$created resource-drops=$created" <<<"$output"
+  rg -Fq 'table-empty=true' <<<"$output"
+  rg -Fq "observed-list-pointer=$pointer observed-list-length-offset=$length_offset" <<<"$output"
+  rg -Fq "observed-list-element-stride=$stride observed-list-ticket-offset=$ticket_offset" <<<"$output"
 }
 
 expect_ready ready-empty '[]' 0
@@ -145,7 +145,7 @@ expect_mode() {
   local output
   output=$(run_generated "$component_path" "$mode")
   for expected in "$@"; do
-    grep -Fq "$expected" <<<"$output"
+    rg -Fq "$expected" <<<"$output"
   done
 }
 

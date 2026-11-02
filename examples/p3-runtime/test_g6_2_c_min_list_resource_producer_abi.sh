@@ -135,7 +135,7 @@ expect_trap() {
     printf 'C-min mode unexpectedly completed: %s\n%s\n' "$mode" "$output" >&2
     return 1
   fi
-  grep -Fqi "$expected_error" <<<"$output"
+  rg -Fqi "$expected_error" <<<"$output"
 }
 
 malformed_component=$(build_variant malformed-len)

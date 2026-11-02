@@ -40,9 +40,9 @@ for protocol in tcp udp; do
       DO_D2_SOCKET_FAILURE="$failure" \
       cargo run --quiet --bin do-p3-wasi-sockets-real -- "$component" "$protocol")
     case "$failure" in
-      none) grep -Fq "real-sockets passed protocol=${protocol} failure=none result=1 create=1 bind=1 drop=1 errors=0 table-empty=true" <<<"$output" ;;
-      create) grep -Fq "real-sockets passed protocol=${protocol} failure=create result=0 create=1 bind=0 drop=0 errors=1 table-empty=true" <<<"$output" ;;
-      bind) grep -Fq "real-sockets passed protocol=${protocol} failure=bind result=2 create=1 bind=1 drop=1 errors=1 table-empty=true" <<<"$output" ;;
+      none) rg -Fq "real-sockets passed protocol=${protocol} failure=none result=1 create=1 bind=1 drop=1 errors=0 table-empty=true" <<<"$output" ;;
+      create) rg -Fq "real-sockets passed protocol=${protocol} failure=create result=0 create=1 bind=0 drop=0 errors=1 table-empty=true" <<<"$output" ;;
+      bind) rg -Fq "real-sockets passed protocol=${protocol} failure=bind result=2 create=1 bind=1 drop=1 errors=1 table-empty=true" <<<"$output" ;;
     esac
   done
 done

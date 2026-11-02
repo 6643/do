@@ -98,7 +98,7 @@ src/lsp/        do lsp diagnostics + formatting + semantic tokens + hover + comp
 
 ```bash
 cd src
-zig build -Doptimize=ReleaseSmall
+zig build --prefix .. -Doptimize=ReleaseSmall
 # 产物: bin/do
 
 # 编译

@@ -27,8 +27,8 @@ test -f "$runner_dir/src/bin/future_owned_canonical_abi.rs"
   --features core-gc-async -o "$embedded"
 "$toolchain_bin" new-component "$embedded" -o "$component"
 "$toolchain_bin" validate-component "$component" --features core-gc-async
-"$toolchain_bin" component-wit "$component" | grep -Fq 'read: func() -> future<ticket>'
-"$toolchain_bin" component-wit "$component" | grep -Fq 'run: async func(mode: u32)'
+"$toolchain_bin" component-wit "$component" | rg -Fq 'read: func() -> future<ticket>'
+"$toolchain_bin" component-wit "$component" | rg -Fq 'run: async func(mode: u32)'
 
 marker_value() {
   local marker="$1"
@@ -56,9 +56,9 @@ run_mode() {
   local output
   output=$(cargo run --quiet --manifest-path "$runner_dir/Cargo.toml" \
     --bin do-p3-future-owned-canonical-abi -- "$component" "$mode")
-  grep -Fq "$expected" <<<"$output"
-  grep -Fq "observed-payload-offset=$payload_offset" <<<"$output"
-  grep -Fq "observed-ticket-present-offset=$ticket_present_offset" <<<"$output"
+  rg -Fq "$expected" <<<"$output"
+  rg -Fq "observed-payload-offset=$payload_offset" <<<"$output"
+  rg -Fq "observed-ticket-present-offset=$ticket_present_offset" <<<"$output"
 }
 
 run_mode 0 'mode=ready host-calls=1 polls=1 wakes=0 cancel-calls=0 future-drops=1 pending-future-drops=0 resource-created=1 resource-drops=1 table-empty=true'

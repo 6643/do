@@ -34,13 +34,13 @@ runner_env=(
   DO_D2_FILESYSTEM_ROOT="$root"
 )
 output=$(cd "$runner_dir" && env "${runner_env[@]}" cargo run --quiet --bin do-p3-wasi-filesystem-real -- "$component")
-grep -Fq 'real-filesystem passed missing=false create=1 open=1 sync=1 drop=2' <<<"$output"
-grep -Fq 'bytes=15' <<<"$output"
-grep -Fq 'table-empty=true' <<<"$output"
+rg -Fq 'real-filesystem passed missing=false create=1 open=1 sync=1 drop=2' <<<"$output"
+rg -Fq 'bytes=15' <<<"$output"
+rg -Fq 'table-empty=true' <<<"$output"
 
 missing_output=$(cd "$runner_dir" && env "${runner_env[@]}" DO_D2_FILESYSTEM_MISSING=1 \
   cargo run --quiet --bin do-p3-wasi-filesystem-real -- "$component")
-grep -Fq 'real-filesystem passed missing=true create=1 open=0 sync=0 drop=1' <<<"$missing_output"
-grep -Fq 'table-empty=true' <<<"$missing_output"
+rg -Fq 'real-filesystem passed missing=true create=1 open=0 sync=0 drop=1' <<<"$missing_output"
+rg -Fq 'table-empty=true' <<<"$missing_output"
 
 printf 'D2 real filesystem preopen/open/sync passed\n'

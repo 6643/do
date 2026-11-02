@@ -14,9 +14,9 @@ component_path="$tmp_dir/loop-countdown-pre-guard.component.wasm"
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build "$repo_root/examples/p3-runtime/loop-countdown-pre-guard-component.do" \
   --p3-async-component --p3-wit-output "$wit_path" -o "$core_path"
 
-grep -Fq 'struct.get $async-frame $slot-remaining' "$core_path"
-grep -Fq 'i64.eqz' "$core_path"
-grep -Fq 'call $task-return' "$core_path"
+rg -Fq 'struct.get $async-frame $slot-remaining' "$core_path"
+rg -Fq 'i64.eqz' "$core_path"
+rg -Fq 'call $task-return' "$core_path"
 
 "$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
 "$toolchain_bin" embed-component "$wit_path" "$core_wasm" probe -o "$embedded_path"

@@ -3,11 +3,11 @@ use std::fs::OpenOptions;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::task::Waker;
 use std::task::{Context as TaskContext, Poll};
-use wasmtime::component::{
-    Accessor, AccessorTask, Component, Linker, Resource, ResourceTable, ResourceType, TypedFunc,
-};
+use wasmtime::component::{Component, Linker, Resource, ResourceTable, ResourceType, TypedFunc};
 use wasmtime::{Config, Engine, Store};
 
 const TYPES_INSTANCE: &str = "wasi:filesystem/types@0.3.0-rc-2025-09-16";
@@ -121,20 +121,11 @@ struct State {
     stats: Arc<Mutex<Stats>>,
 }
 
-struct RunTask {
-    run: TypedFunc<(Resource<Descriptor>,), (std::result::Result<(), ErrorCode>,)>,
-    descriptor: Resource<Descriptor>,
-}
-
-impl AccessorTask<State> for RunTask {
-    fn run(self, accessor: &Accessor<State>) -> impl Future<Output = wasmtime::Result<()>> + Send {
-        async move {
-            self.run
-                .call_concurrent(accessor, (self.descriptor,))
-                .await
-                .map(|_| ())
-        }
-    }
+macro_rules! spawn_run_task {
+    ($run:expr, $($arg:expr),+ $(,)?) => {{
+        let run = $run;
+        async move |accessor| run.call_concurrent(accessor, ($(($arg),)+)).await.map(|_| ())
+    }};
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -173,6 +164,31 @@ struct SyncFuture {
     never_ready: bool,
     was_pending: bool,
     completed: bool,
+    cancellation: Cancellation,
+}
+
+#[derive(Clone, Default)]
+struct Cancellation {
+    requested: Arc<AtomicBool>,
+    waker: Arc<Mutex<Option<Waker>>>,
+}
+
+impl Cancellation {
+    fn request(&self) {
+        self.requested.store(true, Ordering::Release);
+        if let Some(waker) = self
+            .waker
+            .lock()
+            .expect("cancel waker mutex poisoned")
+            .take()
+        {
+            waker.wake();
+        }
+    }
+
+    fn is_requested(&self) -> bool {
+        self.requested.load(Ordering::Acquire)
+    }
 }
 
 impl Future for SyncFuture {
@@ -183,8 +199,16 @@ impl Future for SyncFuture {
             .lock()
             .expect("sync stats mutex poisoned")
             .completion_polls += 1;
+        if self.cancellation.is_requested() {
+            return Poll::Ready(Ok((Err(ErrorCode::Interrupted),)));
+        }
         if self.never_ready {
             self.was_pending = true;
+            *self
+                .cancellation
+                .waker
+                .lock()
+                .expect("cancel waker mutex poisoned") = Some(cx.waker().clone());
             return Poll::Pending;
         }
         if self.pending_once && !self.was_pending {
@@ -235,6 +259,7 @@ fn install_types(
     linker: &mut Linker<State>,
     mode: Mode,
     stats: Arc<Mutex<Stats>>,
+    cancellation: Cancellation,
 ) -> wasmtime::Result<()> {
     let mut types = linker.instance(TYPES_INSTANCE)?;
     types.resource(
@@ -284,6 +309,7 @@ fn install_types(
                 never_ready: mode == Mode::Cancel,
                 was_pending: false,
                 completed: false,
+                cancellation: cancellation.clone(),
             })
         },
     )?;
@@ -322,8 +348,14 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
     let component = map_wasmtime(Component::from_file(&engine, component_path))
         .with_context(|| format!("load component {}", component_path.display()))?;
     let stats = Arc::new(Mutex::new(Stats::default()));
+    let cancellation = Cancellation::default();
     let mut linker = Linker::new(&engine);
-    map_wasmtime(install_types(&mut linker, mode, Arc::clone(&stats)))?;
+    map_wasmtime(install_types(
+        &mut linker,
+        mode,
+        Arc::clone(&stats),
+        cancellation.clone(),
+    ))?;
 
     let mut store = Store::new(
         &engine,
@@ -350,14 +382,14 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
     )?;
 
     let result = if mode == Mode::Cancel {
-        let cancel_export = instance
-            .get_export_index(&mut store, Some(&probe), "cancel")
-            .context("missing filesystem probe.cancel export")?;
-        let cancel = map_wasmtime(instance.get_typed_func::<(), ()>(&mut store, &cancel_export))?;
-        let run_handle = map_wasmtime(store.spawn(RunTask { run, descriptor }))?;
+        // Wasmtime 50 rejects guest subtask-cancel while the task is in a
+        // waitable set. Drive cancellation from the host instead: wake the
+        // pending host future, let it return interrupted, and await normal
+        // component cleanup.
         map_wasmtime(map_wasmtime(
             store
-                .run_concurrent(async |_accessor| {
+                .run_concurrent(async |accessor| {
+                    let run_handle = accessor.spawn(spawn_run_task!(run, descriptor))?;
                     futures::future::poll_fn(|cx| {
                         let snapshot = *stats.lock().expect("sync stats mutex poisoned");
                         if snapshot.host_calls == 1 && snapshot.completion_polls == 1 {
@@ -368,19 +400,7 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
                         }
                     })
                     .await;
-                    Ok::<(), wasmtime::Error>(())
-                })
-                .await,
-        )?)?;
-        let cancelled = map_wasmtime(
-            store
-                .run_concurrent(async |accessor| cancel.call_concurrent(accessor, ()).await)
-                .await,
-        )?;
-        map_wasmtime(cancelled)?;
-        map_wasmtime(map_wasmtime(
-            store
-                .run_concurrent(async move |_accessor| {
+                    cancellation.request();
                     let _ = run_handle.await;
                     Ok::<(), wasmtime::Error>(())
                 })

@@ -25,12 +25,12 @@ DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$source" \
 test -s "$core_wat"
 test -s "$wit"
 
-grep -Fq 'package do:g6-2-batched-list-producer@0.1.0;' "$wit"
-grep -Fq 'data: stream<list<resource-entry>>' "$wit"
-grep -Fq 'world batched-list-producer' "$wit"
-grep -Fq 'export produce: async func(mode: u32)' "$wit"
+rg -Fq 'package do:g6-2-batched-list-producer@0.1.0;' "$wit"
+rg -Fq 'data: stream<list<resource-entry>>' "$wit"
+rg -Fq 'world batched-list-producer' "$wit"
+rg -Fq 'export produce: async func(mode: u32)' "$wit"
 
-if grep -Eq 'do:g6-2-c-min|dynamic-list-producer|c-min-producer' "$wit" "$core_wat"; then
+if rg -q 'do:g6-2-c-min|dynamic-list-producer|c-min-producer' "$wit" "$core_wat"; then
   printf 'batched producer emitted a neighboring producer package marker\n' >&2
   exit 1
 fi
@@ -49,17 +49,17 @@ for marker in \
   'producer-batch-transfer-1' \
   'producer-batch-child-before-parent-cleanup' \
   'producer-batch-list-release'; do
-  grep -Eq "^[[:space:]]*;; \\[$marker\\]$" "$core_wat"
+  rg -Eq "^[[:space:]]*;; \\[$marker\\]$" "$core_wat"
 done
 
-grep -Fq 'i32.const 111' "$core_wat"
-grep -Fq 'i32.const 222' "$core_wat"
-grep -Fq 'i32.const 333' "$core_wat"
-grep -Fq '[producer-batched-list-transfer]' "$core_wat"
-grep -Fq '[producer-batched-child-before-parent-cleanup]' "$core_wat"
-grep -Fq '[producer-batched-plan-layout] pointer=64 length=68 stride=4 ticket-offset=0 capacity=1 batches=2 lengths=2,1' "$core_wat"
+rg -Fq 'i32.const 111' "$core_wat"
+rg -Fq 'i32.const 222' "$core_wat"
+rg -Fq 'i32.const 333' "$core_wat"
+rg -Fq '[producer-batched-list-transfer]' "$core_wat"
+rg -Fq '[producer-batched-child-before-parent-cleanup]' "$core_wat"
+rg -Fq '[producer-batched-plan-layout] pointer=64 length=68 stride=4 ticket-offset=0 capacity=1 batches=2 lengths=2,1' "$core_wat"
 
-if grep -Eq '\(func \(export "[^" ]*(helper|batch|stream)[^" ]*"' "$core_wat"; then
+if rg -Eq '\(func \(export "[^" ]*(helper|batch|stream)[^" ]*"' "$core_wat"; then
   printf 'batched producer exported a private helper\n' >&2
   exit 1
 fi

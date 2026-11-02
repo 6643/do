@@ -4,9 +4,7 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context as TaskContext, Poll};
-use wasmtime::component::{
-    Accessor, AccessorTask, Component, Linker, Resource, ResourceTable, ResourceType, TypedFunc,
-};
+use wasmtime::component::{Component, Linker, Resource, ResourceTable, ResourceType, TypedFunc};
 use wasmtime::{Config, Engine, Store};
 
 const TYPES_INSTANCE: &str = "wasi:filesystem/types@0.3.0-rc-2025-09-16";
@@ -202,25 +200,11 @@ struct State {
     stats: Arc<Mutex<Stats>>,
 }
 
-struct RunTask {
-    run: TypedFunc<
-        (Resource<Descriptor>, PathFlags, String),
-        (std::result::Result<DescriptorStat, ErrorCode>,),
-    >,
-    descriptor: Resource<Descriptor>,
-    path_flags: PathFlags,
-    path: String,
-}
-
-impl AccessorTask<State> for RunTask {
-    fn run(self, accessor: &Accessor<State>) -> impl Future<Output = wasmtime::Result<()>> + Send {
-        async move {
-            self.run
-                .call_concurrent(accessor, (self.descriptor, self.path_flags, self.path))
-                .await
-                .map(|_| ())
-        }
-    }
+macro_rules! spawn_run_task {
+    ($run:expr, $($arg:expr),+ $(,)?) => {{
+        let run = $run;
+        async move |accessor| run.call_concurrent(accessor, ($(($arg),)+)).await.map(|_| ())
+    }};
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -500,12 +484,8 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
             let cancel =
                 map_wasmtime(instance.get_typed_func::<(), ()>(&mut store, &cancel_export))?;
             let descriptor = make_descriptor(&mut store)?;
-            let run_handle = map_wasmtime(store.spawn(RunTask {
-                run,
-                descriptor,
-                path_flags: flags,
-                path: path.clone(),
-            }))?;
+            let run_handle =
+                map_wasmtime(store.spawn(spawn_run_task!(run, descriptor, flags, path.clone())))?;
             map_wasmtime(map_wasmtime(
                 store
                     .run_concurrent(async |_accessor| {

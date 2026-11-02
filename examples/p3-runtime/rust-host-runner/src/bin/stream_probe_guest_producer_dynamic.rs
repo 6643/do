@@ -425,7 +425,9 @@ fn verify_cancel_run(
     count: u64,
     value: u8,
 ) -> Result<()> {
-    let stats = stats.lock().expect("dynamic producer cancellation stats mutex poisoned");
+    let stats = stats
+        .lock()
+        .expect("dynamic producer cancellation stats mutex poisoned");
     let expected = vec![value; count as usize];
     if stats.items != expected
         || stats.host_calls != 1

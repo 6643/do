@@ -20,7 +20,7 @@ mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/do-g6-2-owned-record-pair-parameterized-negative.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -41,7 +41,7 @@ for fixture in "${fixtures[@]}"; do
   fi
   while IFS= read -r expected_line; do
     [[ -z "$expected_line" || "$expected_line" == \#* ]] && continue
-    grep -Fq "$expected_line" "$stderr" || {
+    rg -Fq "$expected_line" "$stderr" || {
       printf 'missing expected diagnostic %s for %s\n' "$expected_line" "$fixture" >&2
       cat "$stderr" >&2
       exit 1

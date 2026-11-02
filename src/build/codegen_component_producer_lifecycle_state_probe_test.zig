@@ -149,14 +149,14 @@ test "producer lifecycle state probe identity table is unique and complete" {
     try expect_identity_table_is_unique_and_complete();
 }
 
-const many_groups = [_]mapping_probe.OwnershipFact{.{
+const many_groups: [65]mapping_probe.OwnershipFact = @splat(.{
     .name = "asset",
     .encoding = .scalar,
     .state_offset = 4,
     .guest_value = 1,
     .transferred_value = 2,
     .released_value = 3,
-}} ** 65;
+});
 
 test "producer lifecycle state probe asset rejects more than 64 groups" {
     var program = valid_program();

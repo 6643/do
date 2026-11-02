@@ -24,9 +24,9 @@ for path in "$wat" "$runner" "$wit"; do
   fi
 done
 
-grep -Fq 'package do:g6-2-scalar-list-producer@0.1.0;' "$wit"
-grep -Fq 'consume-via-stream: async func(data: stream<list<u32>>) -> result<_, error-code>;' "$wit"
-grep -Fq 'export produce: async func(count: u32) -> result<_, error-code>;' "$wit"
+rg -Fq 'package do:g6-2-scalar-list-producer@0.1.0;' "$wit"
+rg -Fq 'consume-via-stream: async func(data: stream<list<u32>>) -> result<_, error-code>;' "$wit"
+rg -Fq 'export produce: async func(count: u32) -> result<_, error-code>;' "$wit"
 if rg -n 'own<|borrow<|ref<|resource|pointer|reference' "$wit"; then
   printf 'scalar list probe unexpectedly contains an ownership or reference shape\n' >&2
   exit 1
@@ -78,8 +78,8 @@ run_mode() {
   output=$(cargo run --quiet --locked --manifest-path "$runner_dir/Cargo.toml" \
     --bin "$bin" -- "$component" "$mode")
   printf '%s\n' "$output"
-  grep -Fq 'table-empty=true' <<<"$output"
-  grep -Fq "list-releases=$expected_releases" <<<"$output"
+  rg -Fq 'table-empty=true' <<<"$output"
+  rg -Fq "list-releases=$expected_releases" <<<"$output"
 }
 
 for mode in count-0 count-1 count-2 count-3 pending sink-error early-drop \

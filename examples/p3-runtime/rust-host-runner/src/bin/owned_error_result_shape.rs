@@ -5,9 +5,7 @@ use std::path::Path;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context as TaskContext, Poll};
-use wasmtime::component::{
-    Accessor, AccessorTask, Component, Linker, Resource, ResourceTable, ResourceType,
-};
+use wasmtime::component::{AccessorTask, Component, Linker, Resource, ResourceTable, ResourceType};
 use wasmtime::{Config, Engine, Store};
 
 const HTTP_INSTANCE: &str = "do:resource-probe-owned-error/http@0.1.0";
@@ -103,9 +101,9 @@ struct HostWake {
     completion: oneshot::Sender<()>,
 }
 
-impl AccessorTask<State> for HostWake {
-    fn run(self, _accessor: &Accessor<State>) -> impl Future<Output = wasmtime::Result<()>> + Send {
-        async move {
+impl HostWake {
+    fn task(self) -> impl for<'a> AccessorTask<'a, State> {
+        async move |_accessor| {
             self.stats
                 .lock()
                 .expect("owned-error task stats mutex poisoned")
@@ -217,10 +215,13 @@ async fn run(component_path: &Path) -> Result<()> {
                 });
             }
             let (sender, completion) = oneshot::channel();
-            let host_event = accessor.spawn(HostWake {
-                stats: Arc::clone(&send_task_stats),
-                completion: sender,
-            });
+            let host_event = accessor.spawn(
+                HostWake {
+                    stats: Arc::clone(&send_task_stats),
+                    completion: sender,
+                }
+                .task(),
+            );
             let pending = PendingSend {
                 stats: Arc::clone(&send_task_stats),
                 completion,

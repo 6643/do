@@ -8,7 +8,7 @@ fail=0
 while IFS= read -r path; do
     echo "old compiler module name remains: $path" >&2
     fail=1
-done < <(find "$BUILD_DIR" -maxdepth 1 -type f \( -name 'gen_*.zig' -o -name 'sema_func_*.zig' \) | sort)
+done < <(fd --type f --max-depth 1 --regex '^(gen_|sema_func_).*\.zig$' . "$BUILD_DIR" | sort)
 
 for facade in "$BUILD_DIR/gen_collect.zig" "$BUILD_DIR/sema_util.zig"; do
     if [[ -e "$facade" ]]; then
@@ -20,7 +20,7 @@ done
 collect_files=()
 while IFS= read -r path; do
     collect_files+=("$path")
-done < <(find "$BUILD_DIR" -maxdepth 1 -type f \( -name 'codegen_collect_*.zig' -o -name 'codegen_collect_body.zig' \) | sort)
+done < <(fd --type f --max-depth 1 --regex '^codegen_collect_.*\.zig$' . "$BUILD_DIR" | sort)
 if ((${#collect_files[@]} > 0)); then
     while IFS= read -r match; do
         echo "$match" >&2
@@ -31,7 +31,7 @@ fi
 wat_files=()
 while IFS= read -r path; do
     wat_files+=("$path")
-done < <(find "$BUILD_DIR" -maxdepth 1 -type f \( -name 'wat_*.zig' -o -name 'runtime_*' \) | sort)
+done < <(fd --type f --max-depth 1 --regex '^(wat_|runtime_).*' . "$BUILD_DIR" | sort)
 if ((${#wat_files[@]} > 0)); then
     while IFS= read -r match; do
         echo "$match" >&2

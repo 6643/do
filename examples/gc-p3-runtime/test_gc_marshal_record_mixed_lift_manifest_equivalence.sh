@@ -41,7 +41,7 @@ output=$(
     --bin do-p3-gc-marshal-record-mixed-host-equivalence-runner -- \
     "$tmp_dir/gc.component.wasm" "$tmp_dir/arc.component.wasm"
 )
-grep -Fq 'GC/ARC manifest mixed scalar record lift equivalence passed sums=37/37' <<<"$output"
+rg -Fq 'GC/ARC manifest mixed scalar record lift equivalence passed sums=37/37' <<<"$output"
 printf '%s\n' "$output"
 
 printf 'manifest-backed GC/flat mixed scalar record lift equivalence passed\n'

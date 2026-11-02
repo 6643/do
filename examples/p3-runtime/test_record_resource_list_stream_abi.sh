@@ -57,10 +57,10 @@ expect_ready() {
   local output
   output=$(cargo run --quiet --manifest-path "$runner_dir/Cargo.toml" \
     --bin do-p3-record-resource-list-stream-abi -- "$component" "$mode")
-  grep -Fq "entries=$entries resource-created=$created resource-drops=$created" <<<"$output"
-  grep -Fq 'table-empty=true' <<<"$output"
-  grep -Fq "observed-list-pointer=$pointer observed-list-length-offset=$length_offset" <<<"$output"
-  grep -Fq "observed-list-element-stride=$stride observed-list-ticket-offset=$ticket_offset" <<<"$output"
+  rg -Fq "entries=$entries resource-created=$created resource-drops=$created" <<<"$output"
+  rg -Fq 'table-empty=true' <<<"$output"
+  rg -Fq "observed-list-pointer=$pointer observed-list-length-offset=$length_offset" <<<"$output"
+  rg -Fq "observed-list-element-stride=$stride observed-list-ticket-offset=$ticket_offset" <<<"$output"
 }
 
 expect_ready ready-empty '[]' 0
@@ -124,7 +124,7 @@ expect_mode() {
   output=$(cargo run --quiet --manifest-path "$runner_dir/Cargo.toml" \
     --bin do-p3-record-resource-list-stream-abi -- "$component" "$mode")
   for expected in "$@"; do
-    grep -Fq "$expected" <<<"$output"
+    rg -Fq "$expected" <<<"$output"
   done
 }
 

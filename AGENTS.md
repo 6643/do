@@ -59,7 +59,7 @@ This repository contains the `do` language compiler and its regression suite.
 Run commands from the repository root unless noted.
 
 ```bash
-cd src && zig build -Doptimize=ReleaseSmall
+cd src && zig build --prefix .. -Doptimize=ReleaseSmall
 ```
 
 Builds the compiler and installs `bin/do`.

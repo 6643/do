@@ -13,7 +13,7 @@ mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/do-g6-2-two-list-owned-record-producer.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -42,17 +42,17 @@ test "$(sha256sum "$wit" | awk '{print $1}')" = \
   14ba67e070346a127e75c7dfd73c71d6082ad7d9385c7d803834319dabc6404a
 cmp "$wat" "$canonical_wat"
 
-grep -Fq 'package do:g6-2-owned-record-two-list-producer@0.1.0;' "$wit"
-grep -Fq 'record two-list-entry {' "$wit"
-grep -Fq 'first: list<u32>,' "$wit"
-grep -Fq 'second: list<u32>,' "$wit"
-grep -Fq 'ticket: own<ticket>,' "$wit"
-grep -Fq 'make-ticket: func(seed: u32) -> own<ticket>;' "$wit"
-grep -Fq 'consume-via-stream: async func(' "$wit"
-grep -Fq 'data: stream<two-list-entry>' "$wit"
-grep -Fq 'world owned-record-two-list-producer' "$wit"
-grep -Fq 'export produce: async func(mode: u32) -> result<_, error-code>;' "$wit"
-if grep -Eq 'do:g6-2-owned-record-(list|pair|triple|nested)-producer|stream<list<|stream<variant' "$wit"; then
+rg -Fq 'package do:g6-2-owned-record-two-list-producer@0.1.0;' "$wit"
+rg -Fq 'record two-list-entry {' "$wit"
+rg -Fq 'first: list<u32>,' "$wit"
+rg -Fq 'second: list<u32>,' "$wit"
+rg -Fq 'ticket: own<ticket>,' "$wit"
+rg -Fq 'make-ticket: func(seed: u32) -> own<ticket>;' "$wit"
+rg -Fq 'consume-via-stream: async func(' "$wit"
+rg -Fq 'data: stream<two-list-entry>' "$wit"
+rg -Fq 'world owned-record-two-list-producer' "$wit"
+rg -Fq 'export produce: async func(mode: u32) -> result<_, error-code>;' "$wit"
+if rg -q 'do:g6-2-owned-record-(list|pair|triple|nested)-producer|stream<list<|stream<variant' "$wit"; then
   printf 'two-list owned-record producer emitted an out-of-scope neighboring shape\n' >&2
   exit 1
 fi
@@ -72,7 +72,7 @@ for marker in \
   '[producer-list-release-exactly-once]' \
   '[producer-resource-drop-exactly-once]' \
   '[producer-child-before-parent-cleanup]'; do
-  grep -Fq ";; $marker" "$wat"
+  rg -Fq ";; $marker" "$wat"
 done
 
 assert_fixed_line_count() {
@@ -97,12 +97,12 @@ assert_fixed_line_count 1 'global.set $list-release-count' "$wat"
 assert_fixed_line_count 3 'call $cabi-realloc' "$wat"
 assert_fixed_line_count 4 'call $free-list' "$wat"
 
-grep -Fq '(func (export "[async-lift]produce")' "$wat"
-if grep -Fq '__arc_' "$wat"; then
+rg -Fq '(func (export "[async-lift]produce")' "$wat"
+if rg -Fq '__arc_' "$wat"; then
   printf 'two-list owned-record producer emitted an ARC symbol\n' >&2
   exit 1
 fi
-if grep -Eq '\(ref (null|extern|func|eq|struct|array)' "$wat"; then
+if rg -Eq '\(ref (null|extern|func|eq|struct|array)' "$wat"; then
   printf 'two-list owned-record producer crossed a Wasm GC reference boundary\n' >&2
   exit 1
 fi

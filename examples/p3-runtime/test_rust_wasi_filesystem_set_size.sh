@@ -81,16 +81,16 @@ generated_pending=$(run_runner "$generated_component" pending)
 generated_error=$(run_runner "$generated_component" error)
 generated_repeat=$(run_runner "$generated_component" repeat)
 
-grep -Fq 'mode=ready result=Ok host-calls=1 observed-sizes=[4096] mutations=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 file-size=4096 table-empty=true' <<<"$ready"
-grep -Fq 'mode=pending result=Ok host-calls=1 observed-sizes=[4096] mutations=1 completion-polls=2 external-wakes=1 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 file-size=4096 table-empty=true' <<<"$pending"
-grep -Fq 'mode=error result=Err(no-entry) host-calls=1 observed-sizes=[4096] mutations=0 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 file-size=8 table-empty=true' <<<"$error"
-grep -Fq 'mode=cancel result=cancelled host-calls=1 observed-sizes=[4096] mutations=1 completion-polls=1 external-wakes=0 completions=0 future-drops=1 pending-future-drops=1 descriptor-drops=1 file-size=4096 table-empty=true' <<<"$cancel"
-grep -Fq 'mode=early-drop result=store-discarded host-calls=1 observed-sizes=[4096] mutations=1 completion-polls=2 external-wakes=0 completions=0 future-drops=1 pending-future-drops=1 descriptor-drops=0 file-size=4096 table-empty=not-applicable' <<<"$early_drop"
-grep -Fq 'mode=repeat results=Ok,Ok host-calls=2 observed-sizes=[4096, 4097] mutations=2 completion-polls=2 external-wakes=0 completions=2 future-drops=2 pending-future-drops=0 descriptor-drops=2 file-size=4097 table-empty=true' <<<"$repeat"
-grep -Fq 'mode=ready result=Ok host-calls=1 observed-sizes=[4096] mutations=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 file-size=4096 table-empty=true' <<<"$generated_ready"
-grep -Fq 'mode=pending result=Ok host-calls=1 observed-sizes=[4096] mutations=1 completion-polls=2 external-wakes=1 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 file-size=4096 table-empty=true' <<<"$generated_pending"
-grep -Fq 'mode=error result=Err(no-entry) host-calls=1 observed-sizes=[4096] mutations=0 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 file-size=8 table-empty=true' <<<"$generated_error"
-grep -Fq 'mode=repeat results=Ok,Ok host-calls=2 observed-sizes=[4096, 4097] mutations=2 completion-polls=2 external-wakes=0 completions=2 future-drops=2 pending-future-drops=0 descriptor-drops=2 file-size=4097 table-empty=true' <<<"$generated_repeat"
+rg -Fq 'mode=ready result=Ok host-calls=1 observed-sizes=[4096] mutations=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 file-size=4096 table-empty=true' <<<"$ready"
+rg -Fq 'mode=pending result=Ok host-calls=1 observed-sizes=[4096] mutations=1 completion-polls=2 external-wakes=1 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 file-size=4096 table-empty=true' <<<"$pending"
+rg -Fq 'mode=error result=Err(no-entry) host-calls=1 observed-sizes=[4096] mutations=0 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 file-size=8 table-empty=true' <<<"$error"
+rg -Fq 'mode=cancel result=cancelled host-calls=1 observed-sizes=[4096] mutations=1 completion-polls=1 external-wakes=0 completions=0 future-drops=1 pending-future-drops=1 descriptor-drops=1 file-size=4096 table-empty=true' <<<"$cancel"
+rg -Fq 'mode=early-drop result=store-discarded host-calls=1 observed-sizes=[4096] mutations=1 completion-polls=2 external-wakes=0 completions=0 future-drops=1 pending-future-drops=1 descriptor-drops=0 file-size=4096 table-empty=not-applicable' <<<"$early_drop"
+rg -Fq 'mode=repeat results=Ok,Ok host-calls=2 observed-sizes=[4096, 4097] mutations=2 completion-polls=2 external-wakes=0 completions=2 future-drops=2 pending-future-drops=0 descriptor-drops=2 file-size=4097 table-empty=true' <<<"$repeat"
+rg -Fq 'mode=ready result=Ok host-calls=1 observed-sizes=[4096] mutations=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 file-size=4096 table-empty=true' <<<"$generated_ready"
+rg -Fq 'mode=pending result=Ok host-calls=1 observed-sizes=[4096] mutations=1 completion-polls=2 external-wakes=1 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 file-size=4096 table-empty=true' <<<"$generated_pending"
+rg -Fq 'mode=error result=Err(no-entry) host-calls=1 observed-sizes=[4096] mutations=0 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 file-size=8 table-empty=true' <<<"$generated_error"
+rg -Fq 'mode=repeat results=Ok,Ok host-calls=2 observed-sizes=[4096, 4097] mutations=2 completion-polls=2 external-wakes=0 completions=2 future-drops=2 pending-future-drops=0 descriptor-drops=2 file-size=4097 table-empty=true' <<<"$generated_repeat"
 
 printf 'D2 filesystem descriptor.set-size Rust/Wasmtime runtime passed\n'
 printf 'modes=ready,pending,error,cancel,early-drop,repeat\n'

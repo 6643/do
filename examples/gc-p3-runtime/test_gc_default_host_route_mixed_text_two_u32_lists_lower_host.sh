@@ -62,6 +62,6 @@ output=$(
         --bin do-p3-gc-marshal-record-mixed-text-two-u32-lists-lower-host-runner -- \
         "$tmp_dir/component.wasm"
 )
-grep -Fq 'GC mixed text/two-u32-list record lower host adapter passed code=7 label=hello first=[10, 20, 5] second=[3, 4] write-calls=1 allocations=3 frees=3' <<<"$output"
+rg -Fq 'GC mixed text/two-u32-list record lower host adapter passed code=7 label=hello first=[10, 20, 5] second=[3, 4] write-calls=1 allocations=3 frees=3' <<<"$output"
 printf '%s\n' "$output"
 printf 'mixed text/two-u32-list lower Component host execution passed\n'

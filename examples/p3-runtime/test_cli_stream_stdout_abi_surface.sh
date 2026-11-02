@@ -28,9 +28,9 @@ for import_name in \
     '[stream-drop-writable-0]write-via-stream' \
     '[async-lower][stream-read-0]write-via-stream' \
     '[async-lower][stream-write-0]write-via-stream'; do
-    grep -Fq "(import \"$module\" \"$import_name\"" "$wat_file"
+    rg -Fq "(import \"$module\" \"$import_name\"" "$wat_file"
 done
 
-grep -Fq '"member": "write-via-stream"' "$registry"
-grep -Fq '"effect": "stream-writer"' "$registry"
+rg -Fq '"member": "write-via-stream"' "$registry"
+rg -Fq '"effect": "stream-writer"' "$registry"
 printf 'P3 stdout stream-writer ABI verified: %s\n' "$module"

@@ -14,10 +14,10 @@ component_path="$tmp_dir/if-join-await.component.wasm"
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build "$repo_root/examples/p3-runtime/if-join-await-component.do" \
   --p3-async-component --p3-wit-output "$wit_path" -o "$core_path"
 
-grep -Fq '(func $third-host-call' "$core_path"
-grep -Fq 'i32.const 3' "$core_path"
-grep -Fq 'call $third-host-call' "$core_path"
-if [ "$(grep -Fc 'wait-for: async func(how-long: u64)' "$wit_path")" -ne 1 ]; then
+rg -Fq '(func $third-host-call' "$core_path"
+rg -Fq 'i32.const 3' "$core_path"
+rg -Fq 'call $third-host-call' "$core_path"
+if [ "$(rg -Fc 'wait-for: async func(how-long: u64)' "$wit_path")" -ne 1 ]; then
   printf 'if-join WIT duplicated wait-for\n' >&2
   exit 1
 fi

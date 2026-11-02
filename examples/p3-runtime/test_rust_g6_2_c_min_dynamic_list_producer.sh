@@ -27,10 +27,10 @@ test -f "$runner_dir/Cargo.toml"
 DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$source" \
   --p3-async-component --p3-wit-output "$wit" -o "$wat"
 test -s "$wat"
-grep -Fq '[producer-plan-layout] pointer=64 length=68 stride=4 ticket-offset=0 capacity=1' "$wat"
-grep -Fq '[producer-list-transfer]' "$wat"
-grep -Fq '[producer-child-before-parent-cleanup]' "$wat"
-grep -Fq 'export produce: async func(count: u32)' "$wit"
+rg -Fq '[producer-plan-layout] pointer=64 length=68 stride=4 ticket-offset=0 capacity=1' "$wat"
+rg -Fq '[producer-list-transfer]' "$wat"
+rg -Fq '[producer-child-before-parent-cleanup]' "$wat"
+rg -Fq 'export produce: async func(count: u32)' "$wit"
 
 "$toolchain_bin" parse-core "$wat" -o "$core_wasm"
 "$toolchain_bin" embed-component "$wit" "$core_wasm" dynamic-list-producer \
@@ -54,7 +54,7 @@ run_case() {
   output=$(cargo run --quiet --locked --manifest-path "$runner_dir/Cargo.toml" \
     --bin "$bin" -- "$component" "$count" "$mode")
   for expected in "$@"; do
-    grep -Fq "$expected" <<<"$output"
+    rg -Fq "$expected" <<<"$output"
   done
   printf '%s\n' "$output"
 }
@@ -142,17 +142,17 @@ build_variant() {
 cancel_before_component=$(build_variant cancel-before-transfer)
 cancel_before_output=$(cargo run --quiet --locked --manifest-path "$runner_dir/Cargo.toml" \
   --bin "$bin" -- "$cancel_before_component" 3 cancel-before-transfer)
-grep -Fq 'count=3 mode=cancel-before-transfer result=Some((Ok(()),)) entries=[]' <<<"$cancel_before_output"
-grep -Fq 'resource-created=3 resource-drops=3' <<<"$cancel_before_output"
-grep -Fq 'table-empty=true' <<<"$cancel_before_output"
+rg -Fq 'count=3 mode=cancel-before-transfer result=Some((Ok(()),)) entries=[]' <<<"$cancel_before_output"
+rg -Fq 'resource-created=3 resource-drops=3' <<<"$cancel_before_output"
+rg -Fq 'table-empty=true' <<<"$cancel_before_output"
 printf '%s\n' "$cancel_before_output"
 
 source_failure_component=$(build_variant source-failure)
 source_failure_output=$(cargo run --quiet --locked --manifest-path "$runner_dir/Cargo.toml" \
   --bin "$bin" -- "$source_failure_component" 3 source-failure)
-grep -Fq 'count=3 mode=source-failure result=Some((Err(Io),)) entries=[]' <<<"$source_failure_output"
-grep -Fq 'resource-created=2 resource-drops=2' <<<"$source_failure_output"
-grep -Fq 'table-empty=true' <<<"$source_failure_output"
+rg -Fq 'count=3 mode=source-failure result=Some((Err(Io),)) entries=[]' <<<"$source_failure_output"
+rg -Fq 'resource-created=2 resource-drops=2' <<<"$source_failure_output"
+rg -Fq 'table-empty=true' <<<"$source_failure_output"
 printf '%s\n' "$source_failure_output"
 
 printf 'G6.2 bounded dynamic list producer compiler-generated Component/Rust/Wasmtime gate passed\n'

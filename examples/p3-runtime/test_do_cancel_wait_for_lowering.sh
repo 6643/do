@@ -25,19 +25,19 @@ for required in \
   "(table \$async-frames 0 (ref null \$async-frame))" \
   "table.get \$async-frames" \
   "i32.const 4"; do
-  if ! grep -Fq "$required" "$core_path"; then
+  if ! rg -Fq "$required" "$core_path"; then
     printf 'pinned cancellation lowering is missing: %s\n' "$required" >&2
     exit 1
   fi
 done
 
-if grep -Fq 'global $frame-next' "$core_path"; then
+if rg -Fq 'global $frame-next' "$core_path"; then
   printf 'pinned cancellation lowering still uses the linear-memory frame allocator\n' >&2
   exit 1
 fi
 
 for forbidden in operation_id request_cancel CancelledAck terminal-ack; do
-  if grep -Fq "$forbidden" "$core_path"; then
+  if rg -Fq "$forbidden" "$core_path"; then
     printf 'pinned cancellation lowering emitted obsolete protocol name: %s\n' "$forbidden" >&2
     exit 1
   fi

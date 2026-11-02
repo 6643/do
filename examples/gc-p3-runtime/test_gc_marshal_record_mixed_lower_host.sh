@@ -23,7 +23,7 @@ fi
 
 "$zig_bin" run "$probe" -- "$wit" "$tmp_dir/core.wat" --lower-mixed-host
 "$toolchain_bin" parse-core "$tmp_dir/core.wat" -o "$tmp_dir/core.wasm"
-if grep -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$tmp_dir/core.wat"; then
+if rg -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$tmp_dir/core.wat"; then
   printf 'GC reference crossed canonical mixed lower import\n' >&2
   exit 1
 fi
@@ -37,7 +37,7 @@ output=$(
   "$cargo_bin" run --quiet --locked --manifest-path "$runner_manifest" \
     --bin gc_marshal_record_mixed_lower -- "$tmp_dir/component.wasm"
 )
-grep -Fq 'GC mixed scalar record lower host adapter passed result=42 write-calls=1' <<<"$output"
+rg -Fq 'GC mixed scalar record lower host adapter passed result=42 write-calls=1' <<<"$output"
 printf '%s\n' "$output"
 
 printf 'bounded GC mixed scalar record lower Component host execution passed\n'

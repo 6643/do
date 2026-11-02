@@ -74,7 +74,7 @@ if [[ ! -s "$ADAPTER_LOG" ]]; then
     cat "$stderr_path" >&2
     exit 1
 fi
-grep -Fq 'parse-core ' "$ADAPTER_LOG"
+rg -Fq 'parse-core ' "$ADAPTER_LOG"
 
 if [[ -s "$WASM_TOOLS_LOG" ]]; then
     printf '[FAIL] do run invoked wasm-tools directly:\n' >&2

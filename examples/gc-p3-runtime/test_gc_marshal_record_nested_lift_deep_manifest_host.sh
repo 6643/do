@@ -25,12 +25,12 @@ fi
 
 "$zig_bin" run "$probe" -- "$tmp_dir/core.wat" "$repo_root"
 "$toolchain_bin" parse-core "$tmp_dir/core.wat" -o "$tmp_dir/core.wasm"
-if grep -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$tmp_dir/core.wat"; then
+if rg -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$tmp_dir/core.wat"; then
   printf 'GC reference crossed canonical three-level nested lift import\n' >&2
   exit 1
 fi
-grep -Fq '(type $canonical_lift (func (param i32)))' "$tmp_dir/core.wat"
-grep -Fq 'i32.const 24' "$tmp_dir/core.wat"
+rg -Fq '(type $canonical_lift (func (param i32)))' "$tmp_dir/core.wat"
+rg -Fq 'i32.const 24' "$tmp_dir/core.wat"
 "$toolchain_bin" embed-component "$wit" "$tmp_dir/core.wasm" probe --features none -o "$tmp_dir/embedded.wasm"
 "$toolchain_bin" new-component "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
 "$toolchain_bin" validate-component "$tmp_dir/component.wasm" --features none
@@ -46,7 +46,7 @@ if mutated_output=$($zig_bin run "$probe" -- "$tmp_dir/mutated.wat" "$mutated_ro
   printf 'mutated descriptor source unexpectedly passed the manifest hash gate\n' >&2
   exit 1
 fi
-grep -Fq 'SourceHashMismatch' <<<"$mutated_output"
+rg -Fq 'SourceHashMismatch' <<<"$mutated_output"
 
 output=$(
   CC="$cc_bin" CXX="$cxx_bin" \
@@ -54,7 +54,7 @@ output=$(
   "$cargo_bin" run --quiet --locked --manifest-path "$runner_manifest" \
     --bin do-p3-gc-marshal-record-nested-lift-deep-host-runner -- "$tmp_dir/component.wasm"
 )
-grep -Fq 'GC three-level nested scalar record lift host adapter passed sum=42' <<<"$output"
+rg -Fq 'GC three-level nested scalar record lift host adapter passed sum=42' <<<"$output"
 printf '%s\n' "$output"
 
 printf 'manifest-backed three-level nested scalar record lift Component host execution passed\n'

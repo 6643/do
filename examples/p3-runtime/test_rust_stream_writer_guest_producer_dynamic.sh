@@ -20,13 +20,13 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build --p3-async-component \
   -o "$core_path"
 
 cmp "$wit_path" "$repo_root/examples/p3-runtime/wit/stream-probe-guest-producer-dynamic.wit"
-grep -Fq '[writer-endpoint-mode] guest-producer' "$core_path"
-grep -Fq '[writer-producer-index-offset] 52' "$core_path"
-grep -Fq '(type $async-run-i64 (func (param i64) (result i32)))' "$core_path"
-grep -Fq '(data (i32.const 512) "\41")' "$core_path"
-grep -Fq 'i64.load' "$core_path"
-grep -Fq 'i64.store' "$core_path"
-grep -Fq 'call $writer-source-complete-countdown' "$core_path"
+rg -Fq '[writer-endpoint-mode] guest-producer' "$core_path"
+rg -Fq '[writer-producer-index-offset] 52' "$core_path"
+rg -Fq '(type $async-run-i64 (func (param i64) (result i32)))' "$core_path"
+rg -Fq '(data (i32.const 512) "\41")' "$core_path"
+rg -Fq 'i64.load' "$core_path"
+rg -Fq 'i64.store' "$core_path"
+rg -Fq 'call $writer-source-complete-countdown' "$core_path"
 
 "$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
 bash "$repo_root/examples/p3-runtime/assemble_async_component.sh" \

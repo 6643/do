@@ -263,7 +263,7 @@ const pure_lowering_cases = [_]PureLoweringCase{
         .build_flag = "--p3-wait-for-component",
         .world = "probe",
         .wit_snapshot = null,
-        .wit_markers = &.{ "export run: async func(how-long: u64)" },
+        .wit_markers = &.{"export run: async func(how-long: u64)"},
         .markers = &.{
             "(type $async-frame (struct",
             "(table $async-frames 0 (ref null $async-frame))",
@@ -279,7 +279,7 @@ const pure_lowering_cases = [_]PureLoweringCase{
         .build_flag = "--p3-async-component",
         .world = "stream-stdin-probe",
         .wit_snapshot = null,
-        .wit_markers = &.{ "export run: async func()" },
+        .wit_markers = &.{"export run: async func()"},
         .markers = &.{
             "[stream-acquire]read-via-stream",
             "stream.read",
@@ -295,13 +295,13 @@ const pure_lowering_cases = [_]PureLoweringCase{
         .build_flag = "--p3-async-component",
         .world = "stream-stdin-probe",
         .wit_snapshot = null,
-        .wit_markers = &.{ "export read-once: async func()" },
+        .wit_markers = &.{"export read-once: async func()"},
         .markers = &.{
             "(export \"[async-lift]read-once\"",
             "(export \"[callback][async-lift]read-once\"",
             "i32.const 1",
         },
-        .forbidden_markers = &.{ "[stream-read-count]" },
+        .forbidden_markers = &.{"[stream-read-count]"},
     },
     .{
         .name = "CLI stdout stream lowering",
@@ -354,19 +354,19 @@ const pure_lowering_cases = [_]PureLoweringCase{
             "request-new-payload: func(",
         },
         .package_world_suffix =
-            \\
-            \\interface probe {
-            \\  use types.{response, error-code};
-            \\  run: async func() -> result<response, error-code>;
-            \\}
-            \\
-            \\world http-request-body-probe {
-            \\  import types;
-            \\  import client;
-            \\  import wasi:cli/stdin@0.3.0-rc-2025-09-16;
-            \\  export probe;
-            \\}
-            \\
+        \\
+        \\interface probe {
+        \\  use types.{response, error-code};
+        \\  run: async func() -> result<response, error-code>;
+        \\}
+        \\
+        \\world http-request-body-probe {
+        \\  import types;
+        \\  import client;
+        \\  import wasi:cli/stdin@0.3.0-rc-2025-09-16;
+        \\  export probe;
+        \\}
+        \\
         ,
         .markers = &.{
             "wasi:cli/stdin@0.3.0-rc-2025-09-16\" \"read-via-stream\"",
@@ -378,7 +378,7 @@ const pure_lowering_cases = [_]PureLoweringCase{
             "call $drop-body-completion",
             "i32.const 1",
         },
-        .forbidden_markers = &.{ "async-lower][request.new" },
+        .forbidden_markers = &.{"async-lower][request.new"},
     },
     .{
         .name = "HTTP request body completion-await package lowering",
@@ -390,19 +390,19 @@ const pure_lowering_cases = [_]PureLoweringCase{
         .package_wit_markers = &.{ "package wasi:http@0.3.0-rc-2025-09-16", "world http-request-body-probe" },
         .package_type_markers = &.{ "consume-body-payload: func(", "request-new-payload: func(" },
         .package_world_suffix =
-            \\
-            \\interface probe {
-            \\  use types.{response, error-code};
-            \\  run: async func() -> result<response, error-code>;
-            \\}
-            \\
-            \\world http-request-body-probe {
-            \\  import types;
-            \\  import client;
-            \\  import wasi:cli/stdin@0.3.0-rc-2025-09-16;
-            \\  export probe;
-            \\}
-            \\
+        \\
+        \\interface probe {
+        \\  use types.{response, error-code};
+        \\  run: async func() -> result<response, error-code>;
+        \\}
+        \\
+        \\world http-request-body-probe {
+        \\  import types;
+        \\  import client;
+        \\  import wasi:cli/stdin@0.3.0-rc-2025-09-16;
+        \\  export probe;
+        \\}
+        \\
         ,
         .markers = &.{
             "wasi:cli/stdin@0.3.0-rc-2025-09-16\" \"[async-lower][future-read-1]read-via-stream\"",
@@ -428,19 +428,19 @@ const pure_lowering_cases = [_]PureLoweringCase{
         .package_wit_markers = &.{ "package wasi:http@0.3.0-rc-2025-09-16", "world http-request-body-producer-probe" },
         .package_type_markers = &.{ "consume-body-payload: func(", "request-new-payload: func(" },
         .package_world_suffix =
-            \\
-            \\interface probe {
-            \\  use types.{response, error-code};
-            \\  run: async func() -> result<response, error-code>;
-            \\}
-            \\
-            \\world http-request-body-producer-probe {
-            \\  import types;
-            \\  import client;
-            \\  import wasi:cli/stdout@0.3.0-rc-2025-09-16;
-            \\  export probe;
-            \\}
-            \\
+        \\
+        \\interface probe {
+        \\  use types.{response, error-code};
+        \\  run: async func() -> result<response, error-code>;
+        \\}
+        \\
+        \\world http-request-body-producer-probe {
+        \\  import types;
+        \\  import client;
+        \\  import wasi:cli/stdout@0.3.0-rc-2025-09-16;
+        \\  export probe;
+        \\}
+        \\
         ,
         .markers = &.{
             "wasi:cli/stdout@0.3.0-rc-2025-09-16\" \"[stream-new-0]write-via-stream\"",
@@ -467,19 +467,19 @@ const pure_lowering_cases = [_]PureLoweringCase{
         .package_wit_markers = &.{ "package wasi:http@0.3.0-rc-2025-09-16", "world http-response-body-probe" },
         .package_type_markers = &.{ "consume-body-payload: func(", "request-new-payload: func(" },
         .package_world_suffix =
-            \\
-            \\interface probe {
-            \\  use types.{response};
-            \\  run: async func(response: response);
-            \\}
-            \\
-            \\world http-response-body-probe {
-            \\  import types;
-            \\  export probe;
-            \\}
-            \\
+        \\
+        \\interface probe {
+        \\  use types.{response};
+        \\  run: async func(response: response);
+        \\}
+        \\
+        \\world http-response-body-probe {
+        \\  import types;
+        \\  export probe;
+        \\}
+        \\
         ,
-        .markers = &.{ "call $consume-body" },
+        .markers = &.{"call $consume-body"},
         .forbidden_markers = &.{},
     },
     .{
@@ -533,7 +533,7 @@ const pure_lowering_cases = [_]PureLoweringCase{
             "[resource-result-error-terminal]",
             "i32.const 0",
         },
-        .forbidden_markers = &.{ "global $frame-next" },
+        .forbidden_markers = &.{"global $frame-next"},
         .compile_core_gc = true,
     },
     .{
@@ -562,7 +562,7 @@ const pure_lowering_cases = [_]PureLoweringCase{
             "[resource-drop]error-resource",
             "[resource-result-cancel]",
         },
-        .forbidden_markers = &.{ "do:resource-probe/http@0.1.0" },
+        .forbidden_markers = &.{"do:resource-probe/http@0.1.0"},
     },
     .{
         .name = "resource probe lowering",
@@ -637,7 +637,7 @@ const pure_lowering_cases = [_]PureLoweringCase{
             "[async-lower][stream-read-0]read-via-stream",
             "[async-lower][future-read-1]read-via-stream",
         },
-        .forbidden_markers = &.{ "directory-entry" },
+        .forbidden_markers = &.{"directory-entry"},
     },
     .{
         .name = "WASI filesystem preopen lowering",
@@ -695,7 +695,7 @@ const pure_lowering_cases = [_]PureLoweringCase{
             "call $descriptor-drop",
             "local.get $code i32.const 2 i32.eq",
         },
-        .forbidden_markers = &.{ "[async-lower][method]descriptor.read-via-stream" },
+        .forbidden_markers = &.{"[async-lower][method]descriptor.read-via-stream"},
         .validate_core = true,
     },
     .{
@@ -715,7 +715,7 @@ const pure_lowering_cases = [_]PureLoweringCase{
             "[future-drop-readable-1]read-via-stream",
             "(export \"[async-lift]produce\")",
         },
-        .forbidden_markers = &.{ "[async-lift]write-via-stream" },
+        .forbidden_markers = &.{"[async-lift]write-via-stream"},
         .validate_core = true,
     },
     .{
@@ -730,7 +730,7 @@ const pure_lowering_cases = [_]PureLoweringCase{
             "[async-lower][stream-read-0]read-via-stream",
             "[future-drop-readable-1]read-via-stream",
         },
-        .forbidden_markers = &.{ "wasi:cli/stdin" },
+        .forbidden_markers = &.{"wasi:cli/stdin"},
     },
     .{
         .name = "descriptor-owned stream writer lowering",
@@ -739,7 +739,7 @@ const pure_lowering_cases = [_]PureLoweringCase{
         .world = "stream-writer-probe",
         .wit_snapshot = null,
         .wit_markers = &.{ "package do:stream-probe@0.1.0", "interface sink", "world stream-writer-probe" },
-        .markers = &.{ "do:stream-probe/sink@0.1.0" },
+        .markers = &.{"do:stream-probe/sink@0.1.0"},
         .forbidden_markers = &.{},
     },
     .{
@@ -843,7 +843,7 @@ const pure_lowering_cases = [_]PureLoweringCase{
             "[producer-list-release-exactly-once]",
             "[producer-cancel-before-transfer]",
         },
-        .forbidden_markers = &.{ "[resource-drop]" },
+        .forbidden_markers = &.{"[resource-drop]"},
     },
     .{
         .name = "async host scalar argument lowering",
@@ -1032,12 +1032,18 @@ pub fn main(init: std.process.Init) !void {
 }
 
 fn run_all(init: std.process.Init) !void {
-    const repo_root = init.environ_map.get("DO_HARNESS_REPO_ROOT") orelse
+    const repo_root_value = init.environ_map.get("DO_HARNESS_REPO_ROOT") orelse
         return error.MissingHarnessEnvironment;
-    const do_bin = init.environ_map.get("DO_HARNESS_DO_BIN") orelse
+    const repo_root = try std.Io.Dir.cwd().realPathFileAlloc(init.io, repo_root_value, init.gpa);
+    defer init.gpa.free(repo_root);
+    const do_bin_value = init.environ_map.get("DO_HARNESS_DO_BIN") orelse
         return error.MissingHarnessEnvironment;
-    const toolchain_bin = init.environ_map.get("DO_HARNESS_TOOLCHAIN_BIN") orelse
+    const do_bin = try join(init.gpa, repo_root, do_bin_value);
+    defer init.gpa.free(do_bin);
+    const toolchain_bin_value = init.environ_map.get("DO_HARNESS_TOOLCHAIN_BIN") orelse
         return error.MissingHarnessEnvironment;
+    const toolchain_bin = try join(init.gpa, repo_root, toolchain_bin_value);
+    defer init.gpa.free(toolchain_bin);
 
     var temp = try process.make_temp_dir(init.gpa, init.io);
     var cleanup = process.defer_cleanup(&temp);
@@ -2287,7 +2293,7 @@ fn run_gc_default_matrix(
         if (!try file_exists(init.io, wasm)) return error.MissingCompiledArtifact;
         fixture_count += 1;
     }
-        if (fixture_count != 87) return error.GcFixtureManifestDrift;
+    if (fixture_count != 87) return error.GcFixtureManifestDrift;
 }
 
 fn assert_gc_default_wat(name: []const u8, source: []const u8) !void {
@@ -2430,8 +2436,8 @@ fn run_assembly_validation(
     defer probe.deinit(init.gpa);
     try expect_success(init, &probe);
     try process.assert_stdout_contains(probe, "\"schema\":1");
-    try process.assert_stdout_contains(probe, "wasm-tools 1.258.0");
-    try process.assert_stdout_contains(probe, "wasmtime 48.0.1");
+    try process.assert_stdout_contains(probe, "\"wasm_tools\":{\"path\":\"wasm-tools\",\"version\":\"\",\"sha256\":\"\"}");
+    try process.assert_stdout_contains(probe, "\"wasmtime\":{\"path\":\"wasmtime\",\"version\":\"\",\"sha256\":\"\"}");
 }
 
 fn run_wit_snapshot_validation(
@@ -3001,10 +3007,12 @@ fn run_map_sync_component(
     defer init.gpa.free(manifest);
     const linker = try join(init.gpa, repo_root, "examples/p3-runtime/rust-host-runner/zig-cc.sh");
     defer init.gpa.free(linker);
+    const absolute_linker = try std.Io.Dir.cwd().realPathFileAlloc(init.io, linker, init.gpa);
+    defer init.gpa.free(absolute_linker);
     const env = [_]process.EnvVar{
-        .{ .name = "CC", .value = linker },
-        .{ .name = "CXX", .value = linker },
-        .{ .name = "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER", .value = linker },
+        .{ .name = "CC", .value = absolute_linker },
+        .{ .name = "CXX", .value = absolute_linker },
+        .{ .name = "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER", .value = absolute_linker },
     };
 
     for (map_sync_component_cases) |case| {
@@ -3050,8 +3058,8 @@ fn run_map_sync_component(
         try process.assert_stdout_contains(component_wit, case.wit_marker);
 
         const runner_args = [_][]const u8{
-            "cargo", "run", "--quiet", "--locked", "--manifest-path", manifest,
-            "--bin", "do-p3-gc-marshal-map-u32-u32", "--", component, case.mode,
+            "cargo", "run",                          "--quiet", "--locked", "--manifest-path", manifest,
+            "--bin", "do-p3-gc-marshal-map-u32-u32", "--",      component,  case.mode,
         };
         var runtime = try process.run_checked(init.gpa, init.io, .{
             .argv = &runner_args,
@@ -3169,8 +3177,8 @@ fn run_async_map_component(
         const modes = [_][]const u8{ "ready", "pending", "cancel", "drop" };
         for (modes) |mode| {
             const runner_args = [_][]const u8{
-                "cargo", "run", "--quiet", "--locked", "--manifest-path", manifest,
-                "--bin", case.runner_bin, "--", component, mode,
+                "cargo", "run",           "--quiet", "--locked", "--manifest-path", manifest,
+                "--bin", case.runner_bin, "--",      component,  mode,
             };
             var runtime = try process.run_checked(init.gpa, init.io, .{
                 .argv = &runner_args,
@@ -3273,9 +3281,9 @@ fn run_p3_pure_lowering_matrix(
         defer init.gpa.free(lib_root);
 
         const build_args = [_][]const u8{
-            "build", source, case.build_flag,
-            if (case.wit_output_kind == .package) "--p3-wit-package-output" else "--p3-wit-output",
-            wit_output, "-o", wat,
+            "build",                                                                                source,     case.build_flag,
+            if (case.wit_output_kind == .package) "--p3-wit-package-output" else "--p3-wit-output", wit_output, "-o",
+            wat,
         };
         var build_result = try run_do_args(init, do_bin, &build_args, lib_root, null, 120_000);
         defer build_result.deinit(init.gpa);
@@ -3505,8 +3513,8 @@ fn run_rust_runtime_matrix(
 
         for (case.expectations) |expectation| {
             const runner_args = [_][]const u8{
-                "cargo", "run", "--quiet", "--locked", "--manifest-path", manifest,
-                "--bin", case.runner_bin, "--", component, expectation.mode,
+                "cargo", "run",           "--quiet", "--locked", "--manifest-path", manifest,
+                "--bin", case.runner_bin, "--",      component,  expectation.mode,
             };
             var runtime = try process.run_checked(init.gpa, init.io, .{
                 .argv = &runner_args,

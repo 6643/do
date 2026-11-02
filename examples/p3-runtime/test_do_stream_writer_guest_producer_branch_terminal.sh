@@ -25,7 +25,7 @@ for marker in \
   '[writer-terminal] branch-abort-pipe selector=90 code=2' \
   '(func $writer-abort' \
   '(func (export "[async-lift]produce") (type $async-run-i64-i32)'; do
-  grep -Fq "$marker" "$core_path"
+  rg -Fq "$marker" "$core_path"
 done
 
 "$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
@@ -40,6 +40,6 @@ if DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build --p3-async-component \
   printf 'dynamic abort code unexpectedly lowered\n' >&2
   exit 1
 fi
-grep -Fq 'UnsupportedP3AsyncComponent' "$negative_stderr"
+rg -Fq 'UnsupportedP3AsyncComponent' "$negative_stderr"
 
 printf 'branch terminal producer Component lowering passed\n'

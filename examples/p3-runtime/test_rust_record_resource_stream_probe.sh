@@ -37,8 +37,8 @@ ready=$(DO_RECORD_RESOURCE_STREAM_COMPLETION=ready cargo run --quiet --manifest-
 error_case=$(DO_RECORD_RESOURCE_STREAM_COMPLETION=error cargo run --quiet --manifest-path "$runner_dir/Cargo.toml" \
   --bin do-p3-record-resource-stream-host-runner -- "$component")
 
-grep -Fq 'Rust generic record-resource stream pending passed entries=[(1,111),(2,222)] eof=true stream-reads=3 completion-polls=2 pending-wakes=1 resource-created=2 resource-drops=2 stream-drops=1 future-drops=1 table-empty=true result=Ok' <<<"$pending"
-grep -Fq 'Rust generic record-resource stream ready passed entries=[(1,111),(2,222)] eof=true stream-reads=3 completion-polls=1 pending-wakes=0 resource-created=2 resource-drops=2 stream-drops=1 future-drops=1 table-empty=true result=Ok' <<<"$ready"
-grep -Fq 'Rust generic record-resource stream error passed entries=[(1,111),(2,222)] eof=true stream-reads=3 completion-polls=1 pending-wakes=0 resource-created=2 resource-drops=2 stream-drops=1 future-drops=1 table-empty=true result=Err(io)' <<<"$error_case"
+rg -Fq 'Rust generic record-resource stream pending passed entries=[(1,111),(2,222)] eof=true stream-reads=3 completion-polls=2 pending-wakes=1 resource-created=2 resource-drops=2 stream-drops=1 future-drops=1 table-empty=true result=Ok' <<<"$pending"
+rg -Fq 'Rust generic record-resource stream ready passed entries=[(1,111),(2,222)] eof=true stream-reads=3 completion-polls=1 pending-wakes=0 resource-created=2 resource-drops=2 stream-drops=1 future-drops=1 table-empty=true result=Ok' <<<"$ready"
+rg -Fq 'Rust generic record-resource stream error passed entries=[(1,111),(2,222)] eof=true stream-reads=3 completion-polls=1 pending-wakes=0 resource-created=2 resource-drops=2 stream-drops=1 future-drops=1 table-empty=true result=Err(io)' <<<"$error_case"
 
 printf 'Rust generic record-resource stream pending/ready/error runtime passed\n'

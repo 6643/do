@@ -29,10 +29,10 @@ for marker in \
     '[guest-async-parent-resume]' \
     '[guest-async-child-drop]' \
     '[guest-async-root-terminal]'; do
-    grep -Fq "$marker" "$core_wat"
+    rg -Fq "$marker" "$core_wat"
 done
-test "$(grep -o 'call \$host-work' "$core_wat" | wc -l)" -eq 2
-if grep -Fq '[task-return]helper' "$core_wat" || grep -Fq '[async-lift]helper' "$core_wat"; then
+test "$(rg -o 'call \$host-work' "$core_wat" | wc -l)" -eq 2
+if rg -Fq '[task-return]helper' "$core_wat" || rg -Fq '[async-lift]helper' "$core_wat"; then
     printf 'async-call emitted an independent helper endpoint\n' >&2
     exit 1
 fi
@@ -49,16 +49,16 @@ set +e
 v1_status=$?
 set -e
 if [[ "$v1_status" -eq 0 ]]; then
-    if grep -Fq '[guest-async-child]' "$v1_wat" ||
-        grep -Fq '[guest-async-parent-resume]' "$v1_wat" ||
-        grep -Fq '[guest-async-child-drop]' "$v1_wat" ||
-        grep -Fq '[guest-async-root-terminal]' "$v1_wat"; then
+    if rg -Fq '[guest-async-child]' "$v1_wat" ||
+        rg -Fq '[guest-async-parent-resume]' "$v1_wat" ||
+        rg -Fq '[guest-async-child-drop]' "$v1_wat" ||
+        rg -Fq '[guest-async-root-terminal]' "$v1_wat"; then
         printf 'v1 emitted async-call markers\n' >&2
         exit 1
     fi
     printf 'v1-isolation=accepted-without-async-call-markers\n'
 else
-    grep -Fq 'UnsupportedP3AsyncComponent' "$tmp_dir/v1.stderr"
+    rg -Fq 'UnsupportedP3AsyncComponent' "$tmp_dir/v1.stderr"
     printf 'v1-isolation=rejected-before-wat\n'
 fi
 printf 'do-async-call-component gate passed\n'

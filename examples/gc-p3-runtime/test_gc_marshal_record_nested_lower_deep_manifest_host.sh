@@ -43,7 +43,7 @@ output=$(
   "$cargo_bin" run --quiet --locked --manifest-path "$runner_manifest" \
     --bin do-p3-gc-marshal-record-nested-lower-deep-host-runner -- "$tmp_dir/component.wasm"
 )
-grep -Fq 'GC three-level nested scalar record lower host adapter passed result=42 write-calls=1' <<<"$output"
+rg -Fq 'GC three-level nested scalar record lower host adapter passed result=42 write-calls=1' <<<"$output"
 printf '%s\n' "$output"
 
 printf 'manifest-backed three-level nested scalar record lower Component host execution passed\n'

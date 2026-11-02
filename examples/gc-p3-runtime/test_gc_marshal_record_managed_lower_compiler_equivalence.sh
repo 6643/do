@@ -60,6 +60,6 @@ output=$(
     --bin do-p3-gc-marshal-record-managed-lower-host-equivalence-runner -- \
     "$tmp_dir/gc.component.wasm" "$tmp_dir/arc.component.wasm"
 )
-grep -Fq 'GC/ARC managed-field record lower equivalence passed code=7 label=hello allocations=1/1 frees=1/1 write-calls=1/1' <<<"$output"
+rg -Fq 'GC/ARC managed-field record lower equivalence passed code=7 label=hello allocations=1/1 frees=1/1 write-calls=1/1' <<<"$output"
 printf '%s\n' "$output"
 printf 'compiler-wired managed-field record lower ARC/GC equivalence passed\n'

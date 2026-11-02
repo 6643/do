@@ -12,7 +12,7 @@ mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/do-g6-2-owned-record-triple-producer.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -37,18 +37,18 @@ cmp "$wit" "$probe_wit"
 test "$(sha256sum "$wit" | awk '{print $1}')" = \
   73fd57dc8f34f13023b48f2b82e439b212eab52192886f0d07a37d86e63658b1
 
-grep -Fq 'package do:g6-2-owned-record-triple-producer@0.1.0;' "$wit"
-grep -Fq 'record resource-triple {' "$wit"
-grep -Fq 'left: own<ticket>,' "$wit"
-grep -Fq 'middle: own<ticket>,' "$wit"
-grep -Fq 'right: own<ticket>,' "$wit"
-grep -Fq 'make-ticket: func(seed: u32) -> own<ticket>;' "$wit"
-grep -Fq 'data: stream<resource-triple>' "$wit"
-grep -Fq 'world owned-record-triple-producer' "$wit"
-grep -Fq 'export produce: async func(' "$wit"
-grep -Fq 'middle-seed: u32' "$wit"
-grep -Fq 'right-seed: u32' "$wit"
-if grep -Eq 'do:g6-2-(c-min|batched|dynamic|scalar-list)-|do:g6-2-owned-record-(producer|pair|pair-parameterized)-|stream<list<|stream<variant' "$wit"; then
+rg -Fq 'package do:g6-2-owned-record-triple-producer@0.1.0;' "$wit"
+rg -Fq 'record resource-triple {' "$wit"
+rg -Fq 'left: own<ticket>,' "$wit"
+rg -Fq 'middle: own<ticket>,' "$wit"
+rg -Fq 'right: own<ticket>,' "$wit"
+rg -Fq 'make-ticket: func(seed: u32) -> own<ticket>;' "$wit"
+rg -Fq 'data: stream<resource-triple>' "$wit"
+rg -Fq 'world owned-record-triple-producer' "$wit"
+rg -Fq 'export produce: async func(' "$wit"
+rg -Fq 'middle-seed: u32' "$wit"
+rg -Fq 'right-seed: u32' "$wit"
+if rg -q 'do:g6-2-(c-min|batched|dynamic|scalar-list)-|do:g6-2-owned-record-(producer|pair|pair-parameterized)-|stream<list<|stream<variant' "$wit"; then
   printf 'owned-record triple producer emitted an out-of-scope neighboring shape\n' >&2
   exit 1
 fi
@@ -60,11 +60,11 @@ for marker in \
   '[producer-input-word-count] 4' \
   '[producer-record-transfer]' \
   '[producer-resource-drop-exactly-once]'; do
-  grep -Fq ";; $marker" "$core_wat"
+  rg -Fq ";; $marker" "$core_wat"
 done
-grep -Fq 'do:g6-2-owned-record-triple-producer/sink@0.1.0' "$core_wat"
-grep -Fq '(func (export "[async-lift]produce")' "$core_wat"
-if grep -Fq '__arc_' "$core_wat"; then
+rg -Fq 'do:g6-2-owned-record-triple-producer/sink@0.1.0' "$core_wat"
+rg -Fq '(func (export "[async-lift]produce")' "$core_wat"
+if rg -Fq '__arc_' "$core_wat"; then
   printf 'owned-record triple producer emitted an ARC symbol\n' >&2
   exit 1
 fi

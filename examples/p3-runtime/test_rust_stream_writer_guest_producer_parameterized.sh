@@ -20,13 +20,13 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build --p3-async-component \
   -o "$core_path"
 
 cmp "$wit_path" "$repo_root/examples/p3-runtime/wit/stream-probe-guest-producer-parameterized.wit"
-grep -Fq '[writer-endpoint-mode] guest-producer' "$core_path"
-grep -Fq '[writer-producer-value-offset] 60' "$core_path"
-grep -Fq '(type $async-run-i64-i32 (func (param i64 i32) (result i32)))' "$core_path"
-grep -Fq '(func (export "[async-lift]produce") (type $async-run-i64-i32)' "$core_path"
-grep -Fq 'i32.store8' "$core_path"
-grep -Fq 'i32.load8_u' "$core_path"
-grep -Fq '(data (i32.const 512) "\00")' "$core_path"
+rg -Fq '[writer-endpoint-mode] guest-producer' "$core_path"
+rg -Fq '[writer-producer-value-offset] 60' "$core_path"
+rg -Fq '(type $async-run-i64-i32 (func (param i64 i32) (result i32)))' "$core_path"
+rg -Fq '(func (export "[async-lift]produce") (type $async-run-i64-i32)' "$core_path"
+rg -Fq 'i32.store8' "$core_path"
+rg -Fq 'i32.load8_u' "$core_path"
+rg -Fq '(data (i32.const 512) "\00")' "$core_path"
 
 "$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
 bash "$repo_root/examples/p3-runtime/assemble_async_component.sh" \

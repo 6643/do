@@ -15,12 +15,12 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   --p3-wit-output "$tmp_dir/owned-error-result.wit" \
   -o "$tmp_dir/owned-error-result.wat"
 
-grep -Fq '[async-lower]send' "$tmp_dir/owned-error-result.wat"
-grep -Fq '[resource-drop]request' "$tmp_dir/owned-error-result.wat"
-grep -Fq '[resource-drop]response' "$tmp_dir/owned-error-result.wat"
-grep -Fq '[resource-drop]error-resource' "$tmp_dir/owned-error-result.wat"
-grep -Fq ';; [resource-owned-error-result]' "$tmp_dir/owned-error-result.wat"
-grep -Fq 'world owned-error-result-probe' "$tmp_dir/owned-error-result.wit"
+rg -Fq '[async-lower]send' "$tmp_dir/owned-error-result.wat"
+rg -Fq '[resource-drop]request' "$tmp_dir/owned-error-result.wat"
+rg -Fq '[resource-drop]response' "$tmp_dir/owned-error-result.wat"
+rg -Fq '[resource-drop]error-resource' "$tmp_dir/owned-error-result.wat"
+rg -Fq ';; [resource-owned-error-result]' "$tmp_dir/owned-error-result.wat"
+rg -Fq 'world owned-error-result-probe' "$tmp_dir/owned-error-result.wit"
 
 "$toolchain_bin" parse-core "$tmp_dir/owned-error-result.wat" \
   -o "$tmp_dir/owned-error-result.wasm"
@@ -42,10 +42,10 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
   "$repo_root/examples/p3-runtime/owned-error-resource-cancel-component.do" \
   --p3-async-component --p3-wit-output "$cancel_wit" -o "$cancel_core"
 cmp "$repo_root/src/build/p3_async_resource_owned_error_cancel_probe.wit" "$cancel_wit"
-grep -Fq '(import "do:resource-probe-owned-error/http@0.1.0" "[async-lower]send"' "$cancel_core"
-grep -Fq '[resource-drop]error-resource' "$cancel_core"
-grep -Fq '[resource-result-cancel]' "$cancel_core"
-if grep -Fq 'do:resource-probe/http@0.1.0' "$cancel_core"; then
+rg -Fq '(import "do:resource-probe-owned-error/http@0.1.0" "[async-lower]send"' "$cancel_core"
+rg -Fq '[resource-drop]error-resource' "$cancel_core"
+rg -Fq '[resource-result-cancel]' "$cancel_core"
+if rg -Fq 'do:resource-probe/http@0.1.0' "$cancel_core"; then
   printf 'owned-error cancellation retained the old resource package\n' >&2
   exit 1
 fi
@@ -67,7 +67,7 @@ expect_rejected() {
     printf 'owned-error negative fixture unexpectedly lowered: %s\n' "$fixture" >&2
     exit 1
   fi
-  grep -Fq "$expected" "$stderr_path"
+  rg -Fq "$expected" "$stderr_path"
 }
 
 expect_rejected owned-error-resource-request-consumed-twice.do ResourceAlreadyConsumed

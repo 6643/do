@@ -34,12 +34,12 @@ done
   exit 1
 }
 
-grep -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$wit"
-grep -Fq 'sync-data: async func() -> result<_, error-code>;' "$wit"
-grep -Fq 'run: async func(file: own<descriptor>) -> result<_, error-code>;' "$wit"
-grep -Fq 'world sync-data-probe' "$wit"
-grep -Fq 'world sync-data-cancel-probe' "$cancel_wit"
-grep -Fq 'cancel: async func();' "$cancel_wit"
+rg -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$wit"
+rg -Fq 'sync-data: async func() -> result<_, error-code>;' "$wit"
+rg -Fq 'run: async func(file: own<descriptor>) -> result<_, error-code>;' "$wit"
+rg -Fq 'world sync-data-probe' "$wit"
+rg -Fq 'world sync-data-cancel-probe' "$cancel_wit"
+rg -Fq 'cancel: async func();' "$cancel_wit"
 
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/do-d2-filesystem-sync-data-abi.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
@@ -56,7 +56,7 @@ current_cancel_dummy="$tmp_dir/current-cancel-dummy.wat"
 require_text() {
   local file="$1"
   local expected="$2"
-  grep -Fq -- "$expected" "$file" || {
+  rg -Fq -- "$expected" "$file" || {
     printf 'missing ABI fragment in %s: %s\n' "$file" "$expected" >&2
     exit 1
   }

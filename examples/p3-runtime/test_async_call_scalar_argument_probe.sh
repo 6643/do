@@ -20,17 +20,17 @@ component="$tmp_dir/component.wasm"
 
 "$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
 "$toolchain_bin" embed-component-template "$wit" probe > "$dummy_wat"
-custom_line=$(grep '^  (@custom "component-type"' "$dummy_wat" || true)
+custom_line=$(rg '^  (@custom "component-type"' "$dummy_wat" || true)
 test -n "$custom_line"
 "$toolchain_bin" strip-core "$core_wasm" -o "$tmp_dir/stripped.wasm"
 "$toolchain_bin" print-component "$tmp_dir/stripped.wasm" > "$tmp_dir/stripped.wat"
 sed '$d' "$tmp_dir/stripped.wat" > "$custom_wat"
 printf '%s\n' "$custom_line" ')' >> "$custom_wat"
 "$toolchain_bin" parse-core "$custom_wat" -o "$custom_wasm"
-grep -q '\[guest-async-arg-store\]' "$core_wat"
-grep -q '\[guest-async-arg-load\]' "$core_wat"
-grep -q '\[guest-async-parent-resume\]' "$core_wat"
-! grep -q '\[task-return\]helper' "$core_wat"
+rg -q '\[guest-async-arg-store\]' "$core_wat"
+rg -q '\[guest-async-arg-load\]' "$core_wat"
+rg -q '\[guest-async-parent-resume\]' "$core_wat"
+! rg -q '\[task-return\]helper' "$core_wat"
 "$toolchain_bin" new-component "$custom_wasm" -o "$component"
 "$toolchain_bin" validate-component "$component"
 

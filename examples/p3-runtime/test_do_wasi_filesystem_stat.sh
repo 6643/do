@@ -26,7 +26,7 @@ if "$repo_root/bin/do" build "$fixture" -o "$tmp_dir/default.wat" >"$tmp_dir/def
   printf 'default build unexpectedly succeeded\n' >&2
   exit 1
 fi
-grep -Fq 'AsyncLoweringUnavailable' "$tmp_dir/default.err"
+rg -Fq 'AsyncLoweringUnavailable' "$tmp_dir/default.err"
 [[ ! -e "$tmp_dir/default.wat" ]] || {
   printf 'default build produced WAT despite unsupported lowering\n' >&2
   exit 1
@@ -46,15 +46,15 @@ cp "$generated_wit" "$wit_dir/generated.wit"
   exit 1
 }
 
-grep -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$generated_wit"
-grep -Fq 'record descriptor-stat' "$generated_wit"
-grep -Fq 'stat: async func() -> result<descriptor-stat, error-code>;' "$generated_wit"
-grep -Fq 'run: async func(file: own<descriptor>) -> result<descriptor-stat, error-code>;' "$generated_wit"
-[[ $(grep -cF 'stat: async func' "$generated_wit") -eq 1 ]] || {
+rg -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$generated_wit"
+rg -Fq 'record descriptor-stat' "$generated_wit"
+rg -Fq 'stat: async func() -> result<descriptor-stat, error-code>;' "$generated_wit"
+rg -Fq 'run: async func(file: own<descriptor>) -> result<descriptor-stat, error-code>;' "$generated_wit"
+[[ $(rg -cF 'stat: async func' "$generated_wit") -eq 1 ]] || {
   printf 'unexpected stat method count in generated WIT\n' >&2
   exit 1
 }
-[[ $(grep -cF 'resource descriptor' "$generated_wit") -eq 1 ]] || {
+[[ $(rg -cF 'resource descriptor' "$generated_wit") -eq 1 ]] || {
   printf 'unexpected descriptor resource count in generated WIT\n' >&2
   exit 1
 }
@@ -72,19 +72,19 @@ for fragment in \
   '"[resource-drop]descriptor"' \
   '"[task-return]run"' \
   'result $descriptor-stat (error $error-code)'; do
-  grep -Fq "$fragment" "$component_wat" || {
+  rg -Fq "$fragment" "$component_wat" || {
     printf 'missing generated Component marker: %s\n' "$fragment" >&2
     exit 1
   }
 done
-grep -Fq 'record descriptor-stat' "$component_wit"
-grep -Fq 'enum error-code' "$component_wit"
-grep -Fq 'stat: async func() -> result<descriptor-stat, error-code>;' "$component_wit"
-grep -Fq 'run: async func(file: descriptor) -> result<descriptor-stat, error-code>;' "$component_wit"
+rg -Fq 'record descriptor-stat' "$component_wit"
+rg -Fq 'enum error-code' "$component_wit"
+rg -Fq 'stat: async func() -> result<descriptor-stat, error-code>;' "$component_wit"
+rg -Fq 'run: async func(file: descriptor) -> result<descriptor-stat, error-code>;' "$component_wit"
 for forbidden in \
   'descriptor.get-type' 'descriptor.get-flags' 'descriptor.sync' \
   'descriptor.read' 'descriptor.write' 'future<borrow' 'stream<'; do
-  if grep -Fq "$forbidden" "$component_wat"; then
+  if rg -Fq "$forbidden" "$component_wat"; then
     printf 'unexpected generated Component import: %s\n' "$forbidden" >&2
     exit 1
   fi
@@ -116,7 +116,7 @@ for name in "${expected_cases[@]}"; do
     printf '%s unexpectedly compiled\n' "$name" >&2
     exit 1
   fi
-  grep -Fq "$expected" "$stderr" || {
+  rg -Fq "$expected" "$stderr" || {
     printf '%s missing expected diagnostic: %s\n' "$name" "$expected" >&2
     cat "$stderr" >&2
     exit 1

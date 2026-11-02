@@ -27,7 +27,7 @@ for marker in \
   'call $subtask-drop' \
   'call $waitable-set-drop' \
   'call $task-return'; do
-  grep -Fq "$marker" "$core_wat"
+  rg -Fq "$marker" "$core_wat"
 done
 
 "$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
@@ -47,12 +47,12 @@ run_runner() {
 }
 
 pending_output=$(DO_GENERIC_ASYNC_RUNTIME_MODE=pending run_runner)
-grep -Fq 'pending external-wakes=2 completions=2 drops=1' <<<"$pending_output"
+rg -Fq 'pending external-wakes=2 completions=2 drops=1' <<<"$pending_output"
 
 immediate_output=$(DO_GENERIC_ASYNC_RUNTIME_MODE=immediate run_runner)
-grep -Fq 'immediate external-wakes=0 completions=3 drops=0' <<<"$immediate_output"
+rg -Fq 'immediate external-wakes=0 completions=3 drops=0' <<<"$immediate_output"
 
 cancel_output=$(DO_GENERIC_ASYNC_RUNTIME_MODE=cancel run_runner)
-grep -Fq 'cancel cancel-before-completion=1 completions=2' <<<"$cancel_output"
+rg -Fq 'cancel cancel-before-completion=1 completions=2' <<<"$cancel_output"
 
 printf 'generic async runtime pending/ready/cancel passed\n'

@@ -26,6 +26,7 @@ const STREAM_WRITER_FRAME_BYTES: u64 = 64;
 )]
 #[component(enum)]
 #[repr(u8)]
+#[allow(dead_code)]
 enum ErrorCode {
     #[component(name = "io")]
     Io,

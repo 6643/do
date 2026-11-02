@@ -12,7 +12,7 @@ export TMPDIR="$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/g6-2-list-owned-record-equivalence.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -56,11 +56,11 @@ cmp "$generated_wit" "$probe_wit"
 test "$(sha256sum "$generated_wit" | awk '{print $1}')" = \
   cf7d047069cd9b30066debc88ce8edc159c9d2a90a310e56e384bb42c19cd6eb
 cmp "$generated_wat" "$canonical_wat"
-if grep -Fq '__arc_' "$generated_wat"; then
+if rg -Fq '__arc_' "$generated_wat"; then
   printf 'list-owned-record generated WAT emitted an ARC symbol\n' >&2
   exit 1
 fi
-if grep -Eq '\(ref (null|extern|func|eq|struct|array)' "$generated_wat"; then
+if rg -q '\(ref (null|extern|func|eq|struct|array)' "$generated_wat"; then
   printf 'list-owned-record producer crosses a Wasm GC reference boundary\n' >&2
   exit 1
 fi
@@ -89,9 +89,9 @@ for mode in ready pending sink-error-before sink-error-after \
   "$runner" "$canonical_component" "$mode" >"$canonical_output"
   "$runner" "$generated_component" "$mode" >"$generated_output"
   cmp "$canonical_output" "$generated_output"
-  grep -Fq "mode=$mode" "$canonical_output"
-  grep -Fq 'table-empty=true' "$canonical_output"
-  grep -Fq 'list-releases=' "$canonical_output"
+  rg -Fq "mode=$mode" "$canonical_output"
+  rg -Fq 'table-empty=true' "$canonical_output"
+  rg -Fq 'list-releases=' "$canonical_output"
   printf 'PASS %s: canonical and generated list-owned-record lifecycle observations agree\n' "$mode"
 done
 

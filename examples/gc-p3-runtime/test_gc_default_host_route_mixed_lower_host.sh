@@ -58,6 +58,6 @@ output=$(
   "$cargo_bin" run --quiet --locked --manifest-path "$runner_manifest" \
     --bin gc_marshal_record_mixed_lower -- "$tmp_dir/component.wasm"
 )
-grep -Fq 'GC mixed scalar record lower host adapter passed result=42 write-calls=1' <<<"$output"
+rg -Fq 'GC mixed scalar record lower host adapter passed result=42 write-calls=1' <<<"$output"
 printf '%s\n' "$output"
 printf 'default mixed scalar record lower Component host execution passed\n'

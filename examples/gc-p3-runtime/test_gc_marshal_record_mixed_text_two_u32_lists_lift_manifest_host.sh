@@ -60,6 +60,6 @@ output=$(
     --bin do-p3-gc-marshal-record-mixed-text-two-u32-lists-lift-host-runner -- \
     "$tmp_dir/component.wasm"
 )
-grep -Fq 'GC mixed text/two-u32-lists record lift host adapter passed code=7 label=hello first=[10, 20, 5] second=[3, 4] result=54 stats=51 read-calls=1 allocations=3 frees=3' <<<"$output"
+rg -Fq 'GC mixed text/two-u32-lists record lift host adapter passed code=7 label=hello first=[10, 20, 5] second=[3, 4] result=54 stats=51 read-calls=1 allocations=3 frees=3' <<<"$output"
 printf '%s\n' "$output"
 printf 'manifest-backed mixed text/two-u32-lists record lift Component host execution passed\n'

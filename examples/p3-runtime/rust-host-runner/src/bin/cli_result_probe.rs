@@ -5,7 +5,7 @@ use std::path::Path;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context as TaskContext, Poll};
-use wasmtime::component::{Accessor, AccessorTask, Component, Linker};
+use wasmtime::component::{AccessorTask, Component, Linker};
 use wasmtime::{Config, Engine, Store};
 
 const CLI_INSTANCE: &str = "wasi:cli/run@0.3.0";
@@ -59,9 +59,9 @@ struct HostWake {
     completion: oneshot::Sender<()>,
 }
 
-impl AccessorTask<()> for HostWake {
-    fn run(self, _accessor: &Accessor<()>) -> impl Future<Output = wasmtime::Result<()>> + Send {
-        async move {
+impl HostWake {
+    fn task(self) -> impl for<'a> AccessorTask<'a, ()> {
+        async move |_accessor| {
             let mut stats = self.stats.lock().expect("cli result stats mutex poisoned");
             stats.external_wakes += 1;
             drop(stats);
@@ -104,10 +104,13 @@ async fn run(component_path: &Path) -> Result<()> {
             });
         }
         let (completion_sender, completion) = oneshot::channel();
-        let host_event = accessor.spawn(HostWake {
-            stats: Arc::clone(&host_stats),
-            completion: completion_sender,
-        });
+        let host_event = accessor.spawn(
+            HostWake {
+                stats: Arc::clone(&host_stats),
+                completion: completion_sender,
+            }
+            .task(),
+        );
         let pending = PendingResult {
             stats: Arc::clone(&host_stats),
             completion,

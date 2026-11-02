@@ -54,6 +54,6 @@ output=$(
   "$cargo_bin" run --quiet --locked --manifest-path "$runner_manifest" \
     --bin do-p3-gc-marshal-record-nested-lift-deeper-host-runner -- "$tmp_dir/component.wasm"
 )
-grep -Fq 'GC four-level nested scalar record lift host adapter passed sum=42' <<<"$output"
+rg -Fq 'GC four-level nested scalar record lift host adapter passed sum=42' <<<"$output"
 printf '%s\n' "$output"
 printf 'compiler-wired four-level nested scalar record lift Component host execution passed\n'

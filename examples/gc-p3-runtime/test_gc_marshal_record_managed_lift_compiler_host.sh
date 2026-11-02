@@ -54,6 +54,6 @@ output=$(
   "$cargo_bin" run --quiet --locked --manifest-path "$runner_manifest" \
     --bin do-p3-gc-marshal-record-managed-lift-host-runner -- "$tmp_dir/component.wasm"
 )
-grep -Fq 'GC managed-field record lift host adapter passed value=12' <<<"$output"
+rg -Fq 'GC managed-field record lift host adapter passed value=12' <<<"$output"
 printf '%s\n' "$output"
 printf 'compiler-wired managed-field record lift Component host execution passed\n'

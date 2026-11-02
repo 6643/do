@@ -464,9 +464,7 @@ async fn call_produce(
 ) -> Result<(std::result::Result<(), ErrorCode>,)> {
     Ok(map_wasmtime(map_wasmtime(
         store
-            .run_concurrent(async |accessor| {
-                produce.call_concurrent(&accessor, (input,)).await
-            })
+            .run_concurrent(async |accessor| produce.call_concurrent(&accessor, (input,)).await)
             .await,
     )?)?)
 }
@@ -535,8 +533,7 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
         || snapshot.pending_future_drops != expected_pending_future_drops
         || snapshot.pending_polls != expected_pending
         || snapshot.cancel_calls != expected_cancel_calls
-        || snapshot.list_read_releases
-            != expected_received.len() as u32
+        || snapshot.list_read_releases != expected_received.len() as u32
         || !table_empty
     {
         bail!(

@@ -23,9 +23,7 @@ fn run_component(engine: &Engine, path: &str) -> Result<Outcome> {
     let component = map_wasmtime(Component::from_file(engine, path))
         .with_context(|| format!("load component {path}"))?;
     let mut linker: Linker<State> = Linker::new(engine);
-    let mut api = map_wasmtime(
-        linker.instance("demo:marshal-record-byte-list-lower/api@1.0.0"),
-    )?;
+    let mut api = map_wasmtime(linker.instance("demo:marshal-record-byte-list-lower/api@1.0.0"))?;
     let calls = Arc::new(AtomicU32::new(0));
     let callback_calls = Arc::clone(&calls);
     map_wasmtime(api.func_new("write", move |_store, _ty, params, results| {
@@ -34,7 +32,11 @@ fn run_component(engine: &Engine, path: &str) -> Result<Outcome> {
         }
         let fields = match &params[0] {
             Val::Record(fields) => fields,
-            _ => return Err(wasmtime::Error::msg("byte-list lower parameter was not a record")),
+            _ => {
+                return Err(wasmtime::Error::msg(
+                    "byte-list lower parameter was not a record",
+                ));
+            }
         };
         let code = match fields.iter().find(|(name, _)| name == "code") {
             Some((_, Val::U32(value))) => *value,
@@ -48,7 +50,11 @@ fn run_component(engine: &Engine, path: &str) -> Result<Outcome> {
                     _ => Err(wasmtime::Error::msg("byte-list payload element was not u8")),
                 })
                 .collect::<wasmtime::Result<Vec<u8>>>()?,
-            _ => return Err(wasmtime::Error::msg("byte-list record payload was not a list")),
+            _ => {
+                return Err(wasmtime::Error::msg(
+                    "byte-list record payload was not a list",
+                ));
+            }
         };
         if code != 7 || payload != [10, 20, 5] {
             return Err(wasmtime::Error::msg(format!(
@@ -74,12 +80,12 @@ fn run_component(engine: &Engine, path: &str) -> Result<Outcome> {
 
 fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
-    let gc_path = args.next().context(
-        "usage: do-p3-gc-marshal-record-byte-list-lower-equivalence-runner <gc> <arc>",
-    )?;
-    let arc_path = args.next().context(
-        "usage: do-p3-gc-marshal-record-byte-list-lower-equivalence-runner <gc> <arc>",
-    )?;
+    let gc_path = args
+        .next()
+        .context("usage: do-p3-gc-marshal-record-byte-list-lower-equivalence-runner <gc> <arc>")?;
+    let arc_path = args
+        .next()
+        .context("usage: do-p3-gc-marshal-record-byte-list-lower-equivalence-runner <gc> <arc>")?;
     if args.next().is_some() {
         bail!("expected two component paths");
     }
@@ -90,7 +96,13 @@ fn main() -> Result<()> {
     let engine = map_wasmtime(Engine::new(&config))?;
     let gc = run_component(&engine, &gc_path)?;
     let arc = run_component(&engine, &arc_path)?;
-    if gc.result != 42 || arc.result != 17 || gc.stats != 17 || arc.stats != 17 || gc.calls != 1 || arc.calls != 1 {
+    if gc.result != 42
+        || arc.result != 17
+        || gc.stats != 17
+        || arc.stats != 17
+        || gc.calls != 1
+        || arc.calls != 1
+    {
         bail!(
             "expected GC result/stats/calls=42/17/1 and ARC=17/17/1, got GC={}/{}/{} ARC={}/{}/{}",
             gc.result,

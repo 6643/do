@@ -27,7 +27,7 @@ fi
 "$zig_bin" run "$probe" -- "$tmp_dir/gc.core.wat" "$repo_root"
 "$toolchain_bin" parse-core "$tmp_dir/gc.core.wat" -o "$tmp_dir/gc.core.wasm"
 "$toolchain_bin" parse-core "$arc_core_wat" -o "$tmp_dir/arc.core.wasm"
-if grep -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$tmp_dir/gc.core.wat"; then
+if rg -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$tmp_dir/gc.core.wat"; then
   printf 'GC reference crossed canonical nested lift import\n' >&2
   exit 1
 fi
@@ -45,7 +45,7 @@ output=$(
     --bin do-p3-gc-marshal-record-nested-host-equivalence-runner -- \
     "$tmp_dir/gc.component.wasm" "$tmp_dir/arc.component.wasm"
 )
-grep -Fq 'GC/ARC manifest nested scalar record lift equivalence passed sums=37/37' <<<"$output"
+rg -Fq 'GC/ARC manifest nested scalar record lift equivalence passed sums=37/37' <<<"$output"
 printf '%s\n' "$output"
 
 printf 'manifest-backed nested scalar record lift ARC/GC equivalence passed\n'

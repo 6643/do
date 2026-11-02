@@ -29,10 +29,10 @@ DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$source" \
 test -s "$wat"
 test -s "$wit"
 
-grep -Fq 'package do:g6-2-batched-list-producer@0.1.0;' "$wit"
-grep -Fq 'world batched-list-producer' "$wit"
-grep -Fq 'export produce: async func(mode: u32)' "$wit"
-grep -Fq '[producer-batched-plan-layout] pointer=64 length=68 stride=4 ticket-offset=0 capacity=1 batches=2 lengths=2,1' "$wat"
+rg -Fq 'package do:g6-2-batched-list-producer@0.1.0;' "$wit"
+rg -Fq 'world batched-list-producer' "$wit"
+rg -Fq 'export produce: async func(mode: u32)' "$wit"
+rg -Fq '[producer-batched-plan-layout] pointer=64 length=68 stride=4 ticket-offset=0 capacity=1 batches=2 lengths=2,1' "$wat"
 
 "$toolchain_bin" parse-core "$wat" -o "$core_wasm"
 "$toolchain_bin" embed-component "$wit" "$core_wasm" batched-list-producer \
@@ -51,15 +51,15 @@ for mode in ready pending sink-error-first sink-error-second cancel-before-first
   output=$(cargo run --quiet --locked --manifest-path "$runner_dir/Cargo.toml" \
     --bin "$bin" -- "$component" "$mode")
   printf '%s\n' "$output"
-  grep -Fq "mode=$mode" <<<"$output"
-  grep -Fq 'resource-created=3' <<<"$output"
-  grep -Fq 'resource-drops=3' <<<"$output"
-  grep -Fq 'list-allocations=2' <<<"$output"
-  grep -Fq 'list-releases=2' <<<"$output"
-  grep -Fq 'stream-drops=1' <<<"$output"
-  grep -Fq 'future-drops=1' <<<"$output"
-  grep -Fq 'cancel-calls=' <<<"$output"
-  grep -Fq 'table-empty=true' <<<"$output"
+  rg -Fq "mode=$mode" <<<"$output"
+  rg -Fq 'resource-created=3' <<<"$output"
+  rg -Fq 'resource-drops=3' <<<"$output"
+  rg -Fq 'list-allocations=2' <<<"$output"
+  rg -Fq 'list-releases=2' <<<"$output"
+  rg -Fq 'stream-drops=1' <<<"$output"
+  rg -Fq 'future-drops=1' <<<"$output"
+  rg -Fq 'cancel-calls=' <<<"$output"
+  rg -Fq 'table-empty=true' <<<"$output"
 done
 
 printf 'G6.2 batched list resource producer compiler-generated Rust/Wasmtime gate passed\n'

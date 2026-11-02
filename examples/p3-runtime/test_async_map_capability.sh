@@ -20,10 +20,10 @@ for path in "$wit" "$wat" "$runner"; do
   }
 done
 
-  grep -Fq 'package demo:map-async-probe@0.1.0;' "$wit"
-grep -Fq 'submit: async func(values: map<u32, u32>) -> u32;' "$wit"
-grep -Fq 'export run: async func() -> u32;' "$wit"
-grep -Fq '(type $async-submit (func (param i32 i32 i32) (result i32)))' "$wat"
+  rg -Fq 'package demo:map-async-probe@0.1.0;' "$wit"
+rg -Fq 'submit: async func(values: map<u32, u32>) -> u32;' "$wit"
+rg -Fq 'export run: async func() -> u32;' "$wit"
+rg -Fq '(type $async-submit (func (param i32 i32 i32) (result i32)))' "$wat"
 
 for marker in \
   '[async-map-input-copy]' \
@@ -34,10 +34,10 @@ for marker in \
   '[async-map-cancel]' \
   '[async-map-drop]' \
   '[async-map-frame-free]'; do
-  grep -Fq ";; $marker" "$wat"
+  rg -Fq ";; $marker" "$wat"
 done
 
-if grep -Fq '__arc_' "$wat"; then
+if rg -Fq '__arc_' "$wat"; then
   printf 'async map probe contains obsolete ARC marker\n' >&2
   exit 1
 fi
@@ -64,16 +64,16 @@ for mode in ready pending cancel drop; do
   output=$(cargo run --quiet --locked --manifest-path "$runner_dir/Cargo.toml" \
     --bin "$bin" -- "$component" "$mode")
   printf '%s\n' "$output"
-  grep -Fq "mode=$mode" <<<"$output"
-  grep -Fq 'entries=[7->70, 9->90]' <<<"$output"
-  grep -Fq 'input-mismatches=0' <<<"$output"
+  rg -Fq "mode=$mode" <<<"$output"
+  rg -Fq 'entries=[7->70, 9->90]' <<<"$output"
+  rg -Fq 'input-mismatches=0' <<<"$output"
   if [[ "$mode" == ready || "$mode" == pending ]]; then
-    grep -Fq 'result=42' <<<"$output"
+    rg -Fq 'result=42' <<<"$output"
   else
-    grep -Fq 'result=0' <<<"$output"
+    rg -Fq 'result=0' <<<"$output"
   fi
-  grep -Fq 'frame-frees=1' <<<"$output"
-  grep -Fq 'table-empty=true' <<<"$output"
+  rg -Fq 'frame-frees=1' <<<"$output"
+  rg -Fq 'table-empty=true' <<<"$output"
 done
 
 printf 'async map capability probe passed modes=4 input-copy=true result-area=true exactly-once=true\n'

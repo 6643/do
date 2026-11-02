@@ -13,9 +13,9 @@ fi
 
 output=$("$toolchain_bin" embed-component-template "$wit" stream-stdin-probe)
 
-grep -Fq '"wasi:cli/stdin@0.3.0-rc-2025-09-16" "read-via-stream"' <<<"$output"
-grep -Fq '(param i32)' <<<"$output"
-grep -Fq '"$root" "[waitable-set-new]"' <<<"$output"
-grep -Fq '"[export]$root" "[task-return]run"' <<<"$output"
+rg -Fq '"wasi:cli/stdin@0.3.0-rc-2025-09-16" "read-via-stream"' <<<"$output"
+rg -Fq '(param i32)' <<<"$output"
+rg -Fq '"$root" "[waitable-set-new]"' <<<"$output"
+rg -Fq '"[export]$root" "[task-return]run"' <<<"$output"
 
 printf 'CLI stdin stream ABI surface passed\n'

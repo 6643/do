@@ -1065,8 +1065,8 @@ fn parse_guest_write_sequence(
     end_idx: usize,
     writer_name: []const u8,
 ) ?GuestProducerWrites {
-    var values = [_]u8{0} ** max_guest_producer_writes;
-    var bindings = [_]GuestU8Binding{undefined} ** max_guest_producer_bindings;
+    var values: [max_guest_producer_writes]u8 = @splat(0);
+    var bindings: [max_guest_producer_bindings]GuestU8Binding = @splat(undefined);
     var binding_count: usize = 0;
     var write_count: usize = 0;
     var write_future_name: ?[]const u8 = null;
@@ -1140,7 +1140,7 @@ pub const StreamWriterPlan = struct {
     producer_helper_name: ?[]const u8 = null,
     producer_value: ?u8 = null,
     producer_terminal: WriterTerminalAction = .close,
-    producer_values: [max_guest_producer_writes]u8 = [_]u8{0} ** max_guest_producer_writes,
+    producer_values: [max_guest_producer_writes]u8 = @splat(0),
     producer_write_count: usize = 0,
 
     pub fn analyze(tokens: []const lexer.Token, registry: p3_async_manifest.Registry) !StreamWriterPlan {
@@ -1305,7 +1305,7 @@ fn find_guest_producer_function(tokens: []const lexer.Token, host_name: []const 
                     .value_name = dynamic.value_name,
                     .value = dynamic.value,
                     .terminal = dynamic.terminal,
-                    .values = [_]u8{0} ** max_guest_producer_writes,
+                    .values = @splat(0),
                     .write_count = 0,
                     .capacity = stream.capacity,
                 };
@@ -1354,7 +1354,7 @@ fn find_guest_producer_function(tokens: []const lexer.Token, host_name: []const 
                 .value_name = value_name,
                 .value = selected_dynamic.value,
                 .terminal = selected_dynamic.terminal,
-                .values = [_]u8{0} ** max_guest_producer_writes,
+                .values = @splat(0),
                 .write_count = 0,
                 .capacity = stream.capacity,
             };
@@ -1755,7 +1755,7 @@ fn find_parameterized_stream_writer_function_named(
 
         var parameters: [3]ParameterizedParameter = undefined;
         var parameter_order: [3]ParameterizedParameterKind = undefined;
-        var seen = [_]bool{false} ** 3;
+        var seen: [3]bool = @splat(false);
         var writer_name: []const u8 = undefined;
         var count_name: []const u8 = undefined;
         var value_name: []const u8 = undefined;
@@ -1767,7 +1767,7 @@ fn find_parameterized_stream_writer_function_named(
                 valid = false;
                 break;
             };
-            const kind_index = @intFromEnum(parameter.kind);
+            const kind_index = @backingInt(parameter.kind);
             if (seen[kind_index]) {
                 valid = false;
                 break;

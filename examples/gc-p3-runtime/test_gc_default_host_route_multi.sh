@@ -72,7 +72,7 @@ output=$(
   "$cargo_bin" run --quiet --locked --manifest-path "$runner_manifest" \
     --bin do-p3-gc-marshal-record-managed-lower-multi-host-runner -- "$tmp_dir/component.wasm"
 )
-grep -Fq 'GC multi-managed-field record lower host adapter passed code=7 label=hello note=world write-calls=1 allocations=2 frees=2' <<<"$output"
+rg -Fq 'GC multi-managed-field record lower host adapter passed code=7 label=hello note=world write-calls=1 allocations=2 frees=2' <<<"$output"
 printf '%s\n' "$output"
 printf 'default C15-D multi-managed-field record lower Component host execution passed\n'
 
@@ -109,6 +109,6 @@ lift_output=$(
   "$cargo_bin" run --quiet --locked --manifest-path "$runner_manifest" \
     --bin do-p3-gc-marshal-record-managed-lift-multi-host-runner -- "$tmp_dir/lift.component.wasm"
 )
-grep -Fq 'GC managed multi-field record lift host adapter passed value=17' <<<"$lift_output"
+rg -Fq 'GC managed multi-field record lift host adapter passed value=17' <<<"$lift_output"
 printf '%s\n' "$lift_output"
 printf 'default C16-D multi-managed-field record lift Component host execution passed\n'

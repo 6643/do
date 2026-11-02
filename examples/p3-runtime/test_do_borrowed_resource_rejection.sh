@@ -28,5 +28,5 @@ if "$toolchain_bin" embed-component "$wit" "$core_wasm" \
   exit 1
 fi
 
-grep -Fq 'contains a `borrow<T>` which is not supported' "$stderr_file"
+rg -Fq 'contains a `borrow<T>` which is not supported' "$stderr_file"
 printf 'pinned wasm-tools borrowed resource stream rejection passed\n'

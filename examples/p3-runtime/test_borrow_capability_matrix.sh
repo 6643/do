@@ -155,7 +155,7 @@ check_rejected() {
     printf '%s unexpectedly accepted\n' "$shape" >&2
     exit 1
   fi
-  grep -Fq 'contains a `borrow<T>` which is not supported' "$stderr_file"
+  rg -Fq 'contains a `borrow<T>` which is not supported' "$stderr_file"
   printf '%s=rejected-at-embed\n' "$shape"
 }
 

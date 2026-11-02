@@ -71,7 +71,7 @@ build_equivalence() {
     "$cargo_bin" run --quiet --locked --manifest-path "$runner_manifest" \
       --bin "$runner_bin" -- "$component" "$arc_component"
   )
-  grep -Fq "$expected" <<<"$output"
+  rg -Fq "$expected" <<<"$output"
   printf '%s\n' "$output"
 }
 

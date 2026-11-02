@@ -38,6 +38,6 @@ WIT
 "$toolchain_bin" new-component "$embedded" -o "$component"
 "$toolchain_bin" validate-component "$component"
 "$toolchain_bin" print-component "$component" >"$component_wat"
-grep -Fq 'call $consume-body' "$component_wat"
+rg -Fq 'call $consume-body' "$component_wat"
 
 printf 'WASI HTTP response consume-body assembly passed\n'

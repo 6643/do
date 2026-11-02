@@ -32,9 +32,9 @@ fn list_values(fields: &[(String, Val)], name: &str) -> Result<Vec<u32>> {
         .iter()
         .map(|value| match value {
             Val::U32(value) => Ok(*value),
-            other => bail!(
-                "mixed text/two-u32-list lower field {name} element was not u32: {other:?}"
-            ),
+            other => {
+                bail!("mixed text/two-u32-list lower field {name} element was not u32: {other:?}")
+            }
         })
         .collect()
 }

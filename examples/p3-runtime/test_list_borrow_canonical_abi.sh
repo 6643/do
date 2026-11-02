@@ -26,7 +26,7 @@ test -f "$wit"
   --features none -o "$embedded"
 "$toolchain_bin" new-component "$embedded" -o "$component"
 "$toolchain_bin" validate-component "$component" --features none
-"$toolchain_bin" component-wit "$component" | grep -Fq 'read: func(values: list<borrow<ticket>>) -> u32'
+"$toolchain_bin" component-wit "$component" | rg -Fq 'read: func(values: list<borrow<ticket>>) -> u32'
 test -f "$runner_dir/src/bin/list_borrow_canonical_abi.rs"
 
 if ! command -v cc >/dev/null 2>&1; then
@@ -55,9 +55,9 @@ run_mode() {
   local output
   output=$(cargo run --quiet --manifest-path "$runner_dir/Cargo.toml" \
     --bin do-p3-list-borrow-canonical-abi -- "$component" "$mode")
-  grep -Fq "mode=$mode values=$expected borrow-calls=1" <<<"$output"
-  grep -Fq 'owner-drops=1 table-empty=true' <<<"$output"
-  grep -Fq "observed-list-pointer=$list_pointer observed-list-element-stride=$list_stride" <<<"$output"
+  rg -Fq "mode=$mode values=$expected borrow-calls=1" <<<"$output"
+  rg -Fq 'owner-drops=1 table-empty=true' <<<"$output"
+  rg -Fq "observed-list-pointer=$list_pointer observed-list-element-stride=$list_stride" <<<"$output"
 }
 
 run_mode 0 '[]'

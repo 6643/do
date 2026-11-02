@@ -12,7 +12,7 @@ failure_log="$repo_root/.superpowers/sdd/2026-09-14-g6-2-pilot-runtime-counter-g
 mkdir -p "$(dirname "$failure_log")"
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -78,9 +78,9 @@ run_checked instrument env ZIG_GLOBAL_CACHE_DIR="$repo_root/.tmp/zig-gcache" \
 
 test "$(sha256sum "$instrumented_wat" | awk '{print $1}')" != \
   fbbdf5c5a21220c5f8dcb2438ab70e68a701e8857d45905e0e3a2599e19bcaa7
-grep -Fq '[test-only-runtime-counters]' "$instrumented_wat"
-grep -Fq '(export "runtime-counters"' "$instrumented_wat"
-test "$(grep -Fo '(export "runtime-counters"' "$instrumented_wat" | wc -l | tr -d ' ')" = 1
+rg -Fq '[test-only-runtime-counters]' "$instrumented_wat"
+rg -Fq '(export "runtime-counters"' "$instrumented_wat"
+test "$(rg -Fo '(export "runtime-counters"' "$instrumented_wat" | wc -l | tr -d ' ')" = 1
 
 run_checked parse-core "$toolchain_bin" parse-core "$instrumented_wat" -o "$instrumented_core"
 run_checked embed-component "$toolchain_bin" embed-component "$counter_wit" "$instrumented_core" \
@@ -122,9 +122,9 @@ run_counter_mode() {
     return 1
   fi
   cat "$output_file"
-  grep -Fq "mode=$mode" "$output_file"
-  grep -Fq 'counter-source=component-callback' "$output_file"
-  grep -Fq "frame-allocations=$expected frame-releases=$expected" "$output_file"
+  rg -Fq "mode=$mode" "$output_file"
+  rg -Fq 'counter-source=component-callback' "$output_file"
+  rg -Fq "frame-allocations=$expected frame-releases=$expected" "$output_file"
 }
 
 for mode in ready pending sink-error-before sink-error-after cancel-before-transfer cancel-after-transfer early-drop-before-transfer early-drop-after-transfer repeat invalid; do

@@ -18,11 +18,11 @@ if [[ "$expected_hash" != "$actual_hash" ]]; then
     exit 1
 fi
 
-grep -Fq '"wasmtime_commit": "90fed3c6adf53f112c4dea56851728557bb73799"' "$manifest"
-grep -Fq '"package": "wasi:clocks@0.3.0"' "$manifest"
-grep -Fq '"interface": "monotonic-clock"' "$manifest"
-grep -Fq '"member": "wait-for"' "$manifest"
-grep -Fq '"effect": "async"' "$manifest"
+rg -Fq '"wasmtime_commit": "90fed3c6adf53f112c4dea56851728557bb73799"' "$manifest"
+rg -Fq '"package": "wasi:clocks@0.3.0"' "$manifest"
+rg -Fq '"interface": "monotonic-clock"' "$manifest"
+rg -Fq '"member": "wait-for"' "$manifest"
+rg -Fq '"effect": "async"' "$manifest"
 
 "$toolchain_bin" component-wit "$wit_file" >/dev/null
 printf 'P3 WIT snapshot verified: wasi:clocks/monotonic-clock.wait-for\n'

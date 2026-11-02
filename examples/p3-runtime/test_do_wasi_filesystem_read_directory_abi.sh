@@ -17,7 +17,7 @@ component_wit="$tmp_dir/filesystem.component.wit"
   --features component-async > "$wat"
 
 require_wat() {
-  if ! grep -Fq -- "$1" "$wat"; then
+  if ! rg -Fq -- "$1" "$wat"; then
     printf 'missing read-directory ABI fragment: %s\n' "$1" >&2
     exit 1
   fi
@@ -27,7 +27,7 @@ require_import_type() {
   local import_name="$1"
   local type_index="$2"
   local line
-  line=$(grep -F "\"wasi:filesystem/types@0.3.0-rc-2025-09-16\" \"$import_name\" (func " "$wat" || true)
+  line=$(rg -F "\"wasi:filesystem/types@0.3.0-rc-2025-09-16\" \"$import_name\" (func " "$wat" || true)
   case "$line" in
     *"(type $type_index)))"*) ;;
     *)
@@ -73,9 +73,9 @@ require_import_type '[future-drop-readable-1][method]descriptor.read-directory' 
 "$toolchain_bin" validate-component "$component" --features component-async
 "$toolchain_bin" component-wit "$component" > "$component_wit"
 
-grep -Fq 'read-directory: async func() -> tuple<stream<directory-entry>, future<result<_, error-code>>>;' "$component_wit"
-grep -Fq 'record directory-entry {' "$component_wit"
-grep -Fq 'type: descriptor-type,' "$component_wit"
-grep -Fq 'name: string,' "$component_wit"
+rg -Fq 'read-directory: async func() -> tuple<stream<directory-entry>, future<result<_, error-code>>>;' "$component_wit"
+rg -Fq 'record directory-entry {' "$component_wit"
+rg -Fq 'type: descriptor-type,' "$component_wit"
+rg -Fq 'name: string,' "$component_wit"
 
 printf 'WASI G6.2 read-directory ABI probe passed\n'

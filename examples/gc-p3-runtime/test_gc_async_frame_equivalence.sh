@@ -41,12 +41,12 @@ build_gc_component() {
   (cd "$repo_root" && DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$fixture" \
     --p3-wait-for-component --p3-wit-output "$wit" -o "$wat" >/dev/null
   )
-  if grep -Fq '__arc_' "$wat"; then
+  if rg -Fq '__arc_' "$wat"; then
     printf 'generated GC frame output contains ARC markers\n' >&2
     exit 1
   fi
   for marker in '(type $async-frame (struct' '(table $async-frames 0 (ref null $async-frame))' 'table.get $async-frames'; do
-    if ! grep -Fq "$marker" "$wat"; then
+    if ! rg -Fq "$marker" "$wat"; then
       printf 'generated GC frame output is missing marker: %s\n' "$marker" >&2
       exit 1
     fi
@@ -77,7 +77,7 @@ run_runner() {
     'clock pending-polls=4' \
     'clock external-wakes=4' \
     'clock completions=4'; do
-    if ! grep -Fq "$marker" "$output"; then
+    if ! rg -Fq "$marker" "$output"; then
       printf 'missing two-await runner marker: %s\n' "$marker" >&2
       cat "$output" >&2
       exit 1
@@ -95,8 +95,8 @@ for marker in \
   'clock pending-polls=4' \
   'clock external-wakes=4' \
   'clock completions=4'; do
-  gc_line=$(grep -F "$marker" "$tmp_dir/gc.runner.out")
-  linear_line=$(grep -F "$marker" "$tmp_dir/linear.runner.out")
+  gc_line=$(rg -F "$marker" "$tmp_dir/gc.runner.out")
+  linear_line=$(rg -F "$marker" "$tmp_dir/linear.runner.out")
   if [[ "$gc_line" != "$linear_line" ]]; then
     printf 'GC/linear async-frame mismatch: gc=%s linear=%s\n' "$gc_line" "$linear_line" >&2
     exit 1
@@ -107,12 +107,12 @@ run_lifecycle_mode() {
   local component="$1" mode="$2" expected="$3" output
   output=$("$cargo_bin" run --quiet --manifest-path "$runner_manifest" \
     --bin do-p3-two-await-host-runner -- "$component" "$mode")
-  if ! printf '%s\n' "$output" | grep -Fxq "$expected"; then
+  if ! printf '%s\n' "$output" | rg -Fxq "$expected"; then
     printf 'missing two-await lifecycle marker mode=%s expected=%s\n%s\n' \
       "$mode" "$expected" "$output" >&2
     exit 1
   fi
-  printf '%s\n' "$output" | grep -Fx "$expected"
+  printf '%s\n' "$output" | rg -Fx "$expected"
 }
 
 run_unsupported_ready_mode() {
@@ -126,7 +126,7 @@ run_unsupported_ready_mode() {
     printf 'two-await ready mode unexpectedly completed successfully\n%s\n' "$output" >&2
     exit 1
   fi
-  if ! printf '%s\n' "$output" | grep -Fq 'Error: error while executing at wasm backtrace:'; then
+  if ! printf '%s\n' "$output" | rg -Fq 'Error: error while executing at wasm backtrace:'; then
     printf 'two-await ready mode failed for an unexpected reason (exit %d)\n%s\n' \
       "$rc" "$output" >&2
     exit 1

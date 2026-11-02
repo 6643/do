@@ -49,13 +49,13 @@ generated_wit="$tmp_dir/generated.wit"
 generated_core_wat="$tmp_dir/generated.core.wat"
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build "$fixture" \
     --p3-async-component --p3-wit-output "$generated_wit" -o "$generated_core_wat" >/dev/null
-grep -Fq 'metadata-hash-at: async func(path-flags: path-flags, path: string)' "$generated_wit"
-grep -Fq 'run: async func(file: own<descriptor>, path-flags: path-flags, path: string)' "$generated_wit"
-grep -Fq '(type $method (func (param i32 i32 i32 i32 i32) (result i32)))' "$generated_core_wat"
-grep -Fq '(type $task-return-metadata-hash-at (func (param i32 i64 i64)))' "$generated_core_wat"
-grep -Fq '[metadata-hash-at-result-area]' "$generated_core_wat"
-grep -Fq '[descriptor-drop]' "$generated_core_wat"
-test "$(grep -Fc 'call $metadata-hash-at' "$generated_core_wat")" -eq 1
+rg -Fq 'metadata-hash-at: async func(path-flags: path-flags, path: string)' "$generated_wit"
+rg -Fq 'run: async func(file: own<descriptor>, path-flags: path-flags, path: string)' "$generated_wit"
+rg -Fq '(type $method (func (param i32 i32 i32 i32 i32) (result i32)))' "$generated_core_wat"
+rg -Fq '(type $task-return-metadata-hash-at (func (param i32 i64 i64)))' "$generated_core_wat"
+rg -Fq '[metadata-hash-at-result-area]' "$generated_core_wat"
+rg -Fq '[descriptor-drop]' "$generated_core_wat"
+test "$(rg -Fc 'call $metadata-hash-at' "$generated_core_wat")" -eq 1
 probe_path=$'probe-utf8-\u6587\u4ef6'
 printf 'd2-metadata-hash-at\n' >"$tmp_dir/root/$probe_path"
 
@@ -104,13 +104,13 @@ early_drop=$(run_runner "$component" early-drop)
 repeat=$(run_runner "$component" repeat)
 
 expected_path="observed-path=$probe_path"
-grep -Fq "mode=ready result=Ok lower=72623859790382856 upper=1230066625199609624 host-calls=1 path-copies=1 observed-flags=1 $expected_path completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true" <<<"$ready"
-grep -Fq "mode=pending result=Ok lower=72623859790382856 upper=1230066625199609624 host-calls=1 path-copies=1 observed-flags=1 $expected_path completion-polls=2 external-wakes=1 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true" <<<"$pending"
-grep -Fq "mode=error result=Err(no-entry) host-calls=1 path-copies=1 observed-flags=1 $expected_path completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true" <<<"$error"
-grep -Fq "mode=cancel result=cancelled host-calls=1 path-copies=1 observed-flags=0 observed-path=<none> completion-polls=1 external-wakes=0 completions=0 future-drops=1 pending-future-drops=1 descriptor-drops=1 table-empty=true" <<<"$cancel"
-grep -Fq "mode=early-drop result=store-discarded host-calls=1 path-copies=1 observed-flags=0 observed-path=<none>" <<<"$early_drop"
-grep -Fq 'pending-future-drops=1 descriptor-drops=0 table-empty=not-applicable' <<<"$early_drop"
-grep -Fq "mode=repeat results=Ok,Ok host-calls=2 path-copies=2 observed-flags=1 $expected_path completion-polls=2 external-wakes=0 completions=2 future-drops=2 pending-future-drops=0 descriptor-drops=2 table-empty=true" <<<"$repeat"
+rg -Fq "mode=ready result=Ok lower=72623859790382856 upper=1230066625199609624 host-calls=1 path-copies=1 observed-flags=1 $expected_path completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true" <<<"$ready"
+rg -Fq "mode=pending result=Ok lower=72623859790382856 upper=1230066625199609624 host-calls=1 path-copies=1 observed-flags=1 $expected_path completion-polls=2 external-wakes=1 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true" <<<"$pending"
+rg -Fq "mode=error result=Err(no-entry) host-calls=1 path-copies=1 observed-flags=1 $expected_path completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true" <<<"$error"
+rg -Fq "mode=cancel result=cancelled host-calls=1 path-copies=1 observed-flags=0 observed-path=<none> completion-polls=1 external-wakes=0 completions=0 future-drops=1 pending-future-drops=1 descriptor-drops=1 table-empty=true" <<<"$cancel"
+rg -Fq "mode=early-drop result=store-discarded host-calls=1 path-copies=1 observed-flags=0 observed-path=<none>" <<<"$early_drop"
+rg -Fq 'pending-future-drops=1 descriptor-drops=0 table-empty=not-applicable' <<<"$early_drop"
+rg -Fq "mode=repeat results=Ok,Ok host-calls=2 path-copies=2 observed-flags=1 $expected_path completion-polls=2 external-wakes=0 completions=2 future-drops=2 pending-future-drops=0 descriptor-drops=2 table-empty=true" <<<"$repeat"
 
 printf 'D2 filesystem descriptor.metadata-hash-at Rust/Wasmtime runtime passed\n'
 printf 'modes=ready,pending,error,cancel,early-drop,repeat path-copy=owned-rust-string cleanup=exactly-once\n'

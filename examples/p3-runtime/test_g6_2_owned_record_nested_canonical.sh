@@ -9,7 +9,7 @@ mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/g6-2-owned-record-nested-canonical.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -44,9 +44,9 @@ for marker in \
   '[producer-record-transfer]' \
   '[producer-resource-drop-exactly-once]' \
   '[producer-child-before-parent-cleanup]'; do
-  grep -Fq ";; $marker" "$wat"
+  rg -Fq ";; $marker" "$wat"
 done
-if grep -Fq '__arc_' "$wat"; then
+if rg -Fq '__arc_' "$wat"; then
   printf 'nested producer canonical WAT contains ARC symbol\n' >&2
   exit 1
 fi

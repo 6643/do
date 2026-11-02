@@ -41,14 +41,14 @@ done
   exit 1
 }
 
-grep -Fq 'record metadata-hash-value' "$wit"
-grep -Fq 'lower: u64' "$wit"
-grep -Fq 'upper: u64' "$wit"
-grep -Fq 'metadata-hash: async func() -> result<metadata-hash-value, error-code>;' "$wit"
-grep -Fq 'run: async func(file: own<descriptor>) -> result<metadata-hash-value, error-code>;' "$wit"
-grep -Fq 'world metadata-hash-probe' "$wit"
-grep -Fq 'world metadata-hash-cancel-probe' "$cancel_wit"
-grep -Fq 'cancel: async func();' "$cancel_wit"
+rg -Fq 'record metadata-hash-value' "$wit"
+rg -Fq 'lower: u64' "$wit"
+rg -Fq 'upper: u64' "$wit"
+rg -Fq 'metadata-hash: async func() -> result<metadata-hash-value, error-code>;' "$wit"
+rg -Fq 'run: async func(file: own<descriptor>) -> result<metadata-hash-value, error-code>;' "$wit"
+rg -Fq 'world metadata-hash-probe' "$wit"
+rg -Fq 'world metadata-hash-cancel-probe' "$cancel_wit"
+rg -Fq 'cancel: async func();' "$cancel_wit"
 
 tmp_dir=$(mktemp -d /tmp/do-d2-filesystem-metadata-hash-abi.XXXXXX)
 mkdir -p "$tmp_dir/regular" "$tmp_dir/cancel"
@@ -63,7 +63,7 @@ cp "$cancel_wit" "$tmp_dir/cancel/wasi-filesystem-metadata-hash-cancel.wit"
 require_text() {
   local file="$1"
   local fragment="$2"
-  grep -Fq -- "$fragment" "$file" || {
+  rg -Fq -- "$fragment" "$file" || {
     printf 'missing ABI fragment in %s: %s\n' "$file" "$fragment" >&2
     exit 1
   }
@@ -80,7 +80,7 @@ require_dummy() {
     '(import "[export]wasi:filesystem/probe@0.3.0-rc-2025-09-16" "[task-return]run"'; do
     require_text "$file" "$fragment"
   done
-  [[ $(grep -cF '[async-lower][method]' "$file") -eq 1 ]] || {
+  [[ $(rg -cF '[async-lower][method]' "$file") -eq 1 ]] || {
     printf 'unexpected filesystem async method count in %s\n' "$file" >&2
     exit 1
   }
@@ -143,12 +143,12 @@ assemble_component() {
   require_text "$component_wat" '"[async-lower][method]descriptor.metadata-hash"'
   require_text "$component_wat" '"[resource-drop]descriptor"'
   require_text "$component_wat" '"[task-return]run"'
-  [[ $(grep -cF '"[async-lower][method]' "$component_wat") -eq 2 ]] || {
+  [[ $(rg -cF '"[async-lower][method]' "$component_wat") -eq 2 ]] || {
     printf 'unexpected filesystem async method count in %s\n' "$component_wat" >&2
     exit 1
   }
   for forbidden in get-type get-flags sync sync-data stat stat-at metadata-hash-at; do
-    if grep -Fq "descriptor.$forbidden" "$component_wat"; then
+    if rg -Fq "descriptor.$forbidden" "$component_wat"; then
       printf 'unexpected filesystem method in %s: descriptor.%s\n' \
         "$component_wat" "$forbidden" >&2
       exit 1

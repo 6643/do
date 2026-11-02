@@ -64,6 +64,6 @@ output=$(
     --bin do-p3-gc-marshal-record-mixed-text-two-u32-lists-lift-equivalence-runner -- \
     "$tmp_dir/gc.component.wasm" "$tmp_dir/arc.component.wasm"
 )
-grep -Fq 'GC/ARC mixed text/two-u32-lists record lift equivalence passed result=54/54 stats=51/51 read-calls=1/1' <<<"$output"
+rg -Fq 'GC/ARC mixed text/two-u32-lists record lift equivalence passed result=54/54 stats=51/51 read-calls=1/1' <<<"$output"
 printf '%s\n' "$output"
 printf 'default mixed text/two-u32-lists lift ARC/GC equivalence passed\n'

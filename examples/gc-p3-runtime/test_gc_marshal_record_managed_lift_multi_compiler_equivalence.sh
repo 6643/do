@@ -59,6 +59,6 @@ output=$(
     --bin do-p3-gc-marshal-record-managed-lift-multi-host-equivalence-runner -- \
     "$tmp_dir/gc.component.wasm" "$tmp_dir/arc.component.wasm"
 )
-grep -Fq 'GC/ARC manifest managed multi-field record lift equivalence passed values=17/17' <<<"$output"
+rg -Fq 'GC/ARC manifest managed multi-field record lift equivalence passed values=17/17' <<<"$output"
 printf '%s\n' "$output"
 printf 'compiler-wired multi-managed-field record lift ARC/GC equivalence passed\n'

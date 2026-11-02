@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 DO_BIN="${DO_BIN:-$ROOT/bin/do}"
-WASMTIME_BIN="${WASMTIME_BIN:-/home/_/Public/wasmtime/bin/wasmtime}"
+WASMTIME_BIN="${WASMTIME_BIN:-$(command -v wasmtime || true)}"
 NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
 TOOLCHAIN_BIN="$ROOT/bin/do-toolchain"
 export DO_TOOLCHAIN_LOCK="$ROOT/toolchain/toolchain.lock.json"
@@ -39,7 +39,7 @@ run_compiled_fixture() {
         cat "$stderr_file" >&2
         return 1
     fi
-    if ! grep -Fq 'compiled_tests=' "$stdout_file" || [[ ! -s "$source_wat" ]]; then
+    if ! rg -Fq 'compiled_tests=' "$stdout_file" || [[ ! -s "$source_wat" ]]; then
         printf 'row=%s normal compile produced no test artifact\n' "$row" >&2
         cat "$stdout_file" >&2
         return 1
@@ -50,7 +50,7 @@ run_compiled_fixture() {
         cat "$TMP_DIR/${base}.run.stderr" >&2
         return 1
     fi
-    if ! grep -Fq ' ... ok' "$TMP_DIR/${base}.run.stdout" || ! grep -Fq 'ok:' "$TMP_DIR/${base}.run.stdout"; then
+    if ! rg -Fq ' ... ok' "$TMP_DIR/${base}.run.stdout" || ! rg -Fq 'ok:' "$TMP_DIR/${base}.run.stdout"; then
         printf 'row=%s normal execution did not report success\n' "$row" >&2
         cat "$TMP_DIR/${base}.run.stdout" >&2
         return 1
@@ -64,7 +64,7 @@ run_gc_probe() {
         printf 'row=%s GC probe failed\n' "$row" >&2
         return 1
     fi
-    if ! grep -Fq '27815' <<<"$output"; then
+    if ! rg -Fq '27815' <<<"$output"; then
         printf 'row=%s GC probe did not report its semantic oracle\n' "$row" >&2
         printf '%s\n' "$output" >&2
         return 1
@@ -139,7 +139,7 @@ if ! "$ORACLE_ZIG_BIN" test "$ROOT/src/main.zig" \
     cat "$oracle_error" >&2
     exit 1
 fi
-if ! grep -Fq 'ARC equivalence oracle: explicit test-only route' "$oracle_output" "$oracle_error"; then
+if ! rg -Fq 'ARC equivalence oracle: explicit test-only route' "$oracle_output" "$oracle_error"; then
     printf 'explicit ARC equivalence oracle did not report its route\n' >&2
     cat "$oracle_output" >&2
     cat "$oracle_error" >&2

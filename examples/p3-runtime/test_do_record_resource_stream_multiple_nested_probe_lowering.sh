@@ -28,15 +28,15 @@ for marker in \
   '"do:record-resource-stream-multiple-nested/source@0.1.0" "[resource-drop]ticket"' \
   '"[async-lower][stream-read-0]read-via-stream"' \
   '"[async-lower][future-read-1]read-via-stream"'; do
-  grep -Fq "$marker" "$core_wat"
+  rg -Fq "$marker" "$core_wat"
 done
-if [ "$(grep -Fc '[record-resource-field-ticket]' "$core_wat")" -ne 4 ]; then
+if [ "$(rg -Fc '[record-resource-field-ticket]' "$core_wat")" -ne 4 ]; then
   exit 1
 fi
-if [ "$(grep -Fc '[record-resource-release-ticket]' "$core_wat")" -ne 2 ]; then
+if [ "$(rg -Fc '[record-resource-release-ticket]' "$core_wat")" -ne 2 ]; then
   exit 1
 fi
-if [ "$(grep -Fc '(import "do:record-resource-stream-multiple-nested/source@0.1.0" "[resource-drop]ticket"' "$core_wat")" -ne 1 ]; then
+if [ "$(rg -Fc '(import "do:record-resource-stream-multiple-nested/source@0.1.0" "[resource-drop]ticket"' "$core_wat")" -ne 1 ]; then
   exit 1
 fi
 

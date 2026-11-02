@@ -600,7 +600,12 @@ pub fn append_union_branch_payload_types(
         try append_tuple_leaf_types_with_structs(allocator, ty, structs, out);
         return;
     }
-    if (is_core_wasm_scalar(ty) or is_error_like_type(tokens, ty) or managed_payload_elem_type_from_name(ty) != null or find_struct_layout(struct_layouts, ty) != null) {
+    if (is_core_wasm_scalar(ty) or
+        find_value_enum_decl_line_by_name(tokens, ty) != null or
+        is_error_like_type(tokens, ty) or
+        managed_payload_elem_type_from_name(ty) != null or
+        find_struct_layout(struct_layouts, ty) != null)
+    {
         try out.append(allocator, ty);
         return;
     }

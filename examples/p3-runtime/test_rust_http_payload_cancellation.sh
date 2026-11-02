@@ -22,13 +22,13 @@ test -x "$toolchain_bin"
 DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build "$fixture" \
   --p3-async-component --p3-wit-package-output "$wit_dir" -o "$core_wat"
 
-grep -Fq '"wasi:http/client@0.3.0-rc-2025-09-16" "[async-lower]send"' "$core_wat"
-grep -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[resource-drop]request"' "$core_wat"
-grep -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[resource-drop]response"' "$core_wat"
-grep -Fq ';; [http-payload-cancel] immediate terminal' "$core_wat"
-grep -Fq ';; [http-payload-cancel] pending terminal' "$core_wat"
-grep -Fq 'call $subtask-cancel' "$core_wat"
-grep -Fq 'call $subtask-drop' "$core_wat"
+rg -Fq '"wasi:http/client@0.3.0-rc-2025-09-16" "[async-lower]send"' "$core_wat"
+rg -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[resource-drop]request"' "$core_wat"
+rg -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[resource-drop]response"' "$core_wat"
+rg -Fq ';; [http-payload-cancel] immediate terminal' "$core_wat"
+rg -Fq ';; [http-payload-cancel] pending terminal' "$core_wat"
+rg -Fq 'call $subtask-cancel' "$core_wat"
+rg -Fq 'call $subtask-drop' "$core_wat"
 
 # The compiler emits the private cancel shape against the pinned HTTP package.
 # Keep the extra world in a temporary copy so the checked-in package remains

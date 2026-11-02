@@ -14,7 +14,7 @@ mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/do-g6-2-owned-record-nested-producer.XXXXXX")
 cleanup() {
   if [[ -d "$tmp_dir" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -55,10 +55,10 @@ for marker in \
   '[producer-record-transfer]' \
   '[producer-resource-drop-exactly-once]' \
   '[producer-child-before-parent-cleanup]'; do
-  grep -Fq ";; $marker" "$core_wat"
+  rg -Fq ";; $marker" "$core_wat"
 done
-grep -Fq '(func (export "[async-lift]produce")' "$core_wat"
-if grep -Fq '__arc_' "$core_wat"; then
+rg -Fq '(func (export "[async-lift]produce")' "$core_wat"
+if rg -Fq '__arc_' "$core_wat"; then
   printf 'owned-record nested producer emitted an ARC symbol\n' >&2
   exit 1
 fi

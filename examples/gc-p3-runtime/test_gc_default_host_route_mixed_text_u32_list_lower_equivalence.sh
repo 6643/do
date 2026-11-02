@@ -66,6 +66,6 @@ output=$(
         --bin do-p3-gc-marshal-record-mixed-text-u32-list-lower-equivalence-runner -- \
         "$tmp_dir/gc.component.wasm" "$tmp_dir/arc.component.wasm"
 )
-grep -Fq 'GC/ARC mixed text/u32-list record lower equivalence passed code=7 label=hello payload=[10, 20, 5] allocations=2/2 frees=2/2 write-calls=1/1' <<<"$output"
+rg -Fq 'GC/ARC mixed text/u32-list record lower equivalence passed code=7 label=hello payload=[10, 20, 5] allocations=2/2 frees=2/2 write-calls=1/1' <<<"$output"
 printf '%s\n' "$output"
 printf 'mixed text/u32-list lower compiler/ARC equivalence passed\n'

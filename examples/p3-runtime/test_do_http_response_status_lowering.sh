@@ -19,11 +19,11 @@ component_wit="$tmp_dir/status.component.wit"
 DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$fixture" \
   --p3-async-component --p3-wit-output "$wit" -o "$core_wat"
 
-grep -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[method]response.get-status-code"' "$core_wat"
-grep -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[resource-drop]response"' "$core_wat"
-grep -Fq '(func $run (param $response i32) (result i32)' "$core_wat"
-grep -Fq 'get-status-code: func() -> u16' "$wit"
-grep -Fq 'run: func(response: own<response>) -> u16' "$wit"
+rg -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[method]response.get-status-code"' "$core_wat"
+rg -Fq '"wasi:http/types@0.3.0-rc-2025-09-16" "[resource-drop]response"' "$core_wat"
+rg -Fq '(func $run (param $response i32) (result i32)' "$core_wat"
+rg -Fq 'get-status-code: func() -> u16' "$wit"
+rg -Fq 'run: func(response: own<response>) -> u16' "$wit"
 
 "$toolchain_bin" parse-core "$core_wat" -o "$core_wasm"
 "$toolchain_bin" embed-component "$wit" "$core_wasm" http-status-probe -o "$embedded"
@@ -31,8 +31,8 @@ grep -Fq 'run: func(response: own<response>) -> u16' "$wit"
 "$toolchain_bin" validate-component "$component"
 "$toolchain_bin" component-wit "$component" > "$component_wit"
 
-grep -Fq 'import wasi:http/types@0.3.0-rc-2025-09-16;' "$component_wit"
-grep -Fq 'export wasi:http/probe@0.3.0-rc-2025-09-16;' "$component_wit"
+rg -Fq 'import wasi:http/types@0.3.0-rc-2025-09-16;' "$component_wit"
+rg -Fq 'export wasi:http/probe@0.3.0-rc-2025-09-16;' "$component_wit"
 
 output=$(cd "$repo_root/examples/p3-runtime/rust-host-runner" && \
   CC="$PWD/zig-cc.sh" CXX="$PWD/zig-cc.sh" \

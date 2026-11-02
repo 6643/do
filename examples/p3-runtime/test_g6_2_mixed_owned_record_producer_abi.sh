@@ -12,7 +12,7 @@ mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/g6-2-mixed-owned-record-producer.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -30,12 +30,12 @@ test -f "$runner"
 
 test "$(sha256sum "$probe_wit" | awk '{print $1}')" = \
   5fe1c2ed6a0c348bf6f0e96596afc419bbbd379345421f02fa36f05aa472d9ed
-grep -Fq 'package do:g6-2-owned-record-mixed-producer@0.1.0;' "$probe_wit"
-grep -Fq 'world owned-record-mixed-producer' "$probe_wit"
-grep -Fq 'record mixed-entry' "$probe_wit"
-grep -Fq 'data: stream<mixed-entry>' "$probe_wit"
-grep -Fq 'ticket: own<ticket>' "$probe_wit"
-grep -Fq 'make-ticket: func(seed: u32) -> own<ticket>;' "$probe_wit"
+rg -Fq 'package do:g6-2-owned-record-mixed-producer@0.1.0;' "$probe_wit"
+rg -Fq 'world owned-record-mixed-producer' "$probe_wit"
+rg -Fq 'record mixed-entry' "$probe_wit"
+rg -Fq 'data: stream<mixed-entry>' "$probe_wit"
+rg -Fq 'ticket: own<ticket>' "$probe_wit"
+rg -Fq 'make-ticket: func(seed: u32) -> own<ticket>;' "$probe_wit"
 
 for marker in \
   'producer-record-byte-size' \
@@ -69,7 +69,7 @@ test "$(marker_value 'producer-record-code-offset')" = 0
 test "$(marker_value 'producer-record-ticket-offset')" = 4
 test "$(marker_value 'producer-stream-capacity')" = 1
 test "$(marker_value 'producer-ticket-seed')" = 111
-if grep -Eq '\(ref (null|extern|func|eq|struct|array)' "$canonical_wat"; then
+if rg -q '\(ref (null|extern|func|eq|struct|array)' "$canonical_wat"; then
   printf 'mixed owned-record canonical probe contains a GC reference boundary\n' >&2
   exit 1
 fi
@@ -93,8 +93,8 @@ for mode in ready pending sink-error-before sink-error-after cancel-before-trans
   output=$(cargo run --quiet --locked --manifest-path "$runner_dir/Cargo.toml" \
     --bin "$bin" -- "$component" "$mode")
   printf '%s\n' "$output"
-  grep -Fq "mode=$mode" <<<"$output"
-  grep -Fq 'table-empty=true' <<<"$output"
+  rg -Fq "mode=$mode" <<<"$output"
+  rg -Fq 'table-empty=true' <<<"$output"
 done
 
 printf 'G6.2 mixed owned-record producer canonical ABI probe passed\n'

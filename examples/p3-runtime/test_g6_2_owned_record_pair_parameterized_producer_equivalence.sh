@@ -14,7 +14,7 @@ mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/g6-2-owned-record-pair-parameterized-equivalence.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -74,8 +74,8 @@ run_equivalent() {
   "$runner" "$canonical_component" "$mode" "$left_seed" "$right_seed" >"$canonical_output"
   "$runner" "$generated_component" "$mode" "$left_seed" "$right_seed" >"$generated_output"
   diff -u "$canonical_output" "$generated_output"
-  grep -Fq "mode=$mode" "$canonical_output"
-  grep -Fq 'table-empty=true' "$canonical_output"
+  rg -Fq "mode=$mode" "$canonical_output"
+  rg -Fq 'table-empty=true' "$canonical_output"
   printf 'PASS %s: canonical and generated parameterized pair lifecycle observations agree\n' "$mode"
 }
 

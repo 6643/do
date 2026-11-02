@@ -45,7 +45,7 @@ output=$(
     --bin do-p3-gc-marshal-record-nested-lower-host-equivalence-runner -- \
     "$tmp_dir/gc.component.wasm" "$tmp_dir/arc.component.wasm"
 )
-grep -Fq 'GC/ARC manifest nested scalar record lower equivalence passed results=42/42 write-calls=1/1' <<<"$output"
+rg -Fq 'GC/ARC manifest nested scalar record lower equivalence passed results=42/42 write-calls=1/1' <<<"$output"
 printf '%s\n' "$output"
 
 printf 'manifest-backed nested scalar record lower ARC/GC equivalence passed\n'

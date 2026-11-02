@@ -195,7 +195,7 @@ u64-list.do
 usize-list.do
 EOF
 )
-actual_fixture_manifest=$(find "$EXAMPLE_DIR" -maxdepth 1 -type f -name '*.do' -printf '%f\n' | sort)
+actual_fixture_manifest=$(fd --type f --max-depth 1 --glob '*.do' --format '{/}' . "$EXAMPLE_DIR" | LC_ALL=C sort)
 non_default_fixture_filter='^(imported-text-helper|imported_text_helper|map-u32-u32-(lift|lower))\.do$'
 if ! diff -u <(printf '%s\n' "$expected_fixture_manifest") <(printf '%s\n' "$actual_fixture_manifest" | rg -v "$non_default_fixture_filter"); then
     printf 'admitted GC fixture manifest drifted\n' >&2

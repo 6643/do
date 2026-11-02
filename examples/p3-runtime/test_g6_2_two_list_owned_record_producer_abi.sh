@@ -14,7 +14,7 @@ mkdir -p "$ZIG_LOCAL_CACHE_DIR" "$ZIG_GLOBAL_CACHE_DIR"
 tmp_dir=$(mktemp -d "$tmp_root/g6-2-two-list-owned-record-producer.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -38,14 +38,14 @@ test -x "$toolchain_bin"
 "$toolchain_bin" probe >/dev/null
 test "$(sha256sum "$wit" | awk '{print $1}')" = \
   14ba67e070346a127e75c7dfd73c71d6082ad7d9385c7d803834319dabc6404a
-grep -Fq 'package do:g6-2-owned-record-two-list-producer@0.1.0;' "$wit"
-grep -Fq 'world owned-record-two-list-producer' "$wit"
-grep -Fq 'first: list<u32>' "$wit"
-grep -Fq 'second: list<u32>' "$wit"
-grep -Fq 'ticket: own<ticket>' "$wit"
-grep -Fq 'consume-via-stream: async func(' "$wit"
-grep -Fq 'data: stream<two-list-entry>' "$wit"
-grep -Fq 'make-ticket: func(seed: u32) -> own<ticket>;' "$wit"
+rg -Fq 'package do:g6-2-owned-record-two-list-producer@0.1.0;' "$wit"
+rg -Fq 'world owned-record-two-list-producer' "$wit"
+rg -Fq 'first: list<u32>' "$wit"
+rg -Fq 'second: list<u32>' "$wit"
+rg -Fq 'ticket: own<ticket>' "$wit"
+rg -Fq 'consume-via-stream: async func(' "$wit"
+rg -Fq 'data: stream<two-list-entry>' "$wit"
+rg -Fq 'make-ticket: func(seed: u32) -> own<ticket>;' "$wit"
 
 for marker in \
   'producer-record-byte-size' \
@@ -112,11 +112,11 @@ test "$(marker_value 'producer-list-stride')" = 4
 test "$(marker_value 'producer-list-capacity')" = 3
 test "$(marker_value 'producer-stream-capacity')" = 1
 test "$(marker_value 'producer-ticket-seed')" = 111
-if grep -Eq '\(ref (null|extern|func|eq|struct|array)' "$wat"; then
+if rg -q '\(ref (null|extern|func|eq|struct|array)' "$wat"; then
   printf 'two-list owned-record canonical probe contains a GC reference boundary\n' >&2
   exit 1
 fi
-if grep -Eq '\b(__arc_|array|struct)\b' "$wat"; then
+if rg -Eq '\b(__arc_|array|struct)\b' "$wat"; then
   printf 'two-list owned-record canonical probe contains a forbidden GC/ARC marker\n' >&2
   exit 1
 fi
@@ -142,8 +142,8 @@ for mode in ready pending sink-error-before sink-error-after cancel-before-trans
   cancel-after-transfer early-drop-before-transfer early-drop-after-transfer repeat invalid; do
   output=$("$runner" "$component" "$mode")
   printf '%s\n' "$output"
-  grep -Fq "mode=$mode" <<<"$output"
-  grep -Fq 'table-empty=true' <<<"$output"
+  rg -Fq "mode=$mode" <<<"$output"
+  rg -Fq 'table-empty=true' <<<"$output"
 done
 
 printf 'G6.2 two-list owned-record producer canonical ABI probe passed modes=10 list-capacity=3 record-size=20 releases=2 table-empty=true\n'

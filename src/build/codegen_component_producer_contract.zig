@@ -239,10 +239,10 @@ fn validate_terminal(terminal: TerminalContract) ContractError!void {
         if (action.len == 0) return error.InvalidCleanupOrder;
     }
 
-    var seen = [_]bool{false} ** @typeInfo(CleanupStage).@"enum".fields.len;
+    var seen: [@typeInfo(CleanupStage).@"enum".field_names.len]bool = @splat(false);
     var previous_rank: u8 = 0;
     for (terminal.cleanup_order, 0..) |stage, index| {
-        const ordinal = @intFromEnum(stage);
+        const ordinal = @backingInt(stage);
         if (seen[ordinal]) return error.DuplicateCleanupStage;
         seen[ordinal] = true;
         if (index != 0 and ordinal < previous_rank) return error.ParentCleanupBeforeChild;

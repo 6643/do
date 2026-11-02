@@ -142,7 +142,7 @@ fn append_spaces(allocator: std.mem.Allocator, out: *std.ArrayList(u8), count: u
 
 fn is_named_format_args(comptime Args: type) bool {
     return switch (@typeInfo(Args)) {
-        .@"struct" => |info| !info.is_tuple or info.fields.len == 0,
+        .@"struct" => |info| !info.is_tuple or info.field_names.len == 0,
         else => false,
     };
 }

@@ -25,9 +25,9 @@ for marker in \
   '[writer-producer-index-offset] 52' \
   '[writer-endpoint-mode] guest-producer' \
   '[stream-drop-writable-0]write-via-stream'; do
-  grep -Fq "$marker" "$core_path"
+  rg -Fq "$marker" "$core_path"
 done
-grep -Fq '(data (i32.const 512) "\41\42")' "$core_path"
+rg -Fq '(data (i32.const 512) "\41\42")' "$core_path"
 
 "$toolchain_bin" parse-core "$core_path" -o "$core_wasm"
 "$toolchain_bin" embed-component "$wit_path" "$core_wasm" stream-writer-probe -o "$embedded_path"

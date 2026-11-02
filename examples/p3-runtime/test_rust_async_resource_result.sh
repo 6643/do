@@ -118,7 +118,7 @@ assert_case_output() {
 
 extract_resource_observation() {
   local output=$1
-  printf '%s\n' "$output" | grep -E '^(request consumed|response create|response drop|table-empty)='
+  printf '%s\n' "$output" | rg -E '^(request consumed|response create|response drop|table-empty)='
 }
 
 resource_record() {
@@ -128,10 +128,10 @@ resource_record() {
   local request_count=$4
   local response_count=$5
   local request create drop table
-  request=$(printf '%s\n' "$output" | grep -Fx "request consumed=$request_count")
-  create=$(printf '%s\n' "$output" | grep -Fx "response create=$response_count")
-  drop=$(printf '%s\n' "$output" | grep -Fx "response drop=$response_count")
-  table=$(printf '%s\n' "$output" | grep -Fx 'table-empty=true')
+  request=$(printf '%s\n' "$output" | rg -Fx "request consumed=$request_count")
+  create=$(printf '%s\n' "$output" | rg -Fx "response create=$response_count")
+  drop=$(printf '%s\n' "$output" | rg -Fx "response drop=$response_count")
+  table=$(printf '%s\n' "$output" | rg -Fx 'table-empty=true')
   printf 'resource lifecycle case=%s backend=%s %s %s %s %s\n' \
     "$case_name" "$backend" "$request" "$create" "$drop" "$table"
 }

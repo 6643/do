@@ -54,6 +54,6 @@ output=$(
     --bin do-p3-gc-marshal-record-byte-list-lower-equivalence-runner -- \
     "$tmp_dir/gc.component.wasm" "$tmp_dir/arc.component.wasm"
 )
-grep -Fq 'GC/ARC byte-list record lower equivalence passed code=7 payload=[10, 20, 5] result=42/17 allocations=1/1 frees=1/1 write-calls=1/1' <<<"$output"
+rg -Fq 'GC/ARC byte-list record lower equivalence passed code=7 payload=[10, 20, 5] result=42/17 allocations=1/1 frees=1/1 write-calls=1/1' <<<"$output"
 printf '%s\n' "$output"
 printf 'manifest-backed byte-list record lower ARC/GC equivalence passed\n'

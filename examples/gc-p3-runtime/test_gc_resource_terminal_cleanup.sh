@@ -46,7 +46,7 @@ linear_component_path="$tmp_dir/async-resource-result-linear.component.wasm"
 )
 cmp "$expected_wit" "$wit_path"
 
-if grep -Fq '__arc_' "$wat_path"; then
+if rg -Fq '__arc_' "$wat_path"; then
   printf 'resource terminal GC output contains ARC markers\n' >&2
   exit 1
 fi
@@ -61,17 +61,17 @@ for marker in \
   '$canonical-buffer-release' \
   '$frame-free' \
   'call $task-return'; do
-  if ! grep -Fq "$marker" "$wat_path"; then
+  if ! rg -Fq "$marker" "$wat_path"; then
     printf 'resource terminal GC output is missing marker: %s\n' "$marker" >&2
     exit 1
   fi
 done
-if grep -Fq 'global $frame-next' "$wat_path"; then
+if rg -Fq 'global $frame-next' "$wat_path"; then
   printf 'resource terminal GC output still uses linear-memory frame allocation\n' >&2
   exit 1
 fi
 for forbidden in 'call $drop-request' 'call $drop-response'; do
-  if grep -Fq "$forbidden" "$wat_path"; then
+  if rg -Fq "$forbidden" "$wat_path"; then
     printf 'resource drop escaped the Component boundary: %s\n' "$forbidden" >&2
     exit 1
   fi
@@ -99,8 +99,8 @@ if [ "${RUN_RESOURCE_HOST:-1}" = 1 ]; then
     PATH="$(dirname "$toolchain_bin"):$PATH" bash "$host_gate" >"$host_output" 2>&1
   cat "$host_output"
   for lifecycle in pending ready error repeat; do
-    if ! grep -Fq "resource lifecycle case=$lifecycle backend=gc" "$host_output" || \
-      ! grep -Fq "resource lifecycle case=$lifecycle backend=linear" "$host_output"; then
+    if ! rg -Fq "resource lifecycle case=$lifecycle backend=gc" "$host_output" || \
+      ! rg -Fq "resource lifecycle case=$lifecycle backend=linear" "$host_output"; then
       printf 'resource terminal gate is missing GC/linear lifecycle comparison: %s\n' "$lifecycle" >&2
       exit 1
     fi
@@ -111,8 +111,8 @@ if [ "${RUN_RESOURCE_HOST:-1}" = 1 ]; then
   PATH="$(dirname "$toolchain_bin"):$PATH" bash "$cancel_host_gate" >"$cancel_output" 2>&1
   cat "$cancel_output"
   for lifecycle in cancel early-drop; do
-    if ! grep -Fq "resource lifecycle case=$lifecycle backend=gc" "$cancel_output" || \
-      ! grep -Fq "resource lifecycle case=$lifecycle backend=linear" "$cancel_output"; then
+    if ! rg -Fq "resource lifecycle case=$lifecycle backend=gc" "$cancel_output" || \
+      ! rg -Fq "resource lifecycle case=$lifecycle backend=linear" "$cancel_output"; then
       printf 'resource cancellation gate is missing GC/linear lifecycle comparison: %s\n' "$lifecycle" >&2
       exit 1
     fi

@@ -22,11 +22,11 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build \
 "$toolchain_bin" new-component "$embedded" -o "$component"
 "$toolchain_bin" validate-component "$component"
 
-grep -Fq ';; bounded remaining reads are stored at frame+16' "$core_wat"
-grep -Fq 'i32.const 3' "$core_wat"
-grep -Fq 'i32.sub' "$core_wat"
-test "$(grep -Fc 'call $stream-read' "$core_wat")" -eq 1
-grep -Fq 'record directory-entry {' "$wit"
-grep -Fq 'run-bounded: async func' "$wit"
+rg -Fq ';; bounded remaining reads are stored at frame+16' "$core_wat"
+rg -Fq 'i32.const 3' "$core_wat"
+rg -Fq 'i32.sub' "$core_wat"
+test "$(rg -Fc 'call $stream-read' "$core_wat")" -eq 1
+rg -Fq 'record directory-entry {' "$wit"
+rg -Fq 'run-bounded: async func' "$wit"
 
 printf 'WASI G6.2 bounded read-directory lowering passed\n'

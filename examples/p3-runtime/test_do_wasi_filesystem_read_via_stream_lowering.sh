@@ -36,19 +36,19 @@ for marker in \
   'call $descriptor-drop' \
   'local.get $code i32.const 2 i32.eq' \
   'i64.store'; do
-  grep -Fq "$marker" "$core_wat"
+  rg -Fq "$marker" "$core_wat"
 done
 
-if grep -Fq '[async-lower][method]descriptor.read-via-stream' "$core_wat"; then
+if rg -Fq '[async-lower][method]descriptor.read-via-stream' "$core_wat"; then
   printf '%s\n' 'read-via-stream must use the synchronous method import' >&2
   exit 1
 fi
 
-grep -Fq 'read-via-stream: func(offset: u64) -> tuple<stream<u8>, future<result<_, error-code>>>;' "$wit"
+rg -Fq 'read-via-stream: func(offset: u64) -> tuple<stream<u8>, future<result<_, error-code>>>;' "$wit"
 
 DO_LIB_ROOT="$repo_root/lib" "$do_bin" build \
   "$repo_root/examples/p3-runtime/wasi-filesystem-read-via-stream-bounded.do" \
   --p3-async-component --p3-wit-output "$bounded_wit" -o "$bounded_wat"
-grep -Fq 'i32.const 2' "$bounded_wat"
+rg -Fq 'i32.const 2' "$bounded_wat"
 
 printf '%s\n' 'WASI D2 read-via-stream lowering passed'

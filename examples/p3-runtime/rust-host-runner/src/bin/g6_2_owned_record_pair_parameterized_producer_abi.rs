@@ -438,7 +438,10 @@ fn install_sink(
 
 async fn call_produce(
     store: &mut Store<State>,
-    produce: &wasmtime::component::TypedFunc<(u32, u32, u32), (std::result::Result<(), ErrorCode>,)>,
+    produce: &wasmtime::component::TypedFunc<
+        (u32, u32, u32),
+        (std::result::Result<(), ErrorCode>,),
+    >,
     mode: u32,
     left_seed: u32,
     right_seed: u32,
@@ -482,10 +485,9 @@ async fn run(component_path: &Path, mode: Mode, left_seed: u32, right_seed: u32)
     );
     let instance = map_wasmtime(linker.instantiate_async(&mut store, &component).await)?;
     let produce = map_wasmtime(
-        instance.get_typed_func::<
-            (u32, u32, u32),
-            (std::result::Result<(), ErrorCode>,),
-        >(&mut store, "produce"),
+        instance.get_typed_func::<(u32, u32, u32), (std::result::Result<(), ErrorCode>,)>(
+            &mut store, "produce",
+        ),
     )?;
 
     let result = if mode == Mode::Repeat {
@@ -509,14 +511,7 @@ async fn run(component_path: &Path, mode: Mode, left_seed: u32, right_seed: u32)
         )
         .await?
     } else {
-        call_produce(
-            &mut store,
-            &produce,
-            mode.input(),
-            left_seed,
-            right_seed,
-        )
-        .await?
+        call_produce(&mut store, &produce, mode.input(), left_seed, right_seed).await?
     };
 
     let snapshot = stats

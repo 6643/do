@@ -42,7 +42,7 @@ output=$(
     --bin do-p3-gc-marshal-record-indirect-lower-equivalence-runner -- \
     "$tmp_dir/gc.component.wasm" "$tmp_dir/flat.component.wasm"
 )
-grep -Fq 'GC/flat indirect scalar record lower equivalence passed results=42/42 write-calls=1/1' <<<"$output"
+rg -Fq 'GC/flat indirect scalar record lower equivalence passed results=42/42 write-calls=1/1' <<<"$output"
 printf '%s\n' "$output"
 
 printf 'bounded GC indirect scalar record lower GC/flat equivalence passed\n'

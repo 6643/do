@@ -34,7 +34,7 @@ if "$toolchain_bin" new-component "$embedded" -o "$component" >"$tmp_dir/compone
   exit 1
 fi
 cat "$tmp_dir/component-new.err" >&2
-grep -Eiq 'helper|import|task|component' "$tmp_dir/component-new.err"
+rg -Eiq 'helper|import|task|component' "$tmp_dir/component-new.err"
 
 # The selected route keeps helper state inside the root task.  It has the same
 # root imports and WIT metadata, but no synthetic `[task-return]helper` import.

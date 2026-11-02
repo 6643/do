@@ -102,7 +102,7 @@ pub fn test_i64_graph(allocator: std.mem.Allocator) !imports.ModuleGraph {
         .async_import_module = try allocator.dupe(u8, "do:generic-async-scalar-i64-probe/host@0.1.0"),
         .async_import_name = try allocator.dupe(u8, "[async-lower][future-read-0]completion"),
         .completion = try allocator.dupe(u8, "completion"),
-        .wit_sha256 = [_]u8{0} ** 32,
+        .wit_sha256 = @splat(0),
         .payload = .{
             .core_type = try allocator.dupe(u8, "i64"),
             .offset = 16,
@@ -133,7 +133,7 @@ pub fn test_u32_graph(allocator: std.mem.Allocator) !imports.ModuleGraph {
         .async_import_module = try allocator.dupe(u8, "do:generic-async-scalar-probe/host@0.1.0"),
         .async_import_name = try allocator.dupe(u8, "[async-lower][future-read-0]completion"),
         .completion = try allocator.dupe(u8, "completion"),
-        .wit_sha256 = [_]u8{0} ** 32,
+        .wit_sha256 = @splat(0),
         .payload = .{
             .core_type = try allocator.dupe(u8, "i32"),
             .offset = 12,

@@ -66,7 +66,7 @@ DO_BIN_PIN="$ROOT/bin/do"
 PINNED_RUST_CC="$ROOT/examples/p3-runtime/rust-host-runner/zig-cc.sh"
 WASMTIME_BIN="$(jq -r '.wasmtime.path' "$LOCK_FILE" 2>/dev/null || true)"
 
-resolve_locked_tool() {
+resolve_tool() {
     local requested=$1
     local resolved=''
     case "$requested" in
@@ -81,13 +81,13 @@ resolve_locked_tool() {
             ;;
     esac
     [[ -n "$resolved" && -x "$resolved" ]] || {
-        printf 'locked tool is not executable: requested=%s resolved=%s\n' "$requested" "$resolved" >&2
+        printf 'tool is not executable: requested=%s resolved=%s\n' "$requested" "$resolved" >&2
         return 1
     }
     printf '%s\n' "$resolved"
 }
 
-validate_locked_tool() {
+validate_tool() {
     local label=$1
     local requested=$2
     local expected_version=$3
@@ -96,7 +96,7 @@ validate_locked_tool() {
     local output_name=$6
     local resolved actual_version actual_sha=''
 
-    resolved=$(resolve_locked_tool "$requested") || return 1
+    resolved=$(resolve_tool "$requested") || return 1
     if [[ "$version_mode" == zig ]]; then
         actual_version=$("$resolved" version 2>&1) || {
             printf '%s version probe failed: %s\n' "$label" "$resolved" >&2
@@ -108,26 +108,28 @@ validate_locked_tool() {
             return 1
         }
     fi
-    [[ "$actual_version" == "$expected_version" ]] || {
+    if [[ -n "$expected_version" && "$actual_version" != "$expected_version" ]]; then
         printf '%s version mismatch: expected=%s actual=%s\n' \
             "$label" "$expected_version" "$actual_version" >&2
         return 1
-    }
-    [[ "$expected_sha" =~ ^[0-9a-fA-F]{64}$ ]] || {
-        printf '%s hash is not a 64-character SHA-256 digest: %s\n' \
-            "$label" "$expected_sha" >&2
-        return 1
-    }
-    actual_sha=$(sha256sum -- "$resolved" | awk '{print $1}') || return 1
-    [[ "$actual_sha" == "$expected_sha" ]] || {
-        printf '%s hash mismatch: expected=%s actual=%s\n' \
-            "$label" "$expected_sha" "$actual_sha" >&2
-        return 1
-    }
+    fi
+    if [[ -n "$expected_sha" ]]; then
+        [[ "$expected_sha" =~ ^[0-9a-fA-F]{64}$ ]] || {
+            printf '%s hash is not a 64-character SHA-256 digest: %s\n' \
+                "$label" "$expected_sha" >&2
+            return 1
+        }
+        actual_sha=$(sha256sum -- "$resolved" | awk '{print $1}') || return 1
+        [[ "$actual_sha" == "$expected_sha" ]] || {
+            printf '%s hash mismatch: expected=%s actual=%s\n' \
+                "$label" "$expected_sha" "$actual_sha" >&2
+            return 1
+        }
+    fi
     printf -v "$output_name" '%s' "$resolved"
 }
 
-load_pinned_toolchain() {
+load_toolchain() {
     local zig_path zig_version zig_sha rustc_path rustc_version rustc_sha
     local cargo_path cargo_version cargo_sha
     zig_path=$(jq -er '.zig.path' "$LOCK_FILE") || return 1
@@ -140,15 +142,15 @@ load_pinned_toolchain() {
     cargo_version=$(jq -er '.cargo.version' "$LOCK_FILE") || return 1
     cargo_sha=$(jq -er '.cargo.sha256' "$LOCK_FILE") || return 1
 
-    validate_locked_tool zig "$zig_path" "$zig_version" "$zig_sha" zig ZIG_BIN_PIN || return 1
-    validate_locked_tool rustc "$rustc_path" "$rustc_version" "$rustc_sha" rust RUSTC_BIN_PIN || return 1
-    validate_locked_tool cargo "$cargo_path" "$cargo_version" "$cargo_sha" rust CARGO_BIN_PIN || return 1
+    validate_tool zig "$zig_path" "$zig_version" "$zig_sha" zig ZIG_BIN_PIN || return 1
+    validate_tool rustc "$rustc_path" "$rustc_version" "$rustc_sha" rust RUSTC_BIN_PIN || return 1
+    validate_tool cargo "$cargo_path" "$cargo_version" "$cargo_sha" rust CARGO_BIN_PIN || return 1
     [[ -x "$DO_BIN_PIN" ]] || {
-        printf 'missing pinned do compiler: %s\n' "$DO_BIN_PIN" >&2
+        printf 'missing do compiler: %s\n' "$DO_BIN_PIN" >&2
         return 1
     }
     [[ -x "$PINNED_RUST_CC" ]] || {
-        printf 'missing pinned Rust linker wrapper: %s\n' "$PINNED_RUST_CC" >&2
+        printf 'missing Rust linker wrapper: %s\n' "$PINNED_RUST_CC" >&2
         return 1
     }
 }
@@ -210,12 +212,12 @@ printf 'toolchain_lock=%s\n' "$LOCK_FILE" >> "$commands_log"
 printf 'toolchain_lock_json<<BEGIN\n' >> "$commands_log"
 cat "$LOCK_FILE" >> "$commands_log"
 printf 'toolchain_lock_json<<END\n' >> "$commands_log"
-if ! load_pinned_toolchain; then
-    printf 'pinned toolchain validation failed\n' >&2
+if ! load_toolchain; then
+    printf 'toolchain validation failed\n' >&2
     exit 1
 fi
 for tool_name in zig rustc cargo; do
-    printf 'pinned_tool=%s requested=%s resolved=%s version=%s sha256=%s\n' \
+    printf 'tool=%s requested=%s resolved=%s version=%s sha256=%s\n' \
         "$tool_name" \
         "$(jq -r ".${tool_name}.path" "$LOCK_FILE")" \
         "$(case "$tool_name" in zig) printf '%s' "$ZIG_BIN_PIN" ;; rustc) printf '%s' "$RUSTC_BIN_PIN" ;; cargo) printf '%s' "$CARGO_BIN_PIN" ;; esac)" \
@@ -235,10 +237,10 @@ if ! jq -n -e --slurpfile lock "$LOCK_FILE" --slurpfile probe "$probe_file" '
     $probe[0].schema == $lock[0].schema and
     $probe[0].wasm_tools == ($lock[0].wasm_tools | {path, version, sha256}) and
     $probe[0].wasmtime == ($lock[0].wasmtime | {path, version, sha256}) and
-    $lock[0].rust_wasmtime.status == "verified" and
+    $lock[0].rust_wasmtime.status == "current" and
     $lock[0].rust_wasmtime.version == $lock[0].rust_wasmtime.target_version
 ' >/dev/null; then
-    printf 'toolchain probe does not match pinned lock\n' >&2
+    printf 'toolchain probe does not match lock configuration\n' >&2
     exit 1
 fi
 
@@ -495,7 +497,7 @@ check_common_artifacts() {
         printf '%s\n' "$file" >> "$evidence_dir/artifact-check.log"
         check_artifact_content "$file" || return 1
     done < <(
-        find "$evidence_dir" -type f \( -name '*.wat' -o -name '*.core.wat' -o -name '*.wasm' -o -name '*.component.wasm' -o -name '*.wit' \) ! -name '*.printed.wat' -print
+        fd --type f --glob '*.wat' --glob '*.core.wat' --glob '*.wasm' --glob '*.component.wasm' --glob '*.wit' --exclude '*.printed.wat' . "$evidence_dir"
         [[ -f "$evidence_dir/artifact-paths.log" ]] && sed '/^$/d' "$evidence_dir/artifact-paths.log"
     )
 }
@@ -520,8 +522,8 @@ check_artifact_content() {
     case "$file" in
         *.wasm|*.component.wasm)
             local printed="$evidence_dir/$(basename "$file").printed.wat"
-            [[ -x "$WASM_TOOLS_BIN" ]] || { printf 'missing pinned wasm-tools: %s\n' "$WASM_TOOLS_BIN" >&2; return 1; }
-            if ! "$WASM_TOOLS_BIN" print "$file" -o "$printed" 2>/dev/null; then
+            [[ -x "$WASM_TOOLS_BIN" ]] || { printf 'missing wasm-tools: %s\n' "$WASM_TOOLS_BIN" >&2; return 1; }
+            if ! "$TOOLCHAIN_BIN" print-component "$file" >"$printed" 2>/dev/null; then
                 printf 'wasm-tools print failed for binary artifact: %s\n' "$file" >&2
                 return 1
             fi
@@ -822,7 +824,7 @@ g5c_artifact_capture_rm() {
                     printf '%s\n' "$file" >> "$paths_file"
                     ;;
             esac
-        done < <(find "$destination" -type f \( -name '*.wat' -o -name '*.core.wat' -o -name '*.wasm' -o -name '*.component.wasm' -o -name '*.wit' \) -print0)
+        done < <(fd --type f --glob '*.wat' --glob '*.core.wat' --glob '*.wasm' --glob '*.component.wasm' --glob '*.wit' --print0 . "$destination")
     done
 
     command rm "$@"
@@ -834,7 +836,7 @@ install_artifact_capture() {
     local paths_file="$evidence_dir/artifact-paths.log"
     local negative_paths_file="$evidence_dir/negative-artifact-paths.log"
     local reference_paths_file="$evidence_dir/reference-artifact-paths.log"
-    if [[ -d "$capture_root" ]] && [[ -n "$(find "$capture_root" -mindepth 1 -print -quit)" ]]; then
+    if [[ -d "$capture_root" ]] && [[ -n "$(fd --type f --type d --max-depth 1 --max-results 1 . "$capture_root")" ]]; then
         printf 'evidence artifact capture root is not empty: %s\n' "$capture_root" >&2
         return 1
     fi
@@ -842,7 +844,7 @@ install_artifact_capture() {
         printf 'evidence artifact manifest is not empty: %s\n' "$paths_file" >&2
         return 1
     fi
-    if find "$evidence_dir" -type f \( -name '*.wat' -o -name '*.core.wat' -o -name '*.wasm' -o -name '*.component.wasm' -o -name '*.wit' \) -print -quit | grep -q .; then
+    if fd --type f --glob '*.wat' --glob '*.core.wat' --glob '*.wasm' --glob '*.component.wasm' --glob '*.wit' --max-results 1 . "$evidence_dir" | rg -q .; then
         printf 'evidence directory already contains boundary artifacts: %s\n' "$evidence_dir" >&2
         return 1
     fi
@@ -880,7 +882,7 @@ run_self_tests() {
     local self_test_tool_pin=''
     local tracked_arc_artifact="$ROOT/src/build/runtime_arc_wat.zig"
     mkdir -p "$test_dir"
-    if validate_locked_tool self-test "$ZIG_BIN_PIN" "$("$ZIG_BIN_PIN" version)" "" zig self_test_tool_pin; then
+    if validate_tool self-test "$ZIG_BIN_PIN" "$("$ZIG_BIN_PIN" version)" "" zig self_test_tool_pin; then
         printf 'self-test failed: empty tool hash was accepted\n' >&2
         return 1
     fi

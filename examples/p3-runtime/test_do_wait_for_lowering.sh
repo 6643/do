@@ -28,16 +28,16 @@ for fixture in \
   DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build "$fixture" \
     --p3-async-component --p3-wit-output "$wit_path" -o "$core_path"
 
-  if grep -Fq '(component' "$core_path"; then
+  if rg -Fq '(component' "$core_path"; then
     printf 'pinned wait-for target must emit Core WAT for component assembly\n' >&2
     exit 1
   fi
-  if ! grep -Fq "$async_import" "$core_path" || \
-     ! grep -Fq '[callback][async-lift]run' "$core_path"; then
+  if ! rg -Fq "$async_import" "$core_path" || \
+     ! rg -Fq '[callback][async-lift]run' "$core_path"; then
     printf 'pinned wait-for target is missing legacy Core async ABI state\n' >&2
     exit 1
   fi
-  if grep -Fq 'component-type' "$core_path"; then
+  if rg -Fq 'component-type' "$core_path"; then
     printf 'pinned wait-for target must leave WIT metadata to component assembly\n' >&2
     exit 1
   fi

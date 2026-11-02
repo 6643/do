@@ -76,7 +76,7 @@ pub const LifecycleError = error{
 };
 
 comptime {
-    if (@typeInfo(producer_contract.CleanupStage).@"enum".fields.len != 7) {
+    if (@typeInfo(producer_contract.CleanupStage).@"enum".field_names.len != 7) {
         @compileError("LifecycleStateIR cleanup capacity must match CleanupStage");
     }
 }
@@ -267,11 +267,11 @@ pub fn validate_lifecycle_ir(contract: producer_contract.ProducerContract, map: 
     if (ir.post_transfer_cancel.rolls_back_host_effects) return error.PostTransferRollback;
 
     if (ir.cleanup_count > 7) return error.CleanupOrderMismatch;
-    var seen = [_]bool{false} ** 7;
+    var seen: [7]bool = @splat(false);
     var previous: ?u8 = null;
     for (0..@intCast(ir.cleanup_count)) |index| {
         const stage = ir.cleanup_order[index];
-        const ordinal = @intFromEnum(stage);
+        const ordinal = @backingInt(stage);
         if (seen[ordinal]) return error.DuplicateCleanupStage;
         seen[ordinal] = true;
         if (previous) |prior| if (ordinal < prior) return error.ParentCleanupBeforeChild;

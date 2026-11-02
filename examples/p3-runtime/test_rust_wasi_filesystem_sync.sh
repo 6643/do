@@ -49,11 +49,11 @@ test -x "$toolchain_bin"
   --features component-async -o "$generated_embedded"
 "$toolchain_bin" new-component "$generated_embedded" -o "$generated_component"
 "$toolchain_bin" validate-component "$generated_component" --features component-async
-grep -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$generated_wit"
-grep -Fq 'sync: async func()' "$generated_wit"
-grep -Fq 'run: async func(file: own<descriptor>)' "$generated_wit"
-grep -Fq '"[async-lower][method]descriptor.sync"' "$generated_core_wat"
-grep -Fq '"[resource-drop]descriptor"' "$generated_core_wat"
+rg -Fq 'package wasi:filesystem@0.3.0-rc-2025-09-16;' "$generated_wit"
+rg -Fq 'sync: async func()' "$generated_wit"
+rg -Fq 'run: async func(file: own<descriptor>)' "$generated_wit"
+rg -Fq '"[async-lower][method]descriptor.sync"' "$generated_core_wat"
+rg -Fq '"[resource-drop]descriptor"' "$generated_core_wat"
 
 runner_source="$runner_dir/src/bin/wasi_filesystem_sync.rs"
 rustfmt --edition 2024 --check "$runner_source"
@@ -74,6 +74,8 @@ run_runner() {
   run_runner_component "$runner_component" "$mode"
 }
 
+# Cancellation is host-driven: the runner wakes the pending host future and
+# verifies ordinary component cleanup instead of calling guest subtask-cancel.
 run_runner_component() {
   local runner_component="$1"
   local mode="$2"
@@ -90,12 +92,12 @@ generated_ready=$(run_runner_component "$generated_component" ready)
 generated_pending=$(run_runner_component "$generated_component" pending)
 generated_error=$(run_runner_component "$generated_component" error)
 
-grep -Fq 'mode=ready result=Ok host-calls=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$ready"
-grep -Fq 'mode=pending result=Ok host-calls=1 completion-polls=2 external-wakes=1 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$pending"
-grep -Fq 'mode=error result=Err(no-entry) host-calls=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$error"
-grep -Fq 'mode=cancel result=cancelled host-calls=1 completion-polls=1 external-wakes=0 completions=0 future-drops=1 pending-future-drops=1 descriptor-drops=1 table-empty=true' <<<"$cancel"
-grep -Fq 'mode=ready result=Ok host-calls=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_ready"
-grep -Fq 'mode=pending result=Ok host-calls=1 completion-polls=2 external-wakes=1 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_pending"
-grep -Fq 'mode=error result=Err(no-entry) host-calls=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_error"
+rg -Fq 'mode=ready result=Ok host-calls=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$ready"
+rg -Fq 'mode=pending result=Ok host-calls=1 completion-polls=2 external-wakes=1 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$pending"
+rg -Fq 'mode=error result=Err(no-entry) host-calls=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$error"
+rg -Fq 'mode=cancel result=cancelled host-calls=1 completion-polls=2 external-wakes=0 completions=0 future-drops=1 pending-future-drops=1 descriptor-drops=1 table-empty=true' <<<"$cancel"
+rg -Fq 'mode=ready result=Ok host-calls=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_ready"
+rg -Fq 'mode=pending result=Ok host-calls=1 completion-polls=2 external-wakes=1 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_pending"
+rg -Fq 'mode=error result=Err(no-entry) host-calls=1 completion-polls=1 external-wakes=0 completions=1 future-drops=1 pending-future-drops=0 descriptor-drops=1 table-empty=true' <<<"$generated_error"
 
 printf 'D2 filesystem descriptor.sync Rust/Wasmtime runtime passed\n'

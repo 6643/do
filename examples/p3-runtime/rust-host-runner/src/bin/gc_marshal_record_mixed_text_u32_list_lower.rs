@@ -46,9 +46,8 @@ fn main() -> Result<()> {
     let component = map_wasmtime(Component::from_file(&engine, &component_path))
         .with_context(|| format!("load component {component_path}"))?;
     let mut linker: Linker<State> = Linker::new(&engine);
-    let mut api = map_wasmtime(
-        linker.instance("demo:marshal-record-mixed-text-u32-list-lower/api@1.0.0"),
-    )?;
+    let mut api =
+        map_wasmtime(linker.instance("demo:marshal-record-mixed-text-u32-list-lower/api@1.0.0"))?;
     let calls = Arc::new(AtomicU32::new(0));
     let callback_calls = Arc::clone(&calls);
     map_wasmtime(api.func_new("write", move |_store, _ty, params, results| {

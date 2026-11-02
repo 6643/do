@@ -77,7 +77,7 @@ output=$(
     --bin do-p3-gc-marshal-record-managed-lower-multi-equivalence-runner -- \
     "$tmp_dir/gc.component.wasm" "$tmp_dir/arc.component.wasm"
 )
-grep -Fq 'GC/ARC multi-managed-field record lower equivalence passed code=7 label=hello note=world allocations=2/2 frees=2/2 write-calls=1/1' <<<"$output"
+rg -Fq 'GC/ARC multi-managed-field record lower equivalence passed code=7 label=hello note=world allocations=2/2 frees=2/2 write-calls=1/1' <<<"$output"
 printf '%s\n' "$output"
 printf 'default C15-D multi-managed-field record lower ARC/GC equivalence passed\n'
 
@@ -117,6 +117,6 @@ lift_output=$(
     --bin do-p3-gc-marshal-record-managed-lift-multi-host-equivalence-runner -- \
     "$tmp_dir/lift.gc.component.wasm" "$tmp_dir/lift.arc.component.wasm"
 )
-grep -Fq 'GC/ARC manifest managed multi-field record lift equivalence passed values=17/17' <<<"$lift_output"
+rg -Fq 'GC/ARC manifest managed multi-field record lift equivalence passed values=17/17' <<<"$lift_output"
 printf '%s\n' "$lift_output"
 printf 'default C16-D multi-managed-field record lift ARC/GC equivalence passed\n'

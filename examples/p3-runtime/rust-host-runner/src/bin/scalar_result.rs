@@ -6,7 +6,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::{Context as TaskContext, Poll};
-use wasmtime::component::{Accessor, AccessorTask, Component, Linker};
+use wasmtime::component::{AccessorTask, Component, Linker};
 use wasmtime::{Config, Engine, Store};
 
 #[path = "../budget_gate.rs"]
@@ -65,9 +65,9 @@ struct Wake {
     completion: oneshot::Sender<()>,
 }
 
-impl AccessorTask<()> for Wake {
-    fn run(self, _accessor: &Accessor<()>) -> impl Future<Output = wasmtime::Result<()>> + Send {
-        async move {
+impl Wake {
+    fn task(self) -> impl for<'a> AccessorTask<'a, ()> {
+        async move |_accessor| {
             let _ = self.completion.send(());
             Ok(())
         }
@@ -129,7 +129,7 @@ async fn run(component_path: &Path, cancellation_component_path: Option<&Path>) 
                 });
             }
             let (sender, receiver) = oneshot::channel();
-            let wake = accessor.spawn(Wake { completion: sender });
+            let wake = accessor.spawn(Wake { completion: sender }.task());
             Box::pin(async move {
                 wake?;
                 PendingWake {
@@ -278,7 +278,7 @@ async fn run_cancellation(component_path: &Path) -> Result<()> {
         move |accessor, (value,): (i32,)| {
             committed_host.fetch_add(1, Ordering::SeqCst);
             let (sender, receiver) = oneshot::channel();
-            let wake = accessor.spawn(Wake { completion: sender });
+            let wake = accessor.spawn(Wake { completion: sender }.task());
             let dropped = Arc::clone(&dropped_host);
             Box::pin(async move {
                 wake?;

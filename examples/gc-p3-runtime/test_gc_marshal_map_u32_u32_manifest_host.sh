@@ -52,12 +52,12 @@ run_direction() {
   local component="$tmp_dir/${direction}.component.wasm"
 
   DO_LIB_ROOT="$repo_root/lib" "$do_bin" build "$input_do" --gc-wit-marshal "$descriptor" -o "$core"
-  grep -Fq "$canonical_type" "$core"
-  if grep -Fq '__arc_' "$core"; then
+  rg -Fq "$canonical_type" "$core"
+  if rg -Fq '__arc_' "$core"; then
     printf '%s map route still contains ARC symbols\n' "$direction" >&2
     exit 1
   fi
-  if grep -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$core"; then
+  if rg -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$core"; then
     printf '%s map reference crossed the canonical Component ABI\n' "$direction" >&2
     exit 1
   fi
@@ -67,7 +67,7 @@ run_direction() {
   "$toolchain_bin" new-component "$embedded" -o "$component"
   "$toolchain_bin" validate-component "$component" --features component-map
   "$toolchain_bin" component-wit "$component" >"$tmp_dir/${direction}.component.wit"
-  grep -Fq "$wit_signature" "$tmp_dir/${direction}.component.wit"
+  rg -Fq "$wit_signature" "$tmp_dir/${direction}.component.wit"
 
   local output
   output=$(
@@ -78,9 +78,9 @@ run_direction() {
   )
   printf '%s\n' "$output"
   if [ "$direction" = lower ]; then
-    grep -Fq 'GC map<u32,u32> lower host adapter passed entries=[7->70, 9->90] result=42 stats=17 write-calls=1 allocations=1 frees=1' <<<"$output"
+    rg -Fq 'GC map<u32,u32> lower host adapter passed entries=[7->70, 9->90] result=42 stats=17 write-calls=1 allocations=1 frees=1' <<<"$output"
   else
-    grep -Fq 'GC map<u32,u32> lift host adapter passed entries=[7->70, 9->90] result=176 stats=17 read-calls=1 allocations=1 frees=1' <<<"$output"
+    rg -Fq 'GC map<u32,u32> lift host adapter passed entries=[7->70, 9->90] result=176 stats=17 read-calls=1 allocations=1 frees=1' <<<"$output"
   fi
 }
 

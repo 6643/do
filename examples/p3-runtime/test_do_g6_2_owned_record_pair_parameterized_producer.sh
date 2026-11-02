@@ -12,7 +12,7 @@ mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/do-g6-2-owned-record-pair-parameterized-producer.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -37,17 +37,17 @@ cmp "$wit" "$probe_wit"
 test "$(sha256sum "$wit" | awk '{print $1}')" = \
   e7abd3cf7b7543325865a0b4be4b32ae50a2470ac5083169250719f89b7ce53a
 
-grep -Fq 'package do:g6-2-owned-record-pair-parameterized-producer@0.1.0;' "$wit"
-grep -Fq 'record resource-pair {' "$wit"
-grep -Fq 'left: own<ticket>,' "$wit"
-grep -Fq 'right: own<ticket>,' "$wit"
-grep -Fq 'data: stream<resource-pair>' "$wit"
-grep -Fq 'world owned-record-pair-parameterized-producer' "$wit"
-grep -Fq 'export produce: async func(' "$wit"
-grep -Fq 'mode: u32,' "$wit"
-grep -Fq 'left-seed: u32,' "$wit"
-grep -Fq 'right-seed: u32' "$wit"
-if grep -Eq 'do:g6-2-(c-min|batched|dynamic|scalar-list|owned-record)-producer|stream<list<|stream<variant' "$wit"; then
+rg -Fq 'package do:g6-2-owned-record-pair-parameterized-producer@0.1.0;' "$wit"
+rg -Fq 'record resource-pair {' "$wit"
+rg -Fq 'left: own<ticket>,' "$wit"
+rg -Fq 'right: own<ticket>,' "$wit"
+rg -Fq 'data: stream<resource-pair>' "$wit"
+rg -Fq 'world owned-record-pair-parameterized-producer' "$wit"
+rg -Fq 'export produce: async func(' "$wit"
+rg -Fq 'mode: u32,' "$wit"
+rg -Fq 'left-seed: u32,' "$wit"
+rg -Fq 'right-seed: u32' "$wit"
+if rg -q 'do:g6-2-(c-min|batched|dynamic|scalar-list|owned-record)-producer|stream<list<|stream<variant' "$wit"; then
   printf 'parameterized pair producer emitted an out-of-scope neighboring shape\n' >&2
   exit 1
 fi
@@ -65,10 +65,10 @@ for marker in \
   '[producer-record-transfer]' \
   '[producer-resource-drop-exactly-once]' \
   '[producer-child-before-parent-cleanup]'; do
-  grep -Fq ";; $marker" "$core_wat"
+  rg -Fq ";; $marker" "$core_wat"
 done
-grep -Fq '[async-lift]produce' "$core_wat"
-if grep -Fq '__arc_' "$core_wat"; then
+rg -Fq '[async-lift]produce' "$core_wat"
+if rg -Fq '__arc_' "$core_wat"; then
   printf 'parameterized pair producer emitted an ARC symbol\n' >&2
   exit 1
 fi

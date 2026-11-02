@@ -24,7 +24,7 @@ set -euo pipefail
     printf 'run_gc_core=%s\n' "${RUN_GC_CORE:-}"
 } >"$FAKE_LOG"
 
-if [[ "$*" != "build test --summary all" ]]; then
+if [[ "$*" != "build --prefix .. test --summary all" ]]; then
     exit 7
 fi
 EOF
@@ -45,11 +45,11 @@ if [[ "$status" -ne 0 ]]; then
     exit 1
 fi
 
-grep -Fqx "cwd=$ROOT_DIR/src" "$LOG_FILE"
-grep -Fqx "args=build|test|--summary|all|" "$LOG_FILE"
-grep -Fqx "local=$TMP_DIR/zig-cache" "$LOG_FILE"
-grep -Fqx "global=$TMP_DIR/zig-global-cache" "$LOG_FILE"
-grep -Fqx "run_wasm=1" "$LOG_FILE"
-grep -Fqx "run_gc_core=1" "$LOG_FILE"
+rg -Fqx "cwd=$ROOT_DIR/src" "$LOG_FILE"
+rg -Fqx "args=build|--prefix|..|test|--summary|all|" "$LOG_FILE"
+rg -Fqx "local=$TMP_DIR/zig-cache" "$LOG_FILE"
+rg -Fqx "global=$TMP_DIR/zig-global-cache" "$LOG_FILE"
+rg -Fqx "run_wasm=1" "$LOG_FILE"
+rg -Fqx "run_gc_core=1" "$LOG_FILE"
 
 echo "run_tests.sh entrypoint contract passed"

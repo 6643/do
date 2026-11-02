@@ -285,7 +285,7 @@ const BodyEmitter = struct {
         for (self.functions) |func| {
             if (func.is_generic_template or
                 (!module_tokens_equal(func.tokens, self.tokens) and
-                !(explicit_import and std.mem.eql(u8, func.name, name))) or
+                    !(explicit_import and std.mem.eql(u8, func.name, name))) or
                 !std.mem.eql(u8, public_decl_name(func.source_name), public_decl_name(name))) continue;
             const result_matches = expected == null or
                 (func.results.len == 1 and std.mem.eql(u8, func.results[0], expected.?)) or
@@ -4418,7 +4418,7 @@ fn emit_gc_wat_for_supported_program_with_tests(
     if (env_host_imports.items.len != 0) try wat_component_metadata.emit_host_imports(allocator, &out, env_host_imports.items);
     const has_tuple_text_bytes = has_gc_sync_tuple_text_bytes(functions.items) or test_decls.len != 0;
     var scalar_arrays = has_gc_sync_scalar_arrays(tokens, functions.items, gc_layouts.items);
-    if (test_decls.len != 0) scalar_arrays = [_]bool{true} ** gc_layout.scalar_array_specs.len;
+    if (test_decls.len != 0) scalar_arrays = @splat(true);
     try runtime_gc_prelude.emit_gc_sync_types(allocator, &out, gc_layouts.items, payload_unions.items, has_tuple_text_bytes, scalar_arrays, managed_arrays.items);
     if (gc_host_route) |route| try emit_gc_host_support_declarations(allocator, &out, route);
     try runtime_gc_prelude.emit_gc_sync_helpers(allocator, &out);
@@ -4549,7 +4549,7 @@ fn has_gc_sync_scalar_arrays(
     functions: []const FuncDecl,
     layouts: []const gc_layout.GcStructLayout,
 ) [gc_layout.scalar_array_specs.len]bool {
-    var result = [_]bool{false} ** gc_layout.scalar_array_specs.len;
+    var result: [gc_layout.scalar_array_specs.len]bool = @splat(false);
     for (gc_layout.scalar_array_specs, 0..) |spec, index| {
         for (functions) |func| {
             for (func.params) |param| {
@@ -6780,8 +6780,7 @@ test "GC sync lowers eq for an error branch inside a scalar union" {
     ;
     const wat = try emit_test_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat,
-        "local.get $value.__union_tag\n    i32.const 2\n    i32.eq\n    local.get $value.__union_payload_1\n    i32.const 1\n    i32.eq\n    i32.and") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "local.get $value.__union_tag\n    i32.const 2\n    i32.eq\n    local.get $value.__union_payload_1\n    i32.const 1\n    i32.eq\n    i32.and") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 

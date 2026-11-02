@@ -206,7 +206,7 @@ test "wit resolver selects world and computes stable content hash" {
     try std.testing.expectEqualStrings("probe", binding.world.name);
     try std.testing.expectEqual(@as(usize, 1), binding.interfaces.len);
     try std.testing.expectEqualStrings("api", binding.interfaces[0].name);
-    const zero_hash = [_]u8{0} ** 32;
+    const zero_hash: [32]u8 = @splat(0);
     try std.testing.expect(!std.mem.eql(u8, &binding.content_hash, &zero_hash));
     try std.testing.expectEqual(@as(usize, 2), binding.interfaces[0].resources.len);
     try std.testing.expect(binding.interfaces[0].functions[0].effects.is_async);
@@ -246,7 +246,7 @@ test "wit marshal registry resolves one bounded value member" {
     try std.testing.expectEqualStrings("echo", member.member_name);
     try std.testing.expectEqual(model.TypeKind.u32, member.function.params[0].type_ref.kind);
     try std.testing.expectEqual(model.TypeKind.string, member.function.result.?.kind);
-    try std.testing.expect(!std.mem.eql(u8, &member.content_hash, &([_]u8{0} ** 32)));
+    try std.testing.expect(!std.mem.eql(u8, &member.content_hash, &(@as([32]u8, @splat(0)))));
 }
 
 test "wit marshal registry rejects an unknown interface" {

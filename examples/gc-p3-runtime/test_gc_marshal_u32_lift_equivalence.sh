@@ -34,7 +34,7 @@ fi
 
 gc_core_wat="$tmp_dir/generated-gc.core.wat"
 "$zig_bin" run "$probe" -- "$gc_core_wat" "$repo_root"
-if grep -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$gc_core_wat"; then
+if rg -E '^[[:space:]]*\(import .*(\(param|\(result).*\(ref' "$gc_core_wat"; then
   printf 'GC reference crossed the Component ABI\n' >&2
   exit 1
 fi
@@ -54,5 +54,5 @@ output=$(
     --bin do-p3-gc-marshal-u32-lift-host-runner -- \
     "$tmp_dir/gc.component.wasm" "$tmp_dir/arc.component.wasm"
 )
-grep -Fq 'GC/ARC list<u32> lift equivalence passed checksums=60/60' <<<"$output"
+rg -Fq 'GC/ARC list<u32> lift equivalence passed checksums=60/60' <<<"$output"
 printf '%s\n' "$output"

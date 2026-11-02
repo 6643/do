@@ -29,20 +29,20 @@ for required in \
   'call $subtask-drop' \
   '[task-return]cancel' \
   '(export "[async-lift]cancel")'; do
-  if ! grep -Fq "$required" "$core_path"; then
+  if ! rg -Fq "$required" "$core_path"; then
     printf 'resource Result cancellation lowering is missing: %s\n' "$required" >&2
     exit 1
   fi
 done
 
 for forbidden in operation_id request_cancel CancelledAck terminal-ack; do
-  if grep -Fq "$forbidden" "$core_path"; then
+  if rg -Fq "$forbidden" "$core_path"; then
     printf 'resource Result cancellation emitted obsolete protocol name: %s\n' "$forbidden" >&2
     exit 1
   fi
 done
 
-if grep -Fq '$async-frame' "$core_path"; then
+if rg -Fq '$async-frame' "$core_path"; then
   printf 'nil-returning resource cancellation unexpectedly allocated a result frame\n' >&2
   exit 1
 fi
@@ -70,7 +70,7 @@ for rejected in \
       expected_error=FutureAlreadyConsumed
       ;;
   esac
-  grep -Fq "$expected_error" "$stderr_path"
+  rg -Fq "$expected_error" "$stderr_path"
 done
 
 "$toolchain_bin" parse-core "$repo_root/examples/p3-runtime/resource-result-cancel-probe.wat" \

@@ -82,12 +82,13 @@ scan_wasm_tools_aliases() {
         return 1
     fi
 
-    if find "$ROOT_DIR/examples" "$ROOT_DIR/src/build/test" -type f -name '*.sh' ! -path '*/tmp/*' -print0 >"$file_list"; then
+    if fd --type f --glob '*.sh' --print0 . "$ROOT_DIR/examples" "$ROOT_DIR/src/build/test" |
+        rg --null-data --invert-match '/tmp/' >"$file_list"; then
         :
     else
         find_status=$?
         rm -f -- "$file_list"
-        printf '[FAIL] alias file scan failed (find exit %d)\n' "$find_status" >&2
+        printf '[FAIL] alias file scan failed (fd/rg exit %d)\n' "$find_status" >&2
         return 1
     fi
 
@@ -199,8 +200,8 @@ scan_wasm_tools_aliases() {
         if alias_refs="$(awk '
             function alias_invocation(line, name, prefix) {
                 prefix = "^[[:space:]]*((if|then|elif|while|until|do|!|command|env)[[:space:]]+)*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+)*"
-                return line ~ (prefix "\\\"?\\$" name "\\\"?[[:space:]]+[^[:space:]]+") ||
-                    line ~ (prefix "\\\"?\\$\\{" name "\\}\\\"?[[:space:]]+[^[:space:]]+")
+                return line ~ (prefix "\"?\\$" name "\"?[[:space:]]+[^[:space:]]+") ||
+                    line ~ (prefix "\"?\\$\\{" name "\\}\"?[[:space:]]+[^[:space:]]+")
             }
 
             {

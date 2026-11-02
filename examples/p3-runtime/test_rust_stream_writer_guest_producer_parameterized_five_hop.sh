@@ -20,11 +20,11 @@ DO_LIB_ROOT="$repo_root/lib" "$repo_root/bin/do" build --p3-async-component \
   -o "$core_path"
 
 cmp "$wit_path" "$repo_root/examples/p3-runtime/wit/stream-probe-guest-producer-parameterized-five-hop.wit"
-grep -Fq '[writer-lease-transfer] async-helper' "$core_path"
-grep -Fq '[writer-producer-index-offset] 52' "$core_path"
-grep -Fq '[writer-producer-value-offset] 60' "$core_path"
+rg -Fq '[writer-lease-transfer] async-helper' "$core_path"
+rg -Fq '[writer-producer-index-offset] 52' "$core_path"
+rg -Fq '[writer-producer-value-offset] 60' "$core_path"
 for helper in outer_stream entry_stream forward_stream middle_stream inner_stream finish_stream; do
-  if grep -Fq "(func (export \"[async-lift]$helper\")" "$core_path"; then
+  if rg -Fq "(func (export \"[async-lift]$helper\")" "$core_path"; then
     printf 'parameterized five-hop helper must not be exported\n' >&2
     exit 1
   fi

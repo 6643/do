@@ -13,7 +13,7 @@ mkdir -p "$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/do-g6-2-two-list-owned-record-producer-negative.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -45,7 +45,7 @@ for prefix in "${fixtures[@]}"; do
   fi
   while IFS= read -r expected_line || [[ -n "$expected_line" ]]; do
     [[ -z "$expected_line" || "$expected_line" == \#* ]] && continue
-    grep -Fq "$expected_line" "$stderr" || {
+    rg -Fq "$expected_line" "$stderr" || {
       printf 'missing expected diagnostic %s for %s\n' "$expected_line" "$fixture" >&2
       exit 1
     }
@@ -54,7 +54,7 @@ for prefix in "${fixtures[@]}"; do
     printf 'two-list owned-record negative fixture emitted output despite rejection: %s\n' "$fixture" >&2
     exit 1
   fi
-  if grep -Eq 'record_resource_list_owned_record_stream_producer|do:g6-2-owned-record-list-producer@0\.1\.0|producer-record-values-pointer-offset' "$stdout" "$stderr"; then
+  if rg -q 'record_resource_list_owned_record_stream_producer|do:g6-2-owned-record-list-producer@0\.1\.0|producer-record-values-pointer-offset' "$stdout" "$stderr"; then
     printf 'two-list owned-record negative fixture fell back to the old one-list route: %s\n' "$fixture" >&2
     exit 1
   fi

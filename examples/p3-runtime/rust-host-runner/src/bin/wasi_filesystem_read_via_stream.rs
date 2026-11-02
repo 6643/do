@@ -6,8 +6,8 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context as TaskContext, Poll};
 use wasmtime::component::{
-    Accessor, AccessorTask, Component, Destination, FutureReader, Linker, Resource, ResourceTable,
-    ResourceType, StreamProducer, StreamReader, StreamResult, TypedFunc, VecBuffer,
+    Component, Destination, FutureReader, Linker, Resource, ResourceTable, ResourceType,
+    StreamProducer, StreamReader, StreamResult, TypedFunc, VecBuffer,
 };
 use wasmtime::{Config, Engine, Store, StoreContextMut};
 
@@ -305,21 +305,11 @@ impl Drop for Completion {
     }
 }
 
-struct RunTask {
-    run: TypedFunc<(Resource<Descriptor>, u64), ()>,
-    descriptor: Resource<Descriptor>,
-    offset: u64,
-}
-
-impl AccessorTask<State> for RunTask {
-    fn run(self, accessor: &Accessor<State>) -> impl Future<Output = wasmtime::Result<()>> + Send {
-        async move {
-            self.run
-                .call_concurrent(accessor, (self.descriptor, self.offset))
-                .await
-                .map(|_| ())
-        }
-    }
+macro_rules! spawn_run_task {
+    ($run:expr, $($arg:expr),+ $(,)?) => {{
+        let run = $run;
+        async move |accessor| run.call_concurrent(accessor, ($(($arg),)+)).await.map(|_| ())
+    }};
 }
 
 fn map_wasmtime<T>(result: wasmtime::Result<T>) -> Result<T> {
@@ -495,11 +485,7 @@ async fn run(component_path: &Path, mode: Mode) -> Result<()> {
             .context("missing filesystem read-via-stream probe.cancel export")?;
         let cancel = map_wasmtime(instance.get_typed_func::<(), ()>(&mut store, &cancel_export))?;
         let descriptor = store.data_mut().table.push(Descriptor)?;
-        let run_handle = map_wasmtime(store.spawn(RunTask {
-            run,
-            descriptor,
-            offset: 0,
-        }))?;
+        let run_handle = map_wasmtime(store.spawn(spawn_run_task!(run, descriptor, 0)))?;
         if mode == Mode::CancelBeforeEof {
             map_wasmtime(map_wasmtime(
                 store

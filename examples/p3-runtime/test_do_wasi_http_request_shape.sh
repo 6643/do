@@ -17,11 +17,11 @@ if "$do_bin" build "$async_build_source" -o "$tmp_dir/rejected.wat" >"$tmp_dir/r
     printf 'ordinary async HTTP build unexpectedly succeeded\n' >&2
     exit 1
 fi
-grep -Fq 'AsyncLoweringUnavailable' "$tmp_dir/rejected.out"
+rg -Fq 'AsyncLoweringUnavailable' "$tmp_dir/rejected.out"
 
 "$do_bin" build --p3-async-component --p3-wit-output "$tmp_dir/service.wit" \
     "$service_source" -o "$tmp_dir/service.wat"
-grep -Fq '[async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle' "$tmp_dir/service.wat"
-grep -Fq '[async-lower]send' "$tmp_dir/service.wat"
+rg -Fq '[async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle' "$tmp_dir/service.wat"
+rg -Fq '[async-lower]send' "$tmp_dir/service.wat"
 
 printf 'WASI HTTP request resource shape boundary passed\n'

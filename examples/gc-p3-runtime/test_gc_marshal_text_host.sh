@@ -41,5 +41,5 @@ output=$(
   "$cargo_bin" run --quiet --locked --manifest-path "$runner_manifest" \
     --bin do-p3-gc-marshal-text-host-runner -- "$tmp_dir/component.wasm"
 )
-grep -Fq 'GC text marshal host adapter passed value=hello' <<<"$output"
+rg -Fq 'GC text marshal host adapter passed value=hello' <<<"$output"
 printf '%s\n' "$output"

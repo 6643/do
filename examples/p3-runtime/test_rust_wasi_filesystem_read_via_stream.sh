@@ -57,7 +57,7 @@ for mode in ready pending error cancel-before-eof cancel-after-eof early-drop re
       expected='result=store-disposed method-calls=1 stream-reads=1 completion-polls=2 wakes=0 completions=0 completion-errors=0 stream-drops=1 future-drops=1 pending-future-drops=1 descriptor-drops=0 table-empty=not-applicable'
       ;;
   esac
-  if ! grep -Fq -- "$expected" <<<"$output"; then
+  if ! rg -Fq -- "$expected" <<<"$output"; then
     printf 'missing runtime counter assertion: %s\nexpected: %s\nactual: %s\n' "$mode" "$expected" "$output" >&2
     exit 1
   fi

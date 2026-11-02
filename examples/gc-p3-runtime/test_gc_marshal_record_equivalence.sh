@@ -47,5 +47,5 @@ output=$(
     --bin do-p3-gc-marshal-record-equivalence-runner -- \
     "$tmp_dir/gc.component.wasm" "$tmp_dir/arc.component.wasm"
 )
-grep -Fq 'GC/ARC scalar record marshal equivalence passed sums=42/42' <<<"$output"
+rg -Fq 'GC/ARC scalar record marshal equivalence passed sums=42/42' <<<"$output"
 printf '%s\n' "$output"

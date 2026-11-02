@@ -19,10 +19,10 @@ for marker in \
   '[gc-root][cancel_frame]' \
   '[gc-root][terminal]' \
   '[resource-drop-exactly-once]'; do
-  grep -Fq "$marker" "$wat"
+  rg -Fq "$marker" "$wat"
 done
 
-if grep -Fq '__arc_' "$wat"; then
+if rg -Fq '__arc_' "$wat"; then
   printf 'normal GC frame emitted ARC marker\n' >&2
   exit 1
 fi

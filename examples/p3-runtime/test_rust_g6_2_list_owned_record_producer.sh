@@ -12,7 +12,7 @@ export TMPDIR="$tmp_root"
 tmp_dir=$(mktemp -d "$tmp_root/g6-2-list-owned-record-producer-rust.XXXXXX")
 cleanup() {
   if [[ -d "${tmp_dir:-}" ]]; then
-    find "$tmp_dir" -depth -mindepth 1 -delete
+    fd -H -I --max-depth 1 --type f --type d . "$tmp_dir" -X rm -rf --
     rmdir "$tmp_dir" 2>/dev/null || true
   fi
 }
@@ -51,9 +51,9 @@ for marker in \
   '[producer-record-transfer]' \
   '[producer-list-release-exactly-once]' \
   '[producer-resource-drop-exactly-once]'; do
-  grep -Fq ";; $marker" "$wat"
+  rg -Fq ";; $marker" "$wat"
 done
-if grep -Fq '__arc_' "$wat"; then
+if rg -Fq '__arc_' "$wat"; then
   printf 'list-owned-record producer emitted an ARC symbol\n' >&2
   exit 1
 fi
@@ -97,21 +97,21 @@ run_mode() {
   local output
   output=$("$runner" "$component" "$mode")
   printf '%s\n' "$output"
-  grep -Fq "mode=$mode" <<<"$output"
-  grep -Fq "received=$expected_received" <<<"$output"
-  grep -Fq "result=$expected_result" <<<"$output"
-  grep -Fq 'table-empty=true' <<<"$output"
-  grep -Fq 'layout=record-offset:64 record-byte-size:12 record-alignment:4 values-pointer-offset:0 values-length-offset:4 ticket-offset:8 list-stride:4 list-capacity:3 stream-capacity:1' <<<"$output"
+  rg -Fq "mode=$mode" <<<"$output"
+  rg -Fq "received=$expected_received" <<<"$output"
+  rg -Fq "result=$expected_result" <<<"$output"
+  rg -Fq 'table-empty=true' <<<"$output"
+  rg -Fq 'layout=record-offset:64 record-byte-size:12 record-alignment:4 values-pointer-offset:0 values-length-offset:4 ticket-offset:8 list-stride:4 list-capacity:3 stream-capacity:1' <<<"$output"
   case "$mode" in
-    ready) grep -Fq 'list-read-releases=1 list-releases=1' <<<"$output" ;;
-    pending) grep -Fq 'poll-calls=2' <<<"$output"; grep -Fq 'pending-polls=1' <<<"$output" ;;
-    sink-error-before) grep -Fq 'list-read-releases=0 list-releases=1' <<<"$output" ;;
-    sink-error-after) grep -Fq 'list-read-releases=1 list-releases=1' <<<"$output" ;;
-    cancel-before-transfer|early-drop-before-transfer) grep -Fq 'poll-calls=0' <<<"$output"; grep -Fq 'pending-future-drops=1' <<<"$output" ;;
-    cancel-after-transfer) grep -Fq 'list-read-releases=1 list-releases=1' <<<"$output"; grep -Fq 'cancel-calls=1' <<<"$output" ;;
-    early-drop-after-transfer) grep -Fq 'list-read-releases=1 list-releases=1' <<<"$output"; grep -Fq 'cancel-calls=1' <<<"$output" ;;
-    repeat) grep -Fq 'resource-created=2 resource-drops=2' <<<"$output"; grep -Fq 'list-read-releases=2 list-releases=2' <<<"$output" ;;
-    invalid) grep -Fq 'resource-created=0 resource-drops=0' <<<"$output"; grep -Fq 'list-read-releases=0 list-releases=0' <<<"$output" ;;
+    ready) rg -Fq 'list-read-releases=1 list-releases=1' <<<"$output" ;;
+    pending) rg -Fq 'poll-calls=2' <<<"$output"; rg -Fq 'pending-polls=1' <<<"$output" ;;
+    sink-error-before) rg -Fq 'list-read-releases=0 list-releases=1' <<<"$output" ;;
+    sink-error-after) rg -Fq 'list-read-releases=1 list-releases=1' <<<"$output" ;;
+    cancel-before-transfer|early-drop-before-transfer) rg -Fq 'poll-calls=0' <<<"$output"; rg -Fq 'pending-future-drops=1' <<<"$output" ;;
+    cancel-after-transfer) rg -Fq 'list-read-releases=1 list-releases=1' <<<"$output"; rg -Fq 'cancel-calls=1' <<<"$output" ;;
+    early-drop-after-transfer) rg -Fq 'list-read-releases=1 list-releases=1' <<<"$output"; rg -Fq 'cancel-calls=1' <<<"$output" ;;
+    repeat) rg -Fq 'resource-created=2 resource-drops=2' <<<"$output"; rg -Fq 'list-read-releases=2 list-releases=2' <<<"$output" ;;
+    invalid) rg -Fq 'resource-created=0 resource-drops=0' <<<"$output"; rg -Fq 'list-read-releases=0 list-releases=0' <<<"$output" ;;
   esac
 }
 

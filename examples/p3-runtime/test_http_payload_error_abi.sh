@@ -34,9 +34,9 @@ for candidate in canonical host-lowered; do
   "$toolchain_bin" validate-component "$component" --features component-async
   "$toolchain_bin" component-wit "$component" >"$component_wit"
 
-  grep -Fq 'import wasi:http/types@0.3.0-rc-2025-09-16;' "$component_wit"
-  grep -Fq 'import wasi:http/client@0.3.0-rc-2025-09-16;' "$component_wit"
-  grep -Fq 'export wasi:http/probe@0.3.0-rc-2025-09-16;' "$component_wit"
+  rg -Fq 'import wasi:http/types@0.3.0-rc-2025-09-16;' "$component_wit"
+  rg -Fq 'import wasi:http/client@0.3.0-rc-2025-09-16;' "$component_wit"
+  rg -Fq 'export wasi:http/probe@0.3.0-rc-2025-09-16;' "$component_wit"
 done
 
 dns_error_core_wat="$repo_root/examples/p3-runtime/http-payload-error-dns-error-canonical.wat"
@@ -50,7 +50,7 @@ dns_error_component_wit="$tmp_dir/dns-error-canonical.component.wit"
 "$toolchain_bin" new-component "$dns_error_embedded" -o "$dns_error_component"
 "$toolchain_bin" validate-component "$dns_error_component" --features component-async
 "$toolchain_bin" component-wit "$dns_error_component" >"$dns_error_component_wit"
-grep -Fq 'export wasi:http/probe@0.3.0-rc-2025-09-16;' "$dns_error_component_wit"
+rg -Fq 'export wasi:http/probe@0.3.0-rc-2025-09-16;' "$dns_error_component_wit"
 
 if [[ ${1:-} == --assemble-only ]]; then
   printf 'WASI HTTP payload error ABI assembly passed\n'
@@ -120,14 +120,14 @@ run_component_case() {
     CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$PWD/zig-cc.sh" \
     cargo run --quiet --bin do-p3-http-payload-error-abi-host-runner -- \
       "$component_path" "$candidate" "$case_name")
-  if ! grep -Fq \
+  if ! rg -Fq \
     "payload-gate=$expected_status candidate=$candidate case=$case_name observation=$expected_observation" \
     <<<"$output"; then
     printf 'unexpected payload ABI observation for %s/%s:\n%s\n' \
       "$candidate" "$case_name" "$output" >&2
     exit 1
   fi
-  if ! grep -Fq 'table-empty=true' <<<"$output"; then
+  if ! rg -Fq 'table-empty=true' <<<"$output"; then
     printf 'payload ABI runner leaked a resource for %s/%s:\n%s\n' \
       "$candidate" "$case_name" "$output" >&2
     exit 1
