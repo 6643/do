@@ -270,7 +270,8 @@ Stmt             <- IfStmt
                   / AssignStmt
                   / ExprStmt
 
-DeferStmt       <- 'defer' (DeferCall / DeferBlock)
+DeferStmt       <- 'defer' DeferCondition? (DeferCall / DeferBlock)
+DeferCondition  <- '(' Expr ')'
 DeferCall       <- CallExpr
 DeferBlock      <- Block
 

@@ -96,12 +96,18 @@ const INDENT = "    ";
 const DeferredCall = struct {
     start_idx: usize,
     end_idx: usize,
+    condition_site_idx: ?usize = null,
+    cleanup_is_block: bool = false,
 };
+
+const conditional_defer_range = codegen_tokens.conditional_defer_range;
+const conditional_defer_flag_name = codegen_context.conditional_defer_flag_name;
 
 const GcLoopFrame = struct {
     source_label: ?[]const u8,
     break_label: []const u8,
     continue_label: []const u8,
+    defer_count: usize,
 };
 
 const CallShape = struct {
@@ -246,7 +252,7 @@ const BodyEmitter = struct {
         return try std.fmt.allocPrint(self.allocator, "__gc_{s}_{d}", .{ prefix, id });
     }
 
-    fn loop_control_target(self: *BodyEmitter, start_idx: usize, end_idx: usize, is_break: bool) ![]const u8 {
+    fn loop_control_frame(self: *BodyEmitter, start_idx: usize, end_idx: usize) !GcLoopFrame {
         var requested_label: ?[]const u8 = null;
         if (end_idx == start_idx + 1) {
             requested_label = null;
@@ -265,11 +271,11 @@ const BodyEmitter = struct {
             if (requested_label) |label| {
                 if (frame.source_label) |source_label| {
                     if (!std.mem.eql(u8, source_label, label)) continue;
-                    return if (is_break) frame.break_label else frame.continue_label;
+                    return frame;
                 }
                 continue;
             }
-            return if (is_break) frame.break_label else frame.continue_label;
+            return frame;
         }
         return error.UnsupportedGcSyncControl;
     }
@@ -2847,8 +2853,20 @@ const BodyEmitter = struct {
         while (idx > 0) {
             idx -= 1;
             const call = deferred[idx];
-            const result_ty = try self.emit_expr(call.start_idx, call.end_idx, null);
-            try self.emit_result_drops(call.start_idx, call.end_idx, result_ty);
+            if (call.condition_site_idx) |site_idx| {
+                const flag_name = try conditional_defer_flag_name(self.allocator, site_idx);
+                defer self.allocator.free(flag_name);
+                try self.append_fmt("    local.get ${[name]s}\n    if\n", .{ .name = flag_name });
+            }
+            if (call.cleanup_is_block) {
+                var block_defers = std.ArrayList(DeferredCall).empty;
+                defer block_defers.deinit(self.allocator);
+                _ = try self.emit_body(call.start_idx + 1, call.end_idx, null, &block_defers);
+            } else {
+                const result_ty = try self.emit_expr(call.start_idx, call.end_idx, null);
+                try self.emit_result_drops(call.start_idx, call.end_idx, result_ty);
+            }
+            if (call.condition_site_idx != null) try self.append_static("    end\n");
         }
     }
 
@@ -2980,16 +2998,18 @@ const BodyEmitter = struct {
         if (remaining) |ty| try self.locals.append_narrowed_union_local(self.allocator, union_local, ty);
     }
 
-    fn emit_guard_loop_control(self: *BodyEmitter, start_idx: usize, end_idx: usize) anyerror!bool {
+    fn emit_guard_loop_control(self: *BodyEmitter, start_idx: usize, end_idx: usize, deferred: []const DeferredCall) anyerror!bool {
         const break_idx = find_top_level_token(self.tokens, start_idx + 1, end_idx, "break");
         const continue_idx = find_top_level_token(self.tokens, start_idx + 1, end_idx, "continue");
         const control_idx = break_idx orelse continue_idx orelse return false;
         _ = try self.emit_expr(start_idx + 1, control_idx, "bool");
         try self.append_static("    if\n");
+        const frame = try self.loop_control_frame(control_idx, end_idx);
+        try self.emit_deferred(deferred[frame.defer_count..]);
         if (break_idx != null) {
-            try self.append_fmt("    br ${[label]s}\n", .{ .label = try self.loop_control_target(control_idx, end_idx, true) });
+            try self.append_fmt("    br ${[label]s}\n", .{ .label = frame.break_label });
         } else {
-            try self.append_fmt("    br ${[label]s}\n", .{ .label = try self.loop_control_target(control_idx, end_idx, false) });
+            try self.append_fmt("    br ${[label]s}\n", .{ .label = frame.continue_label });
         }
         try self.append_static("    end\n");
         return true;
@@ -3019,6 +3039,7 @@ const BodyEmitter = struct {
             .source_label = codegen_control_flow.label_for_loop_start(self.tokens, start_idx),
             .break_label = break_label,
             .continue_label = continue_label,
+            .defer_count = deferred.items.len,
         });
         defer _ = self.loop_stack.pop();
 
@@ -3098,6 +3119,7 @@ const BodyEmitter = struct {
             .source_label = codegen_control_flow.label_for_loop_start(self.tokens, start_idx),
             .break_label = break_label,
             .continue_label = loop_label,
+            .defer_count = deferred.items.len,
         });
         defer _ = self.loop_stack.pop();
         try self.append_fmt_block(4,
@@ -3191,8 +3213,19 @@ const BodyEmitter = struct {
         while (i < end_idx) {
             const stmt_end = find_stmt_end(self.tokens, i, end_idx);
             if (stmt_end <= i) return error.UnsupportedGcSyncStatement;
-            if (tok_eq(self.tokens[i], "if")) {
-                if (!try self.emit_guard_loop_control(i, stmt_end) and
+            if (conditional_defer_range(self.tokens, i, stmt_end)) |conditional| {
+                _ = try self.emit_expr(conditional.condition_start, conditional.condition_end, "bool");
+                const flag_name = try conditional_defer_flag_name(self.allocator, i);
+                defer self.allocator.free(flag_name);
+                try self.append_fmt("    local.set ${[name]s}\n", .{ .name = flag_name });
+                try deferred.append(self.allocator, .{
+                    .start_idx = conditional.cleanup_start,
+                    .end_idx = conditional.cleanup_end,
+                    .condition_site_idx = i,
+                    .cleanup_is_block = conditional.cleanup_is_block,
+                });
+            } else if (tok_eq(self.tokens[i], "if")) {
+                if (!try self.emit_guard_loop_control(i, stmt_end, deferred.items) and
                     !try self.emit_guard_return(i, stmt_end, result_ty, deferred))
                 {
                     try self.emit_if(i, stmt_end, result_ty, deferred);
@@ -3209,19 +3242,26 @@ const BodyEmitter = struct {
                 }
             } else if (tok_eq(self.tokens[i], "defer")) {
                 if (i + 1 >= stmt_end) return error.UnsupportedGcSyncStatement;
-                try deferred.append(self.allocator, .{ .start_idx = i + 1, .end_idx = stmt_end });
+                if (tok_eq(self.tokens[i + 1], "{")) {
+                    const close = find_matching_in_range(self.tokens, i + 1, "{", "}", stmt_end) catch return error.UnsupportedGcSyncStatement;
+                    try deferred.append(self.allocator, .{ .start_idx = i + 1, .end_idx = close, .cleanup_is_block = true });
+                } else {
+                    try deferred.append(self.allocator, .{ .start_idx = i + 1, .end_idx = stmt_end });
+                }
             } else if (tok_eq(self.tokens[i], "return")) {
                 try self.emit_return(i, stmt_end, result_ty, deferred);
                 saw_return = true;
                 break;
             } else if (tok_eq(self.tokens[i], "break")) {
-                try self.emit_deferred(deferred.items[inherited_defer_count..]);
+                const frame = try self.loop_control_frame(i, stmt_end);
+                try self.emit_deferred(deferred.items[frame.defer_count..]);
                 deferred.shrinkRetainingCapacity(inherited_defer_count);
-                try self.append_fmt("    br ${[label]s}\n", .{ .label = try self.loop_control_target(i, stmt_end, true) });
+                try self.append_fmt("    br ${[label]s}\n", .{ .label = frame.break_label });
             } else if (tok_eq(self.tokens[i], "continue")) {
-                try self.emit_deferred(deferred.items[inherited_defer_count..]);
+                const frame = try self.loop_control_frame(i, stmt_end);
+                try self.emit_deferred(deferred.items[frame.defer_count..]);
                 deferred.shrinkRetainingCapacity(inherited_defer_count);
-                try self.append_fmt("    br ${[label]s}\n", .{ .label = try self.loop_control_target(i, stmt_end, false) });
+                try self.append_fmt("    br ${[label]s}\n", .{ .label = frame.continue_label });
             } else if (tok_eq(self.tokens[i], "#") and i + 1 < stmt_end and self.tokens[i + 1].kind == .ident) {
                 // A label declaration belongs to the following loop and has
                 // no direct WAT instruction of its own.
@@ -3902,6 +3942,19 @@ fn append_gc_locals(
     try append_fmt(allocator, out, "    (local ${[length_name]s} i32)\n", .{ .length_name = gc_list_temps.length_name });
 }
 
+fn append_conditional_defer_locals(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !void {
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (!tok_eq(tokens[i], "defer")) continue;
+        const stmt_end = find_stmt_end(tokens, i, end_idx);
+        if (stmt_end <= i) continue;
+        if (conditional_defer_range(tokens, i, stmt_end) == null) continue;
+        const flag_name = try conditional_defer_flag_name(allocator, i);
+        defer allocator.free(flag_name);
+        try append_fmt(allocator, out, INDENT ++ "(local ${[name]s} i32)\n", .{ .name = flag_name });
+    }
+}
+
 fn is_inline_gc_layout(layout: gc_layout.GcStructLayout) bool {
     if (layout.fields.len == 0) return false;
     for (layout.fields) |field| {
@@ -4011,6 +4064,7 @@ fn emit_func(
     defer gc_roots.deinit_root_plan(allocator, root_plan);
 
     try append_gc_locals(allocator, out, func.tokens, &locals, gc_structs, base_ctx.value_enums, gc_layouts, payload_unions, managed_arrays, gc_list_temps);
+    try append_conditional_defer_locals(allocator, out, func.tokens, func.body_start, func.body_end);
     for (root_plan.slots) |slot| {
         if (slot.bind_at_entry) try append_fmt(allocator, out, "    ;; gc-root {[point]s} ${[name]s}\n", .{ .point = append_root_point_name(slot.point), .name = slot.name });
     }
@@ -4073,6 +4127,7 @@ fn emit_test_func(
     defer gc_roots.deinit_root_plan(allocator, root_plan);
 
     try append_gc_locals(allocator, out, tokens, &locals, gc_structs, base_ctx.value_enums, gc_layouts, payload_unions, managed_arrays, gc_list_temps);
+    try append_conditional_defer_locals(allocator, out, tokens, test_decl.body_start, test_decl.body_end);
     for (root_plan.slots) |slot| {
         if (slot.bind_at_entry) try append_fmt(allocator, out, "    ;; gc-root {[point]s} ${[name]s}\n", .{ .point = append_root_point_name(slot.point), .name = slot.name });
     }
@@ -4131,6 +4186,7 @@ fn emit_start(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tokens: []c
 
     try out.appendSlice(allocator, "  (func $_start\n");
     try append_gc_locals(allocator, out, tokens, &locals, gc_structs, base_ctx.value_enums, gc_layouts, payload_unions, managed_arrays, gc_list_temps);
+    try append_conditional_defer_locals(allocator, out, tokens, open_body + 1, close_body);
     for (root_plan.slots) |slot| if (slot.bind_at_entry) try append_fmt(allocator, out, "    ;; gc-root {[point]s} ${[name]s}\n", .{ .point = append_root_point_name(slot.point), .name = slot.name });
     var loop_stack = std.ArrayList(GcLoopFrame).empty;
     defer loop_stack.deinit(allocator);

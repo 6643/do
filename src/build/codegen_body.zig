@@ -31,6 +31,7 @@ const find_payload_enum_decl = codegen_imports.find_payload_enum_decl;
 const tok_eq = codegen_tokens.tok_eq;
 const find_matching_in_range = codegen_tokens.find_matching_in_range;
 const find_top_level_token = codegen_tokens.find_top_level_token;
+const conditional_defer_range = codegen_tokens.conditional_defer_range;
 const find_arg_end = codegen_tokens.find_arg_end;
 const trim_parens = codegen_tokens.trim_parens;
 const public_decl_name = codegen_names.public_decl_name;
@@ -238,6 +239,14 @@ pub fn collect_body_locals_with_mode(allocator: std.mem.Allocator, tokens: []con
     var i = start_idx;
     while (i < end_idx) {
         const stmt_end = find_stmt_end(tokens, i, end_idx);
+        if (conditional_defer_range(tokens, i, stmt_end) != null) {
+            const flag_name = try context.conditional_defer_flag_name(allocator, i);
+            if (has_local(out.locals.items, flag_name)) {
+                allocator.free(flag_name);
+            } else {
+                try out.append_owned_local_with_origin(allocator, flag_name, "bool", .compiler_temp);
+            }
+        }
         if (stmt_contains_string_literal(tokens, i, stmt_end) or
             stmt_contains_field_name_intrinsic(tokens, i, stmt_end) or
             stmt_contains_storage_agg_literal(tokens, i, stmt_end) or

@@ -90,7 +90,11 @@ pub fn check_defer_stmts(
     var i: usize = 0;
     while (i < tokens.len) : (i += 1) {
         if (!tok_eq(tokens[i], "defer")) continue;
-        const body_idx = i + 1;
+        var body_idx = i + 1;
+        if (body_idx < tokens.len and tok_eq(tokens[body_idx], "(")) {
+            const close_condition = find_matching(tokens, body_idx, "(", ")") catch return mark_error_at(tokens, body_idx, error.NoMatchingCall);
+            body_idx = close_condition + 1;
+        }
         if (body_idx >= tokens.len) return mark_error_at(tokens, i, error.NoMatchingCall);
         if (tok_eq(tokens[body_idx], "{")) {
             const close_block = find_matching(tokens, body_idx, "{", "}") catch return mark_error_at(tokens, body_idx, error.NoMatchingCall);

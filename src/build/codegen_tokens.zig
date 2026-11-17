@@ -130,6 +130,33 @@ pub fn find_top_level_token(tokens: []const lexer.Token, start_idx: usize, end_i
     return null;
 }
 
+pub const ConditionalDeferRange = struct {
+    condition_start: usize,
+    condition_end: usize,
+    cleanup_start: usize,
+    cleanup_end: usize,
+    cleanup_is_block: bool,
+};
+
+pub fn conditional_defer_range(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?ConditionalDeferRange {
+    if (start_idx + 3 >= end_idx or !tok_eq(tokens[start_idx], "defer") or !tok_eq(tokens[start_idx + 1], "(")) return null;
+    const close_condition = find_matching_in_range(tokens, start_idx + 1, "(", ")", end_idx) catch return null;
+    if (close_condition + 1 >= end_idx) return null;
+    const cleanup_is_block = tok_eq(tokens[close_condition + 1], "{");
+    if (!cleanup_is_block and (close_condition + 2 >= end_idx or !tok_eq(tokens[close_condition + 2], "("))) return null;
+    const cleanup_end = if (cleanup_is_block)
+        (find_matching_in_range(tokens, close_condition + 1, "{", "}", end_idx) catch return null)
+    else
+        end_idx;
+    return .{
+        .condition_start = start_idx + 2,
+        .condition_end = close_condition,
+        .cleanup_start = close_condition + 1,
+        .cleanup_end = cleanup_end,
+        .cleanup_is_block = cleanup_is_block,
+    };
+}
+
 pub fn find_arg_end(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) usize {
     var depth_paren: usize = 0;
     var depth_brace: usize = 0;

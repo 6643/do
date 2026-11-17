@@ -41,6 +41,7 @@ const find_line_end = codegen_tokens.find_line_end;
 const find_line_start = codegen_tokens.find_line_start;
 const is_line_start = codegen_tokens.is_line_start;
 const find_top_level_token = codegen_tokens.find_top_level_token;
+const conditional_defer_range = codegen_tokens.conditional_defer_range;
 const find_arg_end = codegen_tokens.find_arg_end;
 const trim_parens = codegen_tokens.trim_parens;
 const public_decl_name = codegen_names.public_decl_name;
@@ -104,6 +105,7 @@ const FuncParam = model.FuncParam;
 const FuncResultItem = model.FuncResultItem;
 const HostImport = model.HostImport;
 const DeferContext = context.DeferContext;
+const conditional_defer_flag_name = context.conditional_defer_flag_name;
 const CallLastUseMoveContext = context.CallLastUseMoveContext;
 const LastUseManagedMoveSource = context.LastUseManagedMoveSource;
 const LoopControl = context.LoopControl;
@@ -839,7 +841,9 @@ pub fn emit_body(allocator: std.mem.Allocator, tokens: []const lexer.Token, star
             break :blk &exit_defer_storage;
         } else null;
 
-        if (is_defer_stmt(tokens, i, stmt_end)) {
+        if (try emit_conditional_defer_registration(allocator, tokens, i, stmt_end, active, ctx, out)) {
+            // The condition is captured now; the cleanup runs when this lexical scope exits.
+        } else if (is_defer_stmt(tokens, i, stmt_end)) {
             // Cleanup registration only; execution happens on block exit paths.
         } else if (try emit_loop_control_stmt(allocator, tokens, i, stmt_end, active, control_cleanup_locals, loop_ctx, exit_defer_ctx, ctx, out)) {
             // Loop control emitted.
@@ -1092,6 +1096,14 @@ pub fn emit_deferred_cleanups_for_context(allocator: std.mem.Allocator, tokens: 
 }
 
 pub fn parse_defer_item(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?DeferItem {
+    if (conditional_defer_range(tokens, start_idx, end_idx)) |conditional| {
+        return .{
+            .kind = if (conditional.cleanup_is_block) .conditional_block else .conditional_call,
+            .start_idx = conditional.cleanup_start,
+            .end_idx = conditional.cleanup_end,
+            .condition_site_idx = start_idx,
+        };
+    }
     if (!is_defer_stmt(tokens, start_idx, end_idx)) return null;
     const body_idx = start_idx + 1;
     if (tok_eq(tokens[body_idx], "{")) {
@@ -1113,7 +1125,50 @@ pub fn emit_defer_cleanup_item(allocator: std.mem.Allocator, tokens: []const lex
     switch (item.kind) {
         .call => try emit_defer_cleanup_call(allocator, tokens, item.start_idx, item.end_idx, locals, ctx, out),
         .block => try emit_defer_cleanup_block(allocator, tokens, item.start_idx, item.end_idx, locals, ctx, out),
+        .conditional_call => {
+            const site_idx = item.condition_site_idx orelse return error.NoMatchingCall;
+            const flag_name = try conditional_defer_flag_name(allocator, site_idx);
+            defer allocator.free(flag_name);
+            try append_fmt(allocator, out, "    local.get ${[name]s}\n    if\n", .{ .name = flag_name });
+            try emit_defer_cleanup_call(allocator, tokens, item.start_idx, item.end_idx, locals, ctx, out);
+            try out.appendSlice(allocator, "    end\n");
+        },
+        .conditional_block => {
+            const site_idx = item.condition_site_idx orelse return error.NoMatchingCall;
+            const flag_name = try conditional_defer_flag_name(allocator, site_idx);
+            defer allocator.free(flag_name);
+            try append_fmt(allocator, out, "    local.get ${[name]s}\n    if\n", .{ .name = flag_name });
+            try emit_defer_cleanup_block(allocator, tokens, item.start_idx, item.end_idx, locals, ctx, out);
+            try out.appendSlice(allocator, "    end\n");
+        },
     }
+}
+
+pub fn emit_conditional_defer_registration(
+    allocator: std.mem.Allocator,
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    end_idx: usize,
+    locals: *const LocalSet,
+    ctx: CodegenContext,
+    out: *std.ArrayList(u8),
+) CodegenError!bool {
+    const conditional = conditional_defer_range(tokens, start_idx, end_idx) orelse return false;
+    const emitted = try codegen_callbacks.emit_expr(
+        allocator,
+        tokens,
+        conditional.condition_start,
+        conditional.condition_end,
+        locals,
+        ctx,
+        "bool",
+        out,
+    );
+    if (!emitted) return error.NoMatchingCall;
+    const flag_name = try conditional_defer_flag_name(allocator, start_idx);
+    defer allocator.free(flag_name);
+    try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = flag_name });
+    return true;
 }
 
 pub fn emit_defer_cleanup_call(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, locals: *const LocalSet, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!void {

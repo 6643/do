@@ -1171,11 +1171,12 @@ item = @get(user, .abc, @add(i, 1), .name)
    ```
    PEG 片段:
    ```peg
-   DeferStmt <- 'defer' (DeferCall / DeferBlock)
+   DeferStmt <- 'defer' DeferCondition? (DeferCall / DeferBlock)
+   DeferCondition <- '(' Expr ')'
    DeferCall <- CallExpr
    DeferBlock <- Block
    ```
-   `defer` 注册当前词法区域的 cleanup；离开该区域时执行，覆盖正常落出、`return`、`break` 和 `continue`。同一区域内多个 `defer` 按 LIFO 执行，后注册先执行。`defer abc()` 的调用结果必须是 `nil`；`defer { ... }` 的 block 等价于 `() -> nil` cleanup block，不能返回值。返回语义固定为: `return` 先按普通表达式/多返回规则求值并锁定返回槽，随后执行离开路径上的 cleanup，cleanup 不能修改已经锁定的返回值。cleanup block 内声明的 managed local 按普通 block 退出规则释放；cleanup 先于被离开区域的 ARC fallthrough/return/break/continue release 执行。cleanup 错误不做隐式传播、丢弃、聚合或覆盖；需要业务处理的 cleanup 失败必须在主流程里显式调用并显式处理。
+   `defer` 注册当前词法区域的 cleanup；离开该区域时执行，覆盖正常落出、`return`、`break` 和 `continue`。`defer(condition) cleanup()` 和 `defer(condition) { ... }` 在语句执行时求值并保存 `condition`；之后修改条件变量不会改变是否执行 cleanup。cleanup 调用及其参数仍在区域退出时求值，与普通 defer 一致。条件 defer 不创建新区域；位于循环体时，每次循环体执行都独立注册，并在该轮退出时清理。同一区域内多个 defer 按 LIFO 执行，后注册先执行。条件必须为 `bool`，cleanup 调用结果必须为 `nil`；defer block 等价于 `() -> nil` cleanup block，不能返回值。返回语义固定为: `return` 先按普通表达式/多返回规则求值并锁定返回槽，随后执行离开路径上的 cleanup，cleanup 不能修改已经锁定的返回值。cleanup block 内声明的 managed local 按普通 block 退出规则释放；cleanup 先于被离开区域的 ARC fallthrough/return/break/continue release 执行。cleanup 错误不做隐式传播、丢弃、聚合或覆盖；需要业务处理的 cleanup 失败必须在主流程里显式调用并显式处理。
 3. `break/continue` 标签引用当前可见循环标签。
 4. `loop` 支持三种形态：
    - 无限循环：`loop { ... }`。

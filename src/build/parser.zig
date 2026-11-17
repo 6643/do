@@ -867,24 +867,39 @@ fn parse_defer_stmt(
 ) !usize {
     const body_idx = defer_idx + 1;
     if (body_idx >= limit_idx) return mark_error_at(tokens, defer_idx, error.InvalidExpr);
-    if (tok_eq(tokens[body_idx], "{")) {
-        const close_block = try find_matching_in_range(tokens, body_idx, "{", "}", limit_idx);
+    var cleanup_idx = body_idx;
+    if (tok_eq(tokens[body_idx], "(")) {
+        const close_condition = try find_matching_in_range(tokens, body_idx, "(", ")", limit_idx);
+        const condition = parse_expr(allocator, out_nodes, tokens, body_idx + 1, close_condition) catch
+            return mark_error_at(tokens, body_idx + 1, error.InvalidExpr);
+        if (condition.next_idx != close_condition) return mark_error_at(tokens, condition.next_idx, error.InvalidExpr);
+        try out_conds.append(allocator, .{
+            .root_expr_idx = condition.node_idx,
+            .context = .if_cond,
+            .line = tokens[defer_idx].line,
+        });
+        try out_values.append(allocator, .{ .root_expr_idx = condition.node_idx, .expected_arity = 1, .context = .single });
+        cleanup_idx = close_condition + 1;
+        if (cleanup_idx >= limit_idx) return mark_error_at(tokens, close_condition, error.InvalidExpr);
+    }
+    if (tok_eq(tokens[cleanup_idx], "{")) {
+        const close_block = try find_matching_in_range(tokens, cleanup_idx, "{", "}", limit_idx);
         if (close_block + 1 < limit_idx and tokens[close_block + 1].line == tokens[defer_idx].line) {
             return mark_error_at(tokens, close_block + 1, error.InvalidExpr);
         }
-        try collect_condition_exprs(allocator, out_conds, out_values, out_nodes, tokens, body_idx, close_block, TestReturnContext);
+        try collect_condition_exprs(allocator, out_conds, out_values, out_nodes, tokens, cleanup_idx, close_block, TestReturnContext);
         return close_block + 1;
     }
 
-    const line_end = find_line_end(tokens, body_idx, limit_idx);
-    if (is_stream_writer_finalizer_name(tokens[body_idx].lexeme)) {
-        try validate_stream_writer_finalizer_arity(tokens, body_idx, line_end);
+    const line_end = find_line_end(tokens, cleanup_idx, limit_idx);
+    if (is_stream_writer_finalizer_name(tokens[cleanup_idx].lexeme)) {
+        try validate_stream_writer_finalizer_arity(tokens, cleanup_idx, line_end);
     }
-    const expr = parse_expr(allocator, out_nodes, tokens, body_idx, line_end) catch
-        return mark_error_at(tokens, body_idx, error.InvalidExpr);
+    const expr = parse_expr(allocator, out_nodes, tokens, cleanup_idx, line_end) catch
+        return mark_error_at(tokens, cleanup_idx, error.InvalidExpr);
     if (expr.next_idx != line_end) return mark_error_at(tokens, expr.next_idx, error.InvalidExpr);
     const node = out_nodes.items[expr.node_idx];
-    if (node.kind != .call) return mark_error_at(tokens, body_idx, error.InvalidExpr);
+    if (node.kind != .call) return mark_error_at(tokens, cleanup_idx, error.InvalidExpr);
     return line_end;
 }
 

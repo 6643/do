@@ -1,0 +1,4 @@
+local.get $enabled
+local.set $__do_defer_if_19
+local.get $__do_defer_if_19
+call $cleanup

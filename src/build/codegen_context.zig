@@ -513,13 +513,20 @@ pub const DeferContext = struct {
 pub const DeferItemKind = enum {
     call,
     block,
+    conditional_call,
+    conditional_block,
 };
 
 pub const DeferItem = struct {
     kind: DeferItemKind,
     start_idx: usize,
     end_idx: usize,
+    condition_site_idx: ?usize = null,
 };
+
+pub fn conditional_defer_flag_name(allocator: std.mem.Allocator, site_idx: usize) ![]u8 {
+    return std.fmt.allocPrint(allocator, "__do_defer_if_{d}", .{site_idx});
+}
 
 pub const StringDataContext = struct {
     items: std.ArrayList(StringData) = .empty,
