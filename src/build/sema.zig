@@ -104,6 +104,9 @@ pub fn check_program_with_options(
     try sema_type_checks.check_upper_value_exprs(program, tokens);
     try sema_function_calls.check_single_value_positions(allocator, program, tokens);
     try sema_function_calls.check_known_condition_bool_sites(allocator, program, tokens);
+    try sema_function_calls.check_known_if_branch_types(allocator, program, tokens);
+    try sema_function_calls.check_conditional_assignment_targets(program, tokens);
+    try sema_function_calls.check_if_value_block_scope(allocator, program, tokens);
     try sema_function_lambdas.check_lambda_usage(allocator, program, tokens);
     try sema_function_lambdas.check_lambda_overload_calls(allocator, program, tokens);
     try sema_function_calls.check_is_type_args(tokens);

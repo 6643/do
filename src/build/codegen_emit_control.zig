@@ -1261,6 +1261,16 @@ pub fn emit_scalar_assignment(allocator: std.mem.Allocator, tokens: []const lexe
     const target_ty = find_local_type(locals.locals.items, tokens[start_idx].lexeme) orelse return false;
     const target_name = find_local_name(locals.locals.items, tokens[start_idx].lexeme) orelse return false;
     if (!is_codegen_scalar_type(ctx, target_ty)) return false;
+    if (tok_eq(tokens[start_idx + 2], "if") and find_top_level_token(tokens, start_idx + 2, end_idx, "else") == null) {
+        const cond_start = start_idx + 3;
+        const cond_end = conditional_expr_atom_end(tokens, cond_start, end_idx) orelse return false;
+        if (cond_end >= end_idx) return false;
+        if (!try codegen_callbacks.emit_expr(allocator, tokens, cond_start, cond_end, locals, ctx, "bool", out)) return error.NoMatchingCall;
+        try out.appendSlice(allocator, "    if\n");
+        if (!try codegen_callbacks.emit_expr(allocator, tokens, cond_end, end_idx, locals, ctx, target_ty, out)) return error.NoMatchingCall;
+        try append_fmt(allocator, out, "    local.set ${[name]s}\n    end\n", .{ .name = target_name });
+        return true;
+    }
     if (!try emit_scalar_call_expr_with_move_context(allocator, tokens, start_idx + 2, end_idx, body_end, allow_last_use_move, locals, defer_ctx, ctx, target_ty, out) and
         !try codegen_callbacks.emit_expr(allocator, tokens, start_idx + 2, end_idx, locals, ctx, target_ty, out))
     {
@@ -1268,6 +1278,16 @@ pub fn emit_scalar_assignment(allocator: std.mem.Allocator, tokens: []const lexe
     }
     try append_fmt(allocator, out, "    local.set ${[name]s}\n", .{ .name = target_name });
     return true;
+}
+
+fn conditional_expr_atom_end(tokens: []const lexer.Token, start: usize, end: usize) ?usize {
+    if (start >= end) return null;
+    if (tok_eq(tokens[start], "@") and start + 2 < end and tok_eq(tokens[start + 2], "(")) return (find_matching_in_range(tokens, start + 2, "(", ")", end) catch return null) + 1;
+    if (tok_eq(tokens[start], "(")) return (find_matching_in_range(tokens, start, "(", ")", end) catch return null) + 1;
+    if (tokens[start].kind == .ident and start + 1 < end and tok_eq(tokens[start + 1], "(")) {
+        return (find_matching_in_range(tokens, start + 1, "(", ")", end) catch return null) + 1;
+    }
+    return start + 1;
 }
 
 pub fn emit_inferred_scalar_binding(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, body_end: usize, allow_last_use_move: bool, locals: *const LocalSet, defer_ctx: ?*const DeferContext, ctx: CodegenContext, out: *std.ArrayList(u8)) CodegenError!bool {

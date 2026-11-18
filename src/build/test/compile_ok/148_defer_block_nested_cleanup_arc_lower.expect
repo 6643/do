@@ -1,7 +1,3 @@
-;; defer-cleanup-block
-;; defer-cleanup-call cleanup
+;; gc-root local_bind $tmp
 call $cleanup
-;; arc-block-release
-;; arc-release-local tmp
-call $__arc_dec
 return

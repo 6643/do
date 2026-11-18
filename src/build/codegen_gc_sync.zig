@@ -45,6 +45,7 @@ const FuncDecl = codegen_model.FuncDecl;
 const FuncResultItem = codegen_model.FuncResultItem;
 const StructDecl = codegen_model.StructDecl;
 const StructField = codegen_model.StructField;
+const StructLocal = codegen_model.StructLocal;
 const StructLayout = codegen_model.StructLayout;
 const ValueEnumDecl = codegen_model.ValueEnumDecl;
 const PayloadEnumDecl = codegen_model.PayloadEnumDecl;
@@ -2301,13 +2302,13 @@ const BodyEmitter = struct {
                 const parts = codegen_collect_reflection.field_reflection_if_parts(self.tokens, i, stmt_end) orelse return error.UnsupportedGcSyncExpression;
                 const condition = codegen_collect_reflection.field_static_bool_expr(self.tokens, parts.cond_start, parts.cond_end, self.locals, self.ctx) orelse return error.UnsupportedGcSyncExpression;
                 if (condition) {
-                    if (try self.emit_body(parts.then_start, parts.then_end, result_ty, deferred)) return true;
+                    if (try self.emit_body(parts.then_start, parts.then_end, result_ty, deferred, true)) return true;
                 } else if (parts.else_if_start) |nested_if| {
                     if (try self.emit_field_reflection_body(nested_if, stmt_end, result_ty, deferred)) return true;
                 } else if (parts.else_start) |else_start| {
                     if (try self.emit_field_reflection_body(else_start, parts.else_end, result_ty, deferred)) return true;
                 }
-            } else if (try self.emit_body(i, stmt_end, result_ty, deferred)) {
+            } else if (try self.emit_body(i, stmt_end, result_ty, deferred, true)) {
                 return true;
             }
             i = stmt_end;
@@ -2726,6 +2727,34 @@ const BodyEmitter = struct {
     fn emit_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror![]const u8 {
         const range = trim_parens(self.tokens, start_idx, end_idx);
         if (range.start >= range.end) return error.UnsupportedGcSyncExpression;
+        if (tok_eq(self.tokens[range.start], "if")) {
+            const parts = self.if_value_parts(range.start, range.end) orelse return error.UnsupportedGcSyncExpression;
+            if (parts.else_end != range.end) return error.UnsupportedGcSyncExpression;
+            const result_ty = expected orelse return error.UnsupportedGcSyncType;
+            if (type_name.is_tuple_type_name(result_ty)) {
+                try self.emit_scalar_tuple_if(parts, result_ty);
+                return result_ty;
+            }
+            const cond_ty = try self.emit_expr(parts.cond_start, parts.cond_end, "bool");
+            try ensure_compatible("bool", cond_ty);
+            if (self.find_scalar_union(result_ty)) |layout| {
+                try self.append_static("    if (result");
+                for (layout.payload_tys) |payload_ty| {
+                    const payload_wasm_ty = gc_scalar_slot_wasm_type(self.tokens, payload_ty, self.ctx.value_enums) orelse return error.UnsupportedGcSyncType;
+                    try self.append_fmt(" {[wasm]s}", .{ .wasm = payload_wasm_ty });
+                }
+                try self.append_static(" i32)\n");
+            } else {
+                const wasm_ty = gc_scalar_slot_wasm_type(self.tokens, result_ty, self.ctx.value_enums) orelse return error.UnsupportedGcSyncType;
+                try self.append_fmt("    if (result {[wasm]s})\n", .{ .wasm = wasm_ty });
+            }
+            try self.emit_if_value_branch(parts.then_start, parts.then_end, result_ty);
+            try self.append_static("    else\n");
+            try self.emit_if_value_branch(parts.else_start, parts.else_end, result_ty);
+            try self.append_static("    end\n");
+            return result_ty;
+        }
+
         if (expected) |expected_ty| {
             if (self.find_scalar_union(expected_ty)) |union_layout| {
                 try self.emit_scalar_union_value(range.start, range.end, union_layout);
@@ -2848,6 +2877,141 @@ const BodyEmitter = struct {
         return self.emit_call_expr(shape, expected);
     }
 
+    fn emit_scalar_tuple_if(self: *BodyEmitter, parts: IfValueParts, tuple_ty: []const u8) anyerror!void {
+        const elements = try self.scalar_tuple_element_types(tuple_ty);
+        defer self.allocator.free(elements);
+        const cond_ty = try self.emit_expr(parts.cond_start, parts.cond_end, "bool");
+        try ensure_compatible("bool", cond_ty);
+        try self.append_static("    if (result");
+        for (elements) |elem_ty| {
+            const wasm_ty = gc_scalar_slot_wasm_type(self.tokens, elem_ty, self.ctx.value_enums) orelse return error.UnsupportedGcSyncType;
+            try self.append_fmt(" {[wasm]s}", .{ .wasm = wasm_ty });
+        }
+        try self.append_static(")\n");
+        try self.emit_scalar_tuple_branch(parts.then_start, parts.then_end, tuple_ty, elements);
+        try self.append_static("    else\n");
+        try self.emit_scalar_tuple_branch(parts.else_start, parts.else_end, tuple_ty, elements);
+        try self.append_static("    end\n");
+    }
+
+    fn emit_scalar_tuple_branch(self: *BodyEmitter, start: usize, end: usize, tuple_ty: []const u8, elements: []const []const u8) anyerror!void {
+        if (tok_eq(self.tokens[start], "{")) {
+            const close_idx = find_matching_in_range(self.tokens, start, "{", "}", end) catch return error.UnsupportedGcSyncExpression;
+            if (close_idx + 1 != end or close_idx <= start + 1) return error.UnsupportedGcSyncExpression;
+            var value_start = close_idx - 1;
+            while (value_start > start + 1 and self.tokens[value_start - 1].line == self.tokens[value_start].line) value_start -= 1;
+            var deferred = std.ArrayList(DeferredCall).empty;
+            defer deferred.deinit(self.allocator);
+            _ = try self.emit_body(start + 1, value_start, null, &deferred, false);
+            try self.emit_scalar_tuple_branch(value_start, close_idx, tuple_ty, elements);
+            try self.emit_deferred(deferred.items);
+            return;
+        }
+        const range = trim_parens(self.tokens, start, end);
+        if (range.end == range.start + 1 and self.tokens[range.start].kind == .ident) {
+            const tuple = find_struct_local(self.locals.struct_locals.items, self.tokens[range.start].lexeme) orelse return error.UnknownGcSyncLocal;
+            if (!std.mem.eql(u8, tuple.ty, tuple_ty)) return error.GcSyncTypeMismatch;
+            for (elements, 0..) |_, index| {
+                const field = try self.tuple_field_local(tuple.name, @intCast(index));
+                try self.append_fmt("    local.get ${[name]s}\n", .{ .name = field });
+            }
+            return;
+        }
+        const open_brace = if (range.start + 1 < range.end and tok_eq(self.tokens[range.start], ".") and tok_eq(self.tokens[range.start + 1], "{"))
+            range.start + 1
+        else blk: {
+            if (!tok_eq(self.tokens[range.start], "Tuple") or range.start + 1 >= range.end or !tok_eq(self.tokens[range.start + 1], "<")) return error.UnsupportedGcSyncExpression;
+            const close_angle = find_matching_in_range(self.tokens, range.start + 1, "<", ">", range.end) catch return error.UnsupportedGcSyncExpression;
+            if (close_angle + 1 >= range.end or !tok_eq(self.tokens[close_angle + 1], "{")) return error.UnsupportedGcSyncExpression;
+            break :blk close_angle + 1;
+        };
+        const close_brace = find_matching_in_range(self.tokens, open_brace, "{", "}", range.end) catch return error.UnsupportedGcSyncExpression;
+        if (close_brace + 1 != range.end) return error.UnsupportedGcSyncExpression;
+        var item_start = open_brace + 1;
+        for (elements) |elem_ty| {
+            if (item_start >= close_brace) return error.GcSyncArityMismatch;
+            const item_end = find_arg_end(self.tokens, item_start, close_brace);
+            if (item_end <= item_start) return error.GcSyncArityMismatch;
+            const actual_ty = try self.emit_expr(item_start, item_end, elem_ty);
+            try ensure_compatible(elem_ty, actual_ty);
+            item_start = item_end;
+            if (item_start < close_brace and tok_eq(self.tokens[item_start], ",")) item_start += 1;
+        }
+        if (item_start != close_brace) return error.GcSyncArityMismatch;
+    }
+
+    fn scalar_tuple_element_types(self: *BodyEmitter, tuple_ty: []const u8) ![][]const u8 {
+        const args = generic_type_args_range(tuple_ty) orelse return error.UnsupportedGcSyncType;
+        var elements = std.ArrayList([]const u8).empty;
+        errdefer elements.deinit(self.allocator);
+        var start: usize = 0;
+        var depth: usize = 0;
+        var i: usize = 0;
+        while (i <= args.args.len) : (i += 1) {
+            if (i < args.args.len and args.args[i] == '<') depth += 1 else if (i < args.args.len and args.args[i] == '>') {
+                if (depth > 0) depth -= 1;
+            }
+            if (i != args.args.len and (args.args[i] != ',' or depth != 0)) continue;
+            const elem_ty = std.mem.trim(u8, args.args[start..i], " \t\r\n");
+            if (elem_ty.len == 0 or gc_scalar_slot_wasm_type(self.tokens, elem_ty, self.ctx.value_enums) == null) return error.UnsupportedGcSyncType;
+            try elements.append(self.allocator, elem_ty);
+            start = i + 1;
+        }
+        return elements.toOwnedSlice(self.allocator);
+    }
+
+
+    fn emit_if_value_branch(self: *BodyEmitter, start: usize, end: usize, expected: []const u8) anyerror!void {
+        if (!tok_eq(self.tokens[start], "{")) {
+            _ = try self.emit_expr(start, end, expected);
+            return;
+        }
+        const close_idx = find_matching_in_range(self.tokens, start, "{", "}", end) catch return error.UnsupportedGcSyncExpression;
+        if (close_idx + 1 != end or close_idx <= start + 1) return error.UnsupportedGcSyncExpression;
+        var value_start = close_idx - 1;
+        while (value_start > start + 1 and self.tokens[value_start - 1].line == self.tokens[value_start].line) value_start -= 1;
+        var deferred = std.ArrayList(DeferredCall).empty;
+        defer deferred.deinit(self.allocator);
+        _ = try self.emit_body(start + 1, value_start, null, &deferred, false);
+        _ = try self.emit_expr(value_start, close_idx, expected);
+        try self.emit_deferred(deferred.items);
+    }
+
+    const IfValueParts = struct { cond_start: usize, cond_end: usize, then_start: usize, then_end: usize, else_start: usize, else_end: usize };
+
+    fn if_value_parts(self: *BodyEmitter, start: usize, end: usize) ?IfValueParts {
+        if (start + 1 >= end or !tok_eq(self.tokens[start], "if")) return null;
+        const cond_end = self.if_atom_end(start + 1, end) orelse return null;
+        const then_start = cond_end;
+        const then_end = self.if_atom_end(then_start, end) orelse return null;
+        if (then_end >= end or !tok_eq(self.tokens[then_end], "else")) return null;
+        const else_start = then_end + 1;
+        const else_end = self.if_atom_end(else_start, end) orelse return null;
+        return .{ .cond_start = start + 1, .cond_end = cond_end, .then_start = then_start, .then_end = then_end, .else_start = else_start, .else_end = else_end };
+    }
+
+    fn if_atom_end(self: *BodyEmitter, start: usize, end: usize) ?usize {
+        if (start >= end) return null;
+        if (tok_eq(self.tokens[start], "if")) {
+            const nested = self.if_value_parts(start, end) orelse return null;
+            return nested.else_end;
+        }
+        if (tok_eq(self.tokens[start], "{")) return (find_matching_in_range(self.tokens, start, "{", "}", end) catch return null) + 1;
+        if (tok_eq(self.tokens[start], ".") and start + 1 < end and tok_eq(self.tokens[start + 1], "{")) return (find_matching_in_range(self.tokens, start + 1, "{", "}", end) catch return null) + 1;
+        if (tok_eq(self.tokens[start], "(")) return (find_matching_in_range(self.tokens, start, "(", ")", end) catch return null) + 1;
+        if (tok_eq(self.tokens[start], "@") and start + 2 < end and tok_eq(self.tokens[start + 2], "(")) {
+            return (find_matching_in_range(self.tokens, start + 2, "(", ")", end) catch return null) + 1;
+        }
+        if (self.tokens[start].kind == .ident and start + 1 < end and tok_eq(self.tokens[start + 1], "(")) {
+            return (find_matching_in_range(self.tokens, start + 1, "(", ")", end) catch return null) + 1;
+        }
+        if (self.tokens[start].kind == .ident and start + 1 < end and tok_eq(self.tokens[start + 1], "<")) {
+            const close_angle = find_matching_in_range(self.tokens, start + 1, "<", ">", end) catch return null;
+            if (close_angle + 1 < end and tok_eq(self.tokens[close_angle + 1], "{")) return (find_matching_in_range(self.tokens, close_angle + 1, "{", "}", end) catch return null) + 1;
+        }
+        return start + 1;
+    }
+
     fn emit_deferred(self: *BodyEmitter, deferred: []const DeferredCall) !void {
         var idx = deferred.len;
         while (idx > 0) {
@@ -2861,7 +3025,7 @@ const BodyEmitter = struct {
             if (call.cleanup_is_block) {
                 var block_defers = std.ArrayList(DeferredCall).empty;
                 defer block_defers.deinit(self.allocator);
-                _ = try self.emit_body(call.start_idx + 1, call.end_idx, null, &block_defers);
+                _ = try self.emit_body(call.start_idx + 1, call.end_idx, null, &block_defers, true);
             } else {
                 const result_ty = try self.emit_expr(call.start_idx, call.end_idx, null);
                 try self.emit_result_drops(call.start_idx, call.end_idx, result_ty);
@@ -2930,7 +3094,7 @@ const BodyEmitter = struct {
         try self.append_static("    if\n");
         const previous_guard = self.active_guard_branch;
         self.active_guard_branch = self.parse_guard_is_condition(start_idx + 1, open_idx) orelse previous_guard;
-        _ = try self.emit_body(open_idx + 1, close_idx, result_ty, deferred);
+        _ = try self.emit_body(open_idx + 1, close_idx, result_ty, deferred, true);
         self.active_guard_branch = previous_guard;
         if (close_idx + 1 < end_idx and tok_eq(self.tokens[close_idx + 1], "else")) {
             try self.append_static("    else\n");
@@ -2945,7 +3109,7 @@ const BodyEmitter = struct {
                 const else_close = find_matching_in_range(self.tokens, else_open, "{", "}", end_idx) catch return error.UnsupportedGcSyncControl;
                 if (else_close + 1 != end_idx) return error.UnsupportedGcSyncControl;
                 self.active_guard_branch = previous_guard;
-                _ = try self.emit_body(else_open + 1, else_close, result_ty, deferred);
+                _ = try self.emit_body(else_open + 1, else_close, result_ty, deferred, true);
                 self.active_guard_branch = previous_guard;
             }
         }
@@ -3085,7 +3249,7 @@ const BodyEmitter = struct {
             });
         }
         try self.append_fmt("    block ${[label]s}\n", .{ .label = continue_label });
-        _ = try self.emit_body(header.open_brace + 1, header.close_brace, result_ty, deferred);
+        _ = try self.emit_body(header.open_brace + 1, header.close_brace, result_ty, deferred, true);
         try self.append_fmt_block(4,
             \\end
             \\local.get ${[index]s}
@@ -3127,7 +3291,7 @@ const BodyEmitter = struct {
             \\loop ${[loop_label]s}
             \\
         , .{ .break_label = break_label, .loop_label = loop_label });
-        const saw_return = try self.emit_body(open_idx + 1, close_idx, result_ty, deferred);
+        const saw_return = try self.emit_body(open_idx + 1, close_idx, result_ty, deferred, true);
         // A source loop repeats when its body falls through.  A direct return
         // already terminates the enclosing function, so no back-edge is
         // needed on that path.
@@ -3163,7 +3327,24 @@ const BodyEmitter = struct {
                 if (try self.emit_tuple_text_bytes_assignment(struct_local.name, expr_start, end_idx, struct_local.ty)) return;
                 return error.UnsupportedGcSyncExpression;
             }
-            if (type_name.is_tuple_type_name(struct_local.ty)) return error.UnsupportedGcSyncType;
+            if (type_name.is_tuple_type_name(struct_local.ty)) {
+                if (!tok_eq(self.tokens[expr_start], "if")) return error.UnsupportedGcSyncType;
+                const elements = try self.scalar_tuple_element_types(struct_local.ty);
+                defer self.allocator.free(elements);
+                if (self.if_value_parts(expr_start, end_idx)) |parts| {
+                    try self.emit_scalar_tuple_if(parts, struct_local.ty);
+                } else {
+                    try self.emit_scalar_tuple_conditional_assignment(expr_start, end_idx, struct_local, elements);
+                    return;
+                }
+                var index = elements.len;
+                while (index > 0) {
+                    index -= 1;
+                    const field = try self.tuple_field_local(struct_local.name, @intCast(index));
+                    try self.append_fmt("    local.set ${[name]s}\n", .{ .name = field });
+                }
+                return;
+            }
         }
         var inferred_binding = false;
         for (self.locals.locals.items) |local| {
@@ -3192,6 +3373,17 @@ const BodyEmitter = struct {
             target_ty = find_local_type(self.locals.locals.items, self.tokens[start_idx].lexeme) orelse return error.UnknownGcSyncLocal;
             managed_target = gc_adapter.is_admitted_managed_type_with_layouts(target_ty, self.gc_structs, self.gc_layouts);
         }
+        if (tok_eq(self.tokens[expr_start], "if") and self.if_value_parts(expr_start, end_idx) == null) {
+            const cond_start = expr_start + 1;
+            const cond_end = self.if_atom_end(cond_start, end_idx) orelse return error.UnsupportedGcSyncExpression;
+            if (cond_end >= end_idx) return error.UnsupportedGcSyncExpression;
+            const cond_ty = try self.emit_expr(cond_start, cond_end, "bool");
+            try ensure_compatible("bool", cond_ty);
+            try self.append_static("    if\n");
+            _ = try self.emit_expr(cond_end, end_idx, target_ty);
+            try self.append_fmt("    local.set ${[name]s}\n    end\n", .{ .name = target_name });
+            return;
+        }
         if (managed_target and !is_binding) try self.append_fmt("    ;; gc-root overwrite ${[name]s}\n", .{ .name = target_name });
         _ = try self.emit_expr(expr_start, end_idx, target_ty);
         try self.append_fmt("    local.set ${[name]s}\n", .{ .name = target_name });
@@ -3206,7 +3398,32 @@ const BodyEmitter = struct {
         }
     }
 
-    fn emit_body(self: *BodyEmitter, start_idx: usize, end_idx: usize, result_ty: ?[]const u8, deferred: *std.ArrayList(DeferredCall)) anyerror!bool {
+    fn emit_scalar_tuple_conditional_assignment(
+        self: *BodyEmitter,
+        if_start: usize,
+        end_idx: usize,
+        target: StructLocal,
+        elements: []const []const u8,
+    ) anyerror!void {
+        const cond_start = if_start + 1;
+        const cond_end = self.if_atom_end(cond_start, end_idx) orelse return error.UnsupportedGcSyncExpression;
+        if (cond_end >= end_idx) return error.UnsupportedGcSyncExpression;
+
+        const cond_ty = try self.emit_expr(cond_start, cond_end, "bool");
+        try ensure_compatible("bool", cond_ty);
+        try self.append_static("    if\n");
+        try self.emit_scalar_tuple_branch(cond_end, end_idx, target.ty, elements);
+
+        var index = elements.len;
+        while (index > 0) {
+            index -= 1;
+            const field = try self.tuple_field_local(target.name, @intCast(index));
+            try self.append_fmt("    local.set ${[name]s}\n", .{ .name = field });
+        }
+        try self.append_static("    end\n");
+    }
+
+    fn emit_body(self: *BodyEmitter, start_idx: usize, end_idx: usize, result_ty: ?[]const u8, deferred: *std.ArrayList(DeferredCall), cleanup_on_exit: bool) anyerror!bool {
         const inherited_defer_count = deferred.items.len;
         var i = start_idx;
         var saw_return = false;
@@ -3278,8 +3495,10 @@ const BodyEmitter = struct {
             }
             i = stmt_end;
         }
-        if (!saw_return) try self.emit_deferred(deferred.items[inherited_defer_count..]);
-        deferred.shrinkRetainingCapacity(inherited_defer_count);
+        if (!saw_return and cleanup_on_exit) {
+            try self.emit_deferred(deferred.items[inherited_defer_count..]);
+            deferred.shrinkRetainingCapacity(inherited_defer_count);
+        }
         return saw_return;
     }
 };
@@ -4090,7 +4309,7 @@ fn emit_func(
         }
     } else {
         const result_ty = if (func.result_union) |union_layout| union_layout.source_ty else if (func.results.len == 1) func.results[0] else null;
-        const saw_return = try emitter.emit_body(func.body_start, func.body_end, result_ty, &deferred);
+        const saw_return = try emitter.emit_body(func.body_start, func.body_end, result_ty, &deferred, true);
         if (result_ty != null and !saw_return) try out.appendSlice(allocator, "    unreachable\n");
     }
     try out.appendSlice(allocator, "  )\n");
@@ -4155,7 +4374,7 @@ fn emit_test_func(
     };
     var deferred = std.ArrayList(DeferredCall).empty;
     defer deferred.deinit(allocator);
-    _ = try emitter.emit_body(test_decl.body_start, test_decl.body_end, null, &deferred);
+    _ = try emitter.emit_body(test_decl.body_start, test_decl.body_end, null, &deferred, true);
     try out.appendSlice(allocator, "    unreachable\n");
     try wat_function_body.emit_func_close(allocator, out);
     try wat_function_body.emit_compiled_test_export(allocator, out, index);
@@ -4170,11 +4389,10 @@ fn emit_start(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tokens: []c
     var locals = LocalSet{};
     defer locals.deinit(allocator);
     try codegen_body.collect_body_locals(allocator, tokens, open_body + 1, close_body, base_ctx, &locals);
-    // The synchronous GC route only admits the measured Tuple rewrite in a
-    // function/test context. Keep ordinary `_start` Tuple locals fail-closed
-    // until their storage and indexing contract is measured independently.
     for (locals.struct_locals.items) |local| {
-        if (type_name.is_tuple_type_name(local.ty)) return error.UnknownGcSyncLocal;
+        if (type_name.is_tuple_type_name(local.ty) and !tuple_local_is_if_initialized(tokens, local.name)) {
+            return error.UnknownGcSyncLocal;
+        }
     }
     const gc_list_temps = try choose_gc_list_temps(allocator, locals.locals.items, scalar_arrays, managed_arrays);
     defer gc_list_temps.deinit(allocator);
@@ -4193,12 +4411,25 @@ fn emit_start(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tokens: []c
     var emitter = BodyEmitter{ .allocator = allocator, .tokens = tokens, .functions = functions, .gc_structs = gc_structs, .gc_layouts = gc_layouts, .gc_payload_unions = payload_unions, .gc_managed_arrays = managed_arrays, .locals = &locals, .result_tys = &.{}, .result_items = &.{}, .result_struct = null, .ctx = base_ctx, .out = out, .gc_list_temps = gc_list_temps, .loop_stack = &loop_stack, .gc_host_route = gc_host_route, .allow_text_len = allow_text_len };
     var deferred = std.ArrayList(DeferredCall).empty;
     defer deferred.deinit(allocator);
-    _ = try emitter.emit_body(open_body + 1, close_body, null, &deferred);
+    _ = try emitter.emit_body(open_body + 1, close_body, null, &deferred, true);
     try generated_text.append_block(allocator, out, 2,
         \\  )
         \\  (export "_start" (func $_start))
         \\
     );
+}
+
+fn tuple_local_is_if_initialized(tokens: []const lexer.Token, local_name: []const u8) bool {
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (!codegen_tokens.is_line_start(tokens, i) or tokens[i].kind != .ident or
+            !std.mem.eql(u8, tokens[i].lexeme, local_name)) continue;
+        const stmt_end = find_stmt_end(tokens, i, tokens.len);
+        const eq_idx = find_top_level_token(tokens, i + 1, stmt_end, "=") orelse continue;
+        if (eq_idx <= i + 1 or eq_idx + 1 >= stmt_end) continue;
+        if (tok_eq(tokens[eq_idx + 1], "if")) return true;
+    }
+    return false;
 }
 
 fn emit_gc_wat_for_supported_program_with_tests(

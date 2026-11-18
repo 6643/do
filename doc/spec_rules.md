@@ -570,7 +570,28 @@ Datetime = @wasi_record("…", { seconds i64, nanoseconds u32 })
 20. 字段默认值在结构体构造时求值；默认表达式结果类型与字段类型一致。
 21. 结构体构造发生在 CTFE 上下文时，字段默认值也走 CTFE；运行时构造可执行运行时默认表达式。
 22. 源码层大写 `Tuple<T0, T1, ...>` 是编译器内建泛型类型, 不是用户可重定义的普通结构体名。`Tuple` 进入保留内建类型集合, 不能再被普通类型声明或 import alias 占用。小写 `tuple<...>` 只保留给 WIT / host marker 签名, 不能出现在普通源码类型位; 误用报 `InvalidTypeRef`。
-23. `Tuple` 第一版规则:
+23. 值 `if` 写作 `if condition then_value else else_value`; `else` 必须存在。条件必须是单值 `bool`，两个分支都必须产生与目标类型兼容的一个逻辑值。已实现的绑定、已有绑定赋值等有目标类型的位置可使用值 `if`。Tuple 作为一个逻辑值，分支的 Tuple 类型与 arity 必须相同；Tuple 的当前代码生成只覆盖 scalar slot 叶子，managed 或嵌套聚合分支尚未支持。
+    ```do program ok
+    count i32 = if ready 1 else 2
+    pair Tuple<i32, bool> = if ready .{1, true} else .{2, false}
+    ```
+24. 值分支可写普通表达式，或写值块 `{ statements; tail_value }`。值块最后一个表达式是块值，块内的绑定遵守词法块作用域，不向外逃逸；空值块或没有尾值的块非法。值块中的 `defer` 注册在该块的词法区域，正常退出值块時先保存尾值，再按 LIFO 执行该块 cleanup，最后产生已保存的值。cleanup 不改变该值。
+    ```do program ok
+    count i32 = if ready {
+        temporary i32 = 6
+        temporary
+    } else 2
+    ```
+25. 已有绑定赋值允许无 `else` 的条件重赋值 `target = if condition value`。目标必须是已绑定且可写的单一目标；条件为假时保留目标原值，且不求值赋值表达式。当前支持 scalar 目标以及元素均为 scalar slot 的 Tuple 目标；managed 或嵌套聚合目标暂不支持。该语法不是值表达式，不能用于创建新绑定；需要值表达式时必须提供 `else`。
+    ```do program ok
+    count i32 = 123
+    count = if ready 128
+
+    pair Tuple<i32, bool> = if ready .{1, true} else .{2, false}
+    pair = if ready .{3, false}
+    ```
+26. `if` 值分支中的嵌套 `if` 按最近尚未匹配的 `if` 关联 `else`。条件只求值一次，只有选中的分支执行。条件 List 元素（例如 `List<i32>{0, if ready 111}`）暂不支持。
+27. `Tuple` 第一版规则:
     - arity 下限为 2, 当前不设上限; `Tuple<>` / `Tuple<T>` 报 `InvalidTypeRef`。
     - 构造固定为位置构造器 `Tuple<T0, T1, ...>{v0, v1, ...}`, 实参数量必须与 arity 完全一致; 不匹配报 `InvalidTypedLiteral`。命名字段构造 `Tuple<...>{v0 = ...}` 第一版不支持, 当前前端可在 parser 阶段报 `InvalidStructLiteral`。
     - 读取固定为 `@get(tuple_value, <compile-time-int>)`, 索引必须是编译期整数字面量且落在 `0..arity-1`; 越界或非字面量索引报 `InvalidPathIndex`。第一版不支持 `.v0/.v1` 字段段访问, 也不支持 `@set(tuple_value, <index>, value)` 数字索引写入。

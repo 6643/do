@@ -276,7 +276,9 @@ DeferCall       <- CallExpr
 DeferBlock      <- Block
 
 AssignStmt       <- TypedBind '=' RhsExpr
+                  / AssignTargetList '=' ConditionalAssignExpr
                   / AssignTargetList '=' RhsExpr
+ConditionalAssignExpr <- 'if' IfCondExpr ExprNoParen
 TypedBind        <- BindName ValueTypeExpr
 AssignTargetList <- AssignTarget (CommaSep AssignTarget)*
 AssignTarget     <- BindName / DiscardTarget
@@ -315,6 +317,7 @@ LogicCondExpr    <- CondPredExpr / ExprNoParen
 Expr             <- ExprNoParen
                   / ParenExpr
 ExprNoParen      <- AsyncAwaitExpr
+                  / IfValueExpr
                   / StreamWriterFinalizerExpr
                   / BuiltinCallExpr
                   / CallExpr
@@ -323,6 +326,11 @@ ExprNoParen      <- AsyncAwaitExpr
                   / UpperValueExpr
                   / ExprIdent
                   / Literal
+
+IfValueExpr      <- 'if' IfCondExpr IfValueBranch SoftGap 'else' SoftGap IfValueBranch
+IfValueBranch    <- ValueBlock / ExprNoParen
+ValueBlock       <- '{' StmtGap? ValueStmtList? StmtGap? Expr StmtGap? '}'
+ValueStmtList    <- Stmt (StmtGap Stmt)* StmtGap
 
 UpperValueExpr   <- EnumBranchName
 ExprIdent        <- !ReservedName LowerIdent / ReadonlyIdent

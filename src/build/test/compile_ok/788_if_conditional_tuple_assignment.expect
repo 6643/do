@@ -1,0 +1,7 @@
+local.get $cond
+if
+i32.const 3
+i32.const 0
+local.set $pair.1
+local.set $pair.0
+end

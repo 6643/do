@@ -247,6 +247,7 @@ pub fn collect_body_locals_with_mode(allocator: std.mem.Allocator, tokens: []con
                 try out.append_owned_local_with_origin(allocator, flag_name, "bool", .compiler_temp);
             }
         }
+        if (recurse_nested) try collect_if_value_block_locals(allocator, tokens, i, stmt_end, ctx, out);
         if (stmt_contains_string_literal(tokens, i, stmt_end) or
             stmt_contains_field_name_intrinsic(tokens, i, stmt_end) or
             stmt_contains_storage_agg_literal(tokens, i, stmt_end) or
@@ -840,6 +841,30 @@ pub fn collect_if_block_locals(allocator: std.mem.Allocator, tokens: []const lex
     if (close_else + 1 != end_idx) return false;
     try collect_body_locals(allocator, tokens, close_brace + 3, close_else, ctx, out);
     return true;
+}
+
+fn collect_if_value_block_locals(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext, out: *LocalSet) anyerror!void {
+    var i = start_idx;
+    while (i + 1 < end_idx) : (i += 1) {
+        if (!tok_eq(tokens[i], "if")) continue;
+        // Statement-if blocks are collected by collect_if_block_locals below.
+        // Value-if starts as part of the surrounding expression, on the same
+        // source line as its assignment/return/call introducer.
+        if (i == 0 or tokens[i - 1].line != tokens[i].line) continue;
+        var open_idx = i + 1;
+        while (open_idx < end_idx and !tok_eq(tokens[open_idx], "{")) : (open_idx += 1) {
+            if (tok_eq(tokens[open_idx], "else") or tok_eq(tokens[open_idx], ";")) break;
+        }
+        if (open_idx >= end_idx or !tok_eq(tokens[open_idx], "{")) continue;
+        const close_idx = find_matching_in_range(tokens, open_idx, "{", "}", end_idx) catch continue;
+        try collect_body_locals_with_mode(allocator, tokens, open_idx + 1, close_idx, ctx, out, true);
+        i = close_idx;
+        if (i + 2 < end_idx and tok_eq(tokens[i + 1], "else") and tok_eq(tokens[i + 2], "{")) {
+            const else_close = find_matching_in_range(tokens, i + 2, "{", "}", end_idx) catch continue;
+            try collect_body_locals_with_mode(allocator, tokens, i + 3, else_close, ctx, out, true);
+            i = else_close;
+        }
+    }
 }
 
 pub fn collect_defer_block_locals(allocator: std.mem.Allocator, tokens: []const lexer.Token, start_idx: usize, end_idx: usize, ctx: CodegenContext, out: *LocalSet) CodegenError!bool {

@@ -1140,6 +1140,20 @@ pub fn emit_expr_with_move_context(allocator: std.mem.Allocator, tokens: []const
     const range = trim_parens(tokens, start_idx, end_idx);
     if (range.start >= range.end) return false;
 
+    if (tok_eq(tokens[range.start], "if")) {
+        const ty = expected_ty orelse return false;
+        if (!is_core_wasm_scalar(ty)) return false;
+        const parts = parse_if_value_ranges(tokens, range.start, range.end) orelse return false;
+        if (parts.end != range.end) return false;
+        if (!try emit_expr_with_move_context(allocator, tokens, parts.cond_start, parts.cond_end, locals, ctx, "bool", null, out)) return error.NoMatchingCall;
+        try append_fmt(allocator, out, "    if (result {[wasm_type]s})\n", .{ .wasm_type = codegen_wasm_type(ctx, ty) });
+        if (!try emit_expr_with_move_context(allocator, tokens, parts.then_start, parts.then_end, locals, ctx, ty, move_ctx, out)) return error.NoMatchingCall;
+        try out.appendSlice(allocator, "    else\n");
+        if (!try emit_expr_with_move_context(allocator, tokens, parts.else_start, parts.else_end, locals, ctx, ty, move_ctx, out)) return error.NoMatchingCall;
+        try out.appendSlice(allocator, "    end\n");
+        return true;
+    }
+
     if (try emit_expr_with_expected_ty(
         allocator,
         tokens,
@@ -1247,4 +1261,53 @@ pub fn emit_expr_with_move_context(allocator: std.mem.Allocator, tokens: []const
     if (param_idx != host_import.params.len) return error.NoMatchingCall;
     try append_fmt(allocator, out, "    call ${[alias]s}\n", .{ .alias = host_import.alias });
     return true;
+}
+
+const IfValueRanges = struct {
+    cond_start: usize,
+    cond_end: usize,
+    then_start: usize,
+    then_end: usize,
+    else_start: usize,
+    else_end: usize,
+    end: usize,
+};
+
+fn parse_if_value_ranges(tokens: []const lexer.Token, start: usize, limit: usize) ?IfValueRanges {
+    if (start + 1 >= limit or !tok_eq(tokens[start], "if")) return null;
+    const cond_end = expression_atom_end(tokens, start + 1, limit) orelse return null;
+    const then_start = cond_end;
+    const then_end = expression_atom_end(tokens, then_start, limit) orelse return null;
+    if (then_end >= limit or !tok_eq(tokens[then_end], "else")) return null;
+    const else_start = then_end + 1;
+    const else_end = expression_atom_end(tokens, else_start, limit) orelse return null;
+    return .{
+        .cond_start = start + 1,
+        .cond_end = cond_end,
+        .then_start = then_start,
+        .then_end = then_end,
+        .else_start = else_start,
+        .else_end = else_end,
+        .end = else_end,
+    };
+}
+
+fn expression_atom_end(tokens: []const lexer.Token, start: usize, limit: usize) ?usize {
+    if (start >= limit) return null;
+    if (tok_eq(tokens[start], "if")) return (parse_if_value_ranges(tokens, start, limit) orelse return null).end;
+    if (tok_eq(tokens[start], "(")) return (find_matching_in_range(tokens, start, "(", ")", limit) catch return null) + 1;
+    if (tok_eq(tokens[start], "@") and start + 2 < limit and tok_eq(tokens[start + 2], "(")) {
+        return (find_matching_in_range(tokens, start + 2, "(", ")", limit) catch return null) + 1;
+    }
+    if (tok_eq(tokens[start], "{")) return (find_matching_in_range(tokens, start, "{", "}", limit) catch return null) + 1;
+    if (tokens[start].kind == .ident) {
+        if (start + 1 < limit and tok_eq(tokens[start + 1], "(")) {
+            const open = start + 1;
+            return (find_matching_in_range(tokens, open, "(", ")", limit) catch return null) + 1;
+        }
+        var body_idx = start + 1;
+        if (body_idx < limit and tok_eq(tokens[body_idx], "<")) body_idx = (find_matching_in_range(tokens, body_idx, "<", ">", limit) catch return null) + 1;
+        if (body_idx < limit and tok_eq(tokens[body_idx], "{")) return (find_matching_in_range(tokens, body_idx, "{", "}", limit) catch return null) + 1;
+    }
+    return start + 1;
 }

@@ -3,8 +3,9 @@
 **状态**: Wasm GC 是 Do 唯一选定的 managed-memory 后端，且已成为普通编译入口的
 唯一 managed backend。Task 6 GC-first runtime cutover 已闭环：当前已准入同步路径的
 ARC/GC 等价性矩阵为 26 行全绿，ARC 只保留在显式 test-only equivalence oracle；未准入
-能力继续在 WAT 前 fail-closed。GC migration capability inventory 仍为
-`complete_rows=15 pending_rows=15`，这是能力缺口，不是 backend cutover 阻断。
+能力继续在 WAT 前 fail-closed。G5c GC migration capability inventory 已闭环为
+`complete_rows=15 pending_rows=0`；仍未开放的通用 async/resource 能力属于独立
+能力边界，不表示 GC backend cutover 未完成。
 
 **目标**: 在不向用户暴露指针或引用的前提下, 为 Wasm lowering、`[T]`、`text`、
 结构体、host ABI、Future/Stream 和 Component/WIT 资源提供统一边界。
@@ -165,9 +166,8 @@ ARC 不再作为默认 fallback。`runtime_arc_wat.zig`、`runtime_prelude_wat.z
 
 历史 ARC object layout、allocator、`rc == 1` reuse 和 `inc/dec` 规则不再是
 v1 规范；它们保留在源码、changelog 和 dated plans 中作为迁移证据。通用
-async/map/producer/resource lowering、公开 `own<T>`/`borrow<T>`/`ref<T>` 语法和
-其余 15 个 capability inventory pending rows 仍需各自的 design/gate，不能以
-GC cutover 证据替代。
+async/map/producer/resource lowering 与公开 `own<T>`/`borrow<T>`/`ref<T>` 语法
+仍需各自的 design/gate，不能以 GC cutover 证据替代。
 
 ## 9. Required Verification
 
