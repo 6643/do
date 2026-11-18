@@ -1,5 +1,5 @@
-local.set $__do_defer_if_22
-local.set $__do_defer_if_29
-local.set $__do_defer_if_39
+local.set $__do_conditional_defer_22
+local.set $__do_conditional_defer_29
+local.set $__do_conditional_defer_39
 call $cleanup_b
 call $cleanup_a

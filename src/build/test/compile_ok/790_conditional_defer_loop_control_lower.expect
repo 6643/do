@@ -1,4 +1,4 @@
-local.set $__do_defer_if_25
+local.set $__do_conditional_defer_25
 call $cleanup
 br $__gc_break_0
 br $__gc_loop_1

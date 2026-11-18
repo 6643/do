@@ -525,7 +525,7 @@ pub const DeferItem = struct {
 };
 
 pub fn conditional_defer_flag_name(allocator: std.mem.Allocator, site_idx: usize) ![]u8 {
-    return std.fmt.allocPrint(allocator, "__do_defer_if_{d}", .{site_idx});
+    return std.fmt.allocPrint(allocator, "__do_conditional_defer_{d}", .{site_idx});
 }
 
 pub const StringDataContext = struct {

@@ -19,7 +19,7 @@
 - Evaluate cleanup call arguments at cleanup time, matching existing `defer`.
 - Conditional defer in a loop body belongs to that body's per-iteration scope activation.
 - Keep changes flat and one-way across parser, semantic analysis, and code generation modules.
-- Keep the syntax aligned with the approved `defer(condition)` form; do not add `if condition defer`.
+- Keep the syntax aligned with the approved `defer(condition)` form.
 
 ## Review Focus
 
