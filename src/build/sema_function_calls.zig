@@ -22,6 +22,7 @@ const call_arity_compatible_with_func = sema_tokens.call_arity_compatible_with_f
 const collect_func_shapes = sema_function_support.collect_func_shapes;
 const find_constraint_block_start_before = sema_tokens.find_constraint_block_start_before;
 const find_line_end_idx = sema_tokens.find_line_end_idx;
+const line_start_idx = sema_tokens.line_start_idx;
 const find_matching = sema_tokens.find_matching;
 const find_nearest_value_type_name = sema_tokens.find_nearest_value_type_name;
 const find_return_type_end = sema_tokens.find_return_type_end;
@@ -33,6 +34,7 @@ const free_func_shapes = sema_function_support.free_func_shapes;
 const func_param_type_start = sema_tokens.func_param_type_start;
 const has_known_func_candidate = sema_tokens.has_known_func_candidate;
 const is_arrow_at = sema_tokens.is_arrow_at;
+const is_base_type_name = sema_tokens.is_base_type_name;
 const is_func_decl_start = sema_tokens.is_func_decl_start;
 const is_func_type_param = sema_tokens.is_func_type_param;
 const is_host_import_decl_start = sema_tokens.is_host_import_decl_start;
@@ -154,6 +156,214 @@ pub fn check_known_condition_bool_sites(allocator: std.mem.Allocator, program: p
         }
     }
 }
+
+pub fn check_known_if_branch_types(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token) !void {
+    const funcs = try collect_func_shapes(allocator, tokens);
+    defer free_func_shapes(allocator, funcs);
+
+    for (program.expr_nodes) |node| {
+        if (node.kind != .if_expr) continue;
+        const branches = node.data.if_expr;
+        const then_ty = known_expr_type(program, tokens, funcs, branches.then_value);
+        const else_ty = known_expr_type(program, tokens, funcs, branches.else_value);
+        const expected_ty = expected_type_before_if(tokens, node.start_tok);
+
+        if (then_ty) |actual| {
+            if (expected_ty) |expected| {
+                if (!std.mem.eql(u8, actual, expected)) return mark_error_at(tokens, node.start_tok, error.IfBranchTypeMismatch);
+            }
+        }
+        if (else_ty) |actual| {
+            if (expected_ty) |expected| {
+                if (!std.mem.eql(u8, actual, expected)) return mark_error_at(tokens, node.start_tok, error.IfBranchTypeMismatch);
+            }
+        }
+        if (then_ty) |then_known| {
+            if (else_ty) |else_known| {
+                if (!std.mem.eql(u8, then_known, "nil") and !std.mem.eql(u8, else_known, "nil") and
+                    !std.mem.eql(u8, then_known, else_known))
+                {
+                    return mark_error_at(tokens, node.start_tok, error.IfBranchTypeMismatch);
+                }
+            }
+        }
+    }
+}
+
+pub fn check_if_value_block_scope(allocator: std.mem.Allocator, program: parser.Program, tokens: []const lexer.Token) !void {
+    const funcs = try collect_func_shapes(allocator, tokens);
+    defer free_func_shapes(allocator, funcs);
+
+    for (program.expr_nodes) |node| {
+        if (node.kind != .block_expr) continue;
+        const block_start = node.start_tok;
+        const block_end = node.end_tok;
+        if (block_start >= block_end or block_end > tokens.len) continue;
+
+        const function_end = enclosing_function_end(tokens, block_start) orelse continue;
+        var declaration_idx = block_start + 1;
+        while (declaration_idx + 1 < block_end - 1) : (declaration_idx += 1) {
+            if (tokens[declaration_idx].kind != .ident) continue;
+            if (declaration_idx > 0 and tokens[declaration_idx - 1].line == tokens[declaration_idx].line) continue;
+            const line_end = find_line_end_idx(tokens, declaration_idx);
+            const eq_idx = find_top_level_assign_eq_on_line(tokens, declaration_idx, @min(line_end, block_end - 1)) orelse continue;
+            if (eq_idx <= declaration_idx + 1) continue;
+
+            const local_name = tokens[declaration_idx].lexeme;
+            var use_idx = declaration_idx + 1;
+            while (use_idx < function_end) : (use_idx += 1) {
+                if (use_idx >= block_start and use_idx < block_end) continue;
+                if (tokens[use_idx].kind != .ident or !std.mem.eql(u8, tokens[use_idx].lexeme, local_name)) continue;
+                if (use_idx > 0 and tokens[use_idx - 1].line == tokens[use_idx].line and
+                    (tok_eq(tokens[use_idx - 1], ".") or tok_eq(tokens[use_idx - 1], "@"))) continue;
+                if (is_known_function_call(funcs, tokens, use_idx, local_name)) continue;
+                if (is_local_binding_at(tokens, use_idx, function_end) or
+                    is_shadowed_local_at(tokens, declaration_idx + 1, use_idx, function_end, local_name)) continue;
+                return mark_error_at(tokens, use_idx, error.OutOfScopeLocalBinding);
+            }
+        }
+    }
+}
+
+fn is_known_function_call(funcs: []const FuncShape, tokens: []const lexer.Token, idx: usize, name: []const u8) bool {
+    if (idx + 1 >= tokens.len or !tok_eq(tokens[idx + 1], "(")) return false;
+    for (funcs) |func| {
+        if (std.mem.eql(u8, func.name, name)) return true;
+    }
+    return false;
+}
+
+pub fn check_conditional_assignment_targets(program: parser.Program, tokens: []const lexer.Token) !void {
+    for (program.expr_nodes) |node| {
+        if (node.kind != .conditional_assign) continue;
+        const line_start = line_start_idx(tokens, node.start_tok);
+        const eq_idx = find_top_level_assign_eq_on_line(tokens, line_start, node.start_tok) orelse continue;
+        if (eq_idx > line_start + 1) return mark_error_at(tokens, node.start_tok, error.ConditionalAssignmentRequiresExistingTarget);
+        const target_name = tokens[line_start].lexeme;
+        if (!has_prior_assignment_binding(tokens, line_start, target_name) and
+            find_enclosing_func_param_type_name(tokens, node.start_tok, target_name) == null)
+        {
+            return mark_error_at(tokens, node.start_tok, error.ConditionalAssignmentRequiresExistingTarget);
+        }
+    }
+}
+
+fn has_prior_assignment_binding(tokens: []const lexer.Token, before_idx: usize, name: []const u8) bool {
+    var i: usize = 0;
+    while (i < before_idx) : (i += 1) {
+        if (line_start_idx(tokens, i) != i or tokens[i].kind != .ident or !std.mem.eql(u8, tokens[i].lexeme, name)) continue;
+        const line_end = find_line_end_idx(tokens, i);
+        const eq_idx = find_top_level_assign_eq_on_line(tokens, i, @min(line_end, before_idx)) orelse continue;
+        if (eq_idx > i) return true;
+    }
+    return false;
+}
+
+fn is_local_binding_at(tokens: []const lexer.Token, idx: usize, limit: usize) bool {
+    if (idx + 1 >= limit or line_start_idx(tokens, idx) != idx) return false;
+    const line_end = find_line_end_idx(tokens, idx);
+    const eq_idx = find_top_level_assign_eq_on_line(tokens, idx, @min(line_end, limit)) orelse return false;
+    return eq_idx > idx + 1;
+}
+
+fn is_shadowed_local_at(tokens: []const lexer.Token, start_idx: usize, use_idx: usize, function_end: usize, name: []const u8) bool {
+    var declaration_idx = start_idx;
+    while (declaration_idx < use_idx) : (declaration_idx += 1) {
+        if (tokens[declaration_idx].kind != .ident or !std.mem.eql(u8, tokens[declaration_idx].lexeme, name)) continue;
+        if (!is_local_binding_at(tokens, declaration_idx, function_end)) continue;
+        var nested_braces: usize = 0;
+        var scan_idx = declaration_idx;
+        while (scan_idx > 0) {
+            scan_idx -= 1;
+            if (tok_eq(tokens[scan_idx], "}")) {
+                nested_braces += 1;
+            } else if (tok_eq(tokens[scan_idx], "{")) {
+                if (nested_braces == 0) {
+                    const scope_end = (find_matching(tokens, scan_idx, "{", "}") catch continue) + 1;
+                    if (scope_end > use_idx) return true;
+                    break;
+                }
+                nested_braces -= 1;
+            }
+        }
+    }
+    return false;
+}
+
+fn enclosing_function_end(tokens: []const lexer.Token, before_idx: usize) ?usize {
+    var depth: usize = 0;
+    var function_open: ?usize = null;
+    var i: usize = 0;
+    while (i < before_idx) : (i += 1) {
+        if (tok_eq(tokens[i], "{")) {
+            if (depth == 0) function_open = i;
+            depth += 1;
+        } else if (tok_eq(tokens[i], "}")) {
+            if (depth == 0) return null;
+            depth -= 1;
+            if (depth == 0) function_open = null;
+        }
+    }
+    const open_idx = function_open orelse return null;
+    return (find_matching(tokens, open_idx, "{", "}") catch return null) + 1;
+}
+
+fn expected_type_before_if(tokens: []const lexer.Token, if_idx: usize) ?[]const u8 {
+    const line_start = line_start_idx(tokens, if_idx);
+    const eq_idx = find_top_level_assign_eq_on_line(tokens, line_start, if_idx) orelse return null;
+    if (eq_idx <= line_start) return null;
+    for (tokens[line_start..eq_idx]) |token| {
+        if (tok_eq(token, "|")) return null;
+    }
+    const target_name = tokens[line_start].lexeme;
+    if (eq_idx == line_start + 2 and tokens[line_start + 1].kind == .ident) {
+        const expected = tokens[line_start + 1].lexeme;
+        return if (is_base_type_name(expected)) expected else null;
+    }
+    const expected = find_nearest_value_type_name(tokens, if_idx, target_name) orelse return null;
+    return if (is_base_type_name(expected)) expected else null;
+}
+
+fn known_expr_type(program: parser.Program, tokens: []const lexer.Token, funcs: []const FuncShape, root_idx: usize) ?[]const u8 {
+    if (root_idx >= program.expr_nodes.len) return null;
+    const node = program.expr_nodes[root_idx];
+    return switch (node.kind) {
+        .paren, .block_expr => known_expr_type(program, tokens, funcs, node.data.child),
+        .literal => blk: {
+            const token = tokens[node.start_tok];
+            if (tok_eq(token, "true") or tok_eq(token, "false")) break :blk "bool";
+            if (tok_eq(token, "nil")) break :blk "nil";
+            break :blk null;
+        },
+        .ident => find_nearest_value_type_name(tokens, node.start_tok, tokens[node.start_tok].lexeme),
+        .call => known_call_return_type(funcs, node.data.call.func_name, node.data.call.arg_count),
+        .struct_lit => tokens[node.start_tok].lexeme,
+        .if_expr => known_if_branch_common_type(program, tokens, funcs, node.data.if_expr),
+        .lambda, .inferred_agg_lit, .conditional_assign => null,
+    };
+}
+
+fn known_if_branch_common_type(program: parser.Program, tokens: []const lexer.Token, funcs: []const FuncShape, branches: anytype) ?[]const u8 {
+    const then_ty = known_expr_type(program, tokens, funcs, branches.then_value) orelse return null;
+    const else_ty = known_expr_type(program, tokens, funcs, branches.else_value) orelse return null;
+    if (std.mem.eql(u8, then_ty, else_ty)) return then_ty;
+    return null;
+}
+
+fn known_call_return_type(funcs: []const FuncShape, name: []const u8, arg_count: usize) ?[]const u8 {
+    var result: ?[]const u8 = null;
+    for (funcs) |func| {
+        if (!std.mem.eql(u8, func.name, name) or !call_arity_compatible_with_func(func, arg_count)) continue;
+        const ty = func.return_type orelse return null;
+        if (result) |previous| {
+            if (!std.mem.eql(u8, previous, ty)) return null;
+        } else {
+            result = ty;
+        }
+    }
+    return result;
+}
+
 pub fn check_line_string_root_positions(program: parser.Program, tokens: []const lexer.Token) !void {
     for (program.expr_nodes) |node| {
         if (node.kind != .literal) continue;
@@ -1061,6 +1271,7 @@ pub fn classify_known_bool(
 
     return switch (node.kind) {
         .paren => try classify_known_bool(allocator, program, funcs, tokens, node.data.child),
+        .if_expr, .conditional_assign, .block_expr => .unknown,
         .literal => classify_literal_bool(tokens, node.start_tok),
         .ident => classify_typed_ident_bool(tokens, node.start_tok),
         .call => try classify_call_bool(allocator, funcs, tokens, node),

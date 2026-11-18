@@ -44,12 +44,17 @@ pub const ExprKind = enum {
     inferred_agg_lit,
     struct_lit,
     paren,
+    if_expr,
+    conditional_assign,
+    block_expr,
 };
 
 pub const ExprNodeData = union(enum) {
     none: void,
     call: FuncCallRef,
     child: usize,
+    if_expr: struct { condition: usize, then_value: usize, else_value: usize },
+    conditional_assign: struct { condition: usize, value: usize },
 };
 
 pub const ExprNode = struct {
@@ -253,6 +258,21 @@ pub fn parse_program(
             tokens,
             i,
         );
+    }
+
+    for (expr_nodes_list.items) |node| {
+        const condition_idx = switch (node.kind) {
+            .if_expr => node.data.if_expr.condition,
+            .conditional_assign => node.data.conditional_assign.condition,
+            else => continue,
+        };
+        if (condition_idx >= expr_nodes_list.items.len) return error.InvalidExprNode;
+        const condition = expr_nodes_list.items[condition_idx];
+        try cond_exprs_list.append(allocator, .{
+            .root_expr_idx = condition_idx,
+            .context = .if_cond,
+            .line = tokens[condition.start_tok].line,
+        });
     }
 
     const func_sigs = try func_sigs_list.toOwnedSlice(allocator);
@@ -1282,13 +1302,51 @@ fn parse_assign_stmt(
     const rhs_start = eq_idx + 1;
     if (rhs_start >= limit_idx) return mark_error_at(tokens, eq_idx, error.InvalidAssignExpr);
 
-    const rhs_end = find_assign_rhs_end(tokens, rhs_start, limit_idx);
+    const rhs_end = if (tok_eq(tokens[rhs_start], "if"))
+        find_if_rhs_end(tokens, rhs_start, limit_idx)
+    else
+        find_assign_rhs_end(tokens, rhs_start, limit_idx);
     if (rhs_start >= rhs_end) return mark_error_at(tokens, eq_idx, error.InvalidAssignExpr);
-    if (!is_line_string_token(tokens[rhs_start]) and
+    if (!tok_eq(tokens[rhs_start], "if") and !is_line_string_token(tokens[rhs_start]) and
         !range_is_on_line(tokens, rhs_start, rhs_end, tokens[eq_idx].line) and
         !range_contains_block_lambda(tokens, rhs_start, rhs_end))
     {
         return mark_error_at(tokens, rhs_start, error.InvalidAssignExpr);
+    }
+
+    if (tok_eq(tokens[rhs_start], "if")) {
+        const condition = try parse_condition_expr(allocator, out_nodes, tokens, rhs_start + 1, rhs_end);
+        if (condition.next_idx >= rhs_end) return mark_error_at(tokens, rhs_start, error.InvalidAssignExpr);
+        const value = try parse_if_value_branch(allocator, out_nodes, tokens, condition.next_idx, rhs_end);
+        if (value.next_idx < rhs_end and tok_eq(tokens[value.next_idx], "else")) {
+            const else_value = try parse_if_value_branch(allocator, out_nodes, tokens, value.next_idx + 1, rhs_end);
+            if (else_value.next_idx != rhs_end) return mark_error_at(tokens, else_value.next_idx, error.InvalidAssignExpr);
+            const parsed_idx = try append_expr_node(allocator, out_nodes, .{
+                .kind = .if_expr,
+                .start_tok = rhs_start,
+                .end_tok = rhs_end,
+                .data = .{ .if_expr = .{ .condition = condition.node_idx, .then_value = value.node_idx, .else_value = else_value.node_idx } },
+            });
+            try out_values.append(allocator, .{
+                .root_expr_idx = parsed_idx,
+                .expected_arity = lhs_value_count(tokens, eq_idx),
+                .context = .rhs,
+            });
+            return rhs_end;
+        }
+        if (value.next_idx != rhs_end) return mark_error_at(tokens, value.next_idx, error.InvalidAssignExpr);
+        const idx = try append_expr_node(allocator, out_nodes, .{
+            .kind = .conditional_assign,
+            .start_tok = rhs_start,
+            .end_tok = rhs_end,
+            .data = .{ .conditional_assign = .{ .condition = condition.node_idx, .value = value.node_idx } },
+        });
+        try out_values.append(allocator, .{
+            .root_expr_idx = idx,
+            .expected_arity = lhs_value_count(tokens, eq_idx),
+            .context = .rhs,
+        });
+        return rhs_end;
     }
 
     const parsed = try parse_expr(allocator, out_nodes, tokens, rhs_start, rhs_end);
@@ -1300,6 +1358,32 @@ fn parse_assign_stmt(
         .context = if (lhs_count > 1) .assign else .rhs,
     });
     return rhs_end;
+}
+
+fn find_if_rhs_end(tokens: []const lexer.Token, start: usize, limit: usize) usize {
+    const cond_end = find_if_atom_end(tokens, start + 1, limit) orelse return find_assign_rhs_end(tokens, start, limit);
+    const then_end = find_if_atom_end(tokens, cond_end, limit) orelse return find_assign_rhs_end(tokens, start, limit);
+    if (then_end < limit and tok_eq(tokens[then_end], "else")) {
+        return find_if_atom_end(tokens, then_end + 1, limit) orelse find_assign_rhs_end(tokens, start, limit);
+    }
+    return then_end;
+}
+
+fn find_if_atom_end(tokens: []const lexer.Token, start: usize, limit: usize) ?usize {
+    if (start >= limit) return null;
+    if (tok_eq(tokens[start], ".") and start + 1 < limit and tok_eq(tokens[start + 1], "{")) return (find_matching_in_range(tokens, start + 1, "{", "}", limit) catch return null) + 1;
+    if (tok_eq(tokens[start], "{")) return (find_matching_in_range(tokens, start, "{", "}", limit) catch return null) + 1;
+    if (tok_eq(tokens[start], "(")) return (find_matching_in_range(tokens, start, "(", ")", limit) catch return null) + 1;
+    if (tok_eq(tokens[start], "@") and start + 2 < limit and tok_eq(tokens[start + 2], "(")) return (find_matching_in_range(tokens, start + 2, "(", ")", limit) catch return null) + 1;
+    if (tok_eq(tokens[start], "if")) return find_if_rhs_end(tokens, start, limit);
+    if (tokens[start].kind == .ident and start + 1 < limit) {
+        if (tok_eq(tokens[start + 1], "(")) return (find_matching_in_range(tokens, start + 1, "(", ")", limit) catch return null) + 1;
+        if (!is_type_name(tokens[start].lexeme)) return start + 1;
+        var body_idx = start + 1;
+        if (tok_eq(tokens[body_idx], "<")) body_idx = (find_matching_in_range(tokens, body_idx, "<", ">", limit) catch return null) + 1;
+        if (body_idx < limit and tok_eq(tokens[body_idx], "{")) return (find_matching_in_range(tokens, body_idx, "{", "}", limit) catch return null) + 1;
+    }
+    return start + 1;
 }
 
 fn range_is_on_line(tokens: []const lexer.Token, start_idx: usize, end_idx: usize, line: usize) bool {
@@ -1368,10 +1452,15 @@ fn find_assign_rhs_end(tokens: []const lexer.Token, start_idx: usize, limit_idx:
     const start_line = tokens[start_idx].line;
     var depth_paren: usize = 0;
     var depth_brace: usize = 0;
+    var saw_else = false;
     var i = start_idx;
 
     while (i < limit_idx) : (i += 1) {
-        if (tokens[i].line != start_line and depth_paren == 0 and depth_brace == 0) break;
+        if (depth_paren == 0 and depth_brace == 0) {
+            if (saw_else and i > start_idx and tokens[i].line != tokens[i - 1].line) break;
+            if (!saw_else and tokens[i].line != start_line and !tok_eq(tokens[i], "else")) break;
+            if (tok_eq(tokens[i], "else")) saw_else = true;
+        }
 
         if (tok_eq(tokens[i], "(")) {
             depth_paren += 1;
@@ -1539,6 +1628,27 @@ fn parse_expr_with_mode(
     if (start_idx >= limit_idx) return mark_error_at(tokens, start_idx, error.InvalidExpr);
     const t = tokens[start_idx];
 
+    if (tok_eq(t, "if") and mode == .value) {
+        const condition = try parse_condition_expr(allocator, out_nodes, tokens, start_idx + 1, limit_idx);
+        if (condition.next_idx >= limit_idx) return mark_error_at(tokens, start_idx, error.InvalidExpr);
+        const then_value = try parse_if_value_branch(allocator, out_nodes, tokens, condition.next_idx, limit_idx);
+        if (then_value.next_idx >= limit_idx or !tok_eq(tokens[then_value.next_idx], "else")) {
+            return mark_error_at(tokens, then_value.next_idx, error.InvalidExpr);
+        }
+        const else_value = try parse_if_value_branch(allocator, out_nodes, tokens, then_value.next_idx + 1, limit_idx);
+        const idx = try append_expr_node(allocator, out_nodes, .{
+            .kind = .if_expr,
+            .start_tok = start_idx,
+            .end_tok = else_value.next_idx,
+            .data = .{ .if_expr = .{
+                .condition = condition.node_idx,
+                .then_value = then_value.node_idx,
+                .else_value = else_value.node_idx,
+            } },
+        });
+        return .{ .next_idx = else_value.next_idx, .node_idx = idx };
+    }
+
     if (is_spread_token(t)) {
         return mark_error_at(tokens, start_idx, error.InvalidCallArgList);
     }
@@ -1683,6 +1793,31 @@ fn parse_expr_with_mode(
     }
 
     return mark_error_at(tokens, start_idx, error.UnsupportedExpr);
+}
+
+fn parse_if_value_branch(
+    allocator: std.mem.Allocator,
+    out_nodes: *std.ArrayList(ExprNode),
+    tokens: []const lexer.Token,
+    start_idx: usize,
+    limit_idx: usize,
+) anyerror!ExprParse {
+    if (start_idx < limit_idx and tok_eq(tokens[start_idx], "{")) {
+        const close_idx = try find_matching_in_range(tokens, start_idx, "{", "}", limit_idx);
+        if (close_idx <= start_idx + 1) return mark_error_at(tokens, start_idx, error.InvalidBraceExpr);
+        var value_start = close_idx - 1;
+        while (value_start > start_idx + 1 and tokens[value_start - 1].line == tokens[value_start].line) value_start -= 1;
+        const value = try parse_expr_with_mode(allocator, out_nodes, tokens, value_start, close_idx, .value);
+        if (value.next_idx != close_idx) return mark_error_at(tokens, value.next_idx, error.InvalidBraceExpr);
+        const idx = try append_expr_node(allocator, out_nodes, .{
+            .kind = .block_expr,
+            .start_tok = start_idx,
+            .end_tok = close_idx + 1,
+            .data = .{ .child = value.node_idx },
+        });
+        return .{ .next_idx = close_idx + 1, .node_idx = idx };
+    }
+    return parse_expr_with_mode(allocator, out_nodes, tokens, start_idx, limit_idx, .value);
 }
 
 fn parse_call_expr(
