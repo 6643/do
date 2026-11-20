@@ -10,13 +10,18 @@
 `0`；全量回归、ReleaseSmall/release smoke、GC default、ARC post-cutover、
 semantic-equivalence 和 evidence checker 均通过。本文带日期的旧增量保留当时
 快照；其中出现的 `complete_rows=15 pending_rows=15` 只表示历史状态，不是当前
-阻断。当前未关闭项仅限通用 async/resource、通用 producer/borrowed shape、公开
-ownership syntax 及其他单独列出的 deferred 设计。
+阻断。当前未关闭项包括通用 async/resource、通用 producer/borrowed shape 和其他单独
+列出的 deferred 设计。公开 `own<T>`/`borrow<T>`/`ref<T>` 不属于当前 GC-first v1 模型。
 
-> **Superseded by GC-first (2026-08-11, cutover closed 2026-09-09):**
-> `doc/memory.md` 与 `doc/design/2026-08-11-gc-first-memory-decision.md` 已选定
-> Wasm GC 为 v1 managed-memory target。Task 6 已将普通编译入口切换为 GC-only；
-> ARC 只保留为显式 test-only equivalence oracle。下文只记录仍未关闭的能力缺口；
+2026-11-19 内存模型决策更新：v1 正式采用 GC-first。普通对象按 Wasm GC 可达性回收，
+词法块退出不释放普通对象；函数参数只读借用，普通赋值与 `@set` 保持逻辑值语义并允许
+COW；Future 显式 await/cancel，外部 resource 显式 close/drop。Region allocator、区域
+分配失败 union、隐藏区域传递和块退出回收不再是 v1 待实现项。旧 Region 方案仅作历史讨论，
+详见 `doc/design/2026-11-18-lexical-region-memory-decision.md`。
+
+> **GC-first source contract confirmed (2026-11-19):**
+> Task 6 的普通编译入口 GC-only 切换同时是当前实现事实和 v1 源码生命周期契约。
+> 下文带日期的 GC-first gate 保留为实现证据和历史快照；
 > Component/WIT resource 的 ownership 与 drop 继续是显式 ABI contract, 不由 GC 接管。
 
 ### GC-first runtime cutover (已关闭, 2026-09-09；历史快照)
@@ -1008,7 +1013,7 @@ slice 解释为 G5c 或 full GC cutover。
 
 | ID | 项 | 说明 |
 | --- | --- | --- |
-| D1 | 完整 ownership IR | 跨函数唯一性 / escape / region / 激进 loop move; 门槛见 `doc/memory.md` |
+| D1 | 完整 ownership IR | 跨函数唯一性 / escape / 基于分析的区域推断 / 激进 loop move。这里的区域推断是可选编译器优化分析，不决定 GC-first 对象生命周期 |
 | D2 | 完整 WASI/Component 运行时 | 已增加真实本地 filesystem preopen/open-at/sync、read-directory stream、CLI stdin pipe，以及 socket create/bind/drop 的 compiler-generated Component/Rust/Wasmtime smoke；私有 `descriptor.get-type`、`descriptor.sync`、`descriptor.get-flags`、`descriptor.stat`、`descriptor.sync-data`、`descriptor.metadata-hash`、`descriptor.metadata-hash-at`、`descriptor.stat-at` 与 `descriptor.open-at` 各自通过 pinned ABI、compiler/runtime gates；仍缺通用 filesystem async lowering 与 external-network HTTP，故 D2 总项保持 in progress |
 | D3 | JSON 自动序列化扩展 | error/enum/union/复杂 storage; 当前仅已验证 struct 字段子集 |
 | D4 | LSP 增强 | rename / references / import-aware 跨模块 / 增量 index |

@@ -82,6 +82,7 @@ pub fn check_program_with_options(
     try sema_structures.check_generic_struct_ctor_type_args(tokens);
     try sema_structures.check_tuple_ctor_arity(tokens);
     try sema_structures.check_tuple_get_index(tokens);
+    try sema_structures.check_literal_storage_bounds(tokens);
     try sema_type_checks.check_forbidden_source_type_names(tokens);
     try sema_type_checks.check_bare_nil_types(tokens);
     try sema_result.check_result_constructor_context(tokens);

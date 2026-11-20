@@ -9,19 +9,20 @@
 3. `doc/grammar.peg`: parser 可执行 PEG, 包括词法 token 形态和主文法。
 4. `doc/spec_examples.md`: 正例、反例、推荐写法和回归提取素材。
 5. `doc/syntax/`: 按功能拆分的语法速查, 只展示当前正确语法。
-6. `doc/memory.md`: GC-first v1 运行时内存契约.
-7. `doc/design/2026-08-11-gc-first-memory-decision.md`: GC-first 选型, 保留的源码值语义和未完成的实现迁移边界.
-8. `doc/memory_layout_structs.md`: 当前 ARC 过渡实现的 allocator block, managed object 和 layout table 结构布局伪代码, 不是 v1 规范.
-9. `doc/wit/wasi_p3_lowering.md`: 统一 `@host_func(locator, member, sig)` / WIT / component lowering 的 compiler-facing 合同和当前可验证产物。
-10. `doc/wit/wasi_registry.json`: 当前已登记的 WIT target / record mirror registry, 供 manifest 校验和 component-plan 工具消费。
-11. `doc/roadmap_status.md`: roadmap 项目的当前状态、证据、跳过原因和恢复条件。
+6. `doc/memory.md`: GC-first 生命周期、值语义和外部资源边界.
+7. `doc/design/2026-08-11-gc-first-memory-decision.md`: GC-first v1 决策及当前 GC 实现证据.
+8. `doc/design/2026-11-18-lexical-region-memory-decision.md`: 已被 GC-first 取代的历史 Region 方案.
+9. `doc/memory_layout_structs.md`: 历史 ARC transition allocator block, managed object 和 layout table 的结构布局伪代码, 不是目标内存模型规范.
+10. `doc/wit/wasi_p3_lowering.md`: 统一 `@host_func(locator, member, sig)` / WIT / component lowering 的 compiler-facing 合同和当前可验证产物。
+11. `doc/wit/wasi_registry.json`: 当前已登记的 WIT target / record mirror registry, 供 manifest 校验和 component-plan 工具消费。
+12. `doc/roadmap_status.md`: roadmap 项目的当前状态、证据、跳过原因和恢复条件。
 
 ## 1. 阅读路径
 
 1. 查语法是否可解析: 先看 `doc/grammar.peg`, 再看 `doc/syntax/` 对应功能页。
 2. 查语义是否允许: 看 `doc/spec_rules.md` 对应章节。
 3. 查正反例: 看 `doc/spec_examples.md`。
-4. 查 v1 运行时值语义, GC, COW 或 Component/WIT 内存边界: 看 `doc/memory.md` 和 `doc/design/2026-08-11-gc-first-memory-decision.md`; 查当前 ARC 过渡实现的 storage, allocator, block, object 或 layout 结构字段看 `doc/memory_layout_structs.md`.
+4. 查目标内存生命周期和当前 GC 实现: 看 `doc/memory.md` 与 `doc/design/2026-08-11-gc-first-memory-decision.md`; 查被否决的历史 Region 方案看 `doc/design/2026-11-18-lexical-region-memory-decision.md`.
 5. 查 `@host_func` / `@host_async_func` / WIT / component lowering 边界: 看 `doc/wit/wasi_p3_lowering.md`; 查当前已登记 target 和 record mirror 看 `doc/wit/wasi_registry.json`。
 6. 查当前实现状态和暂跳过项: 看 `doc/roadmap_status.md`。
 7. 查编译器模块边界: 流水线入口在 `src/build/lexer.zig` / `parser.zig` / `sema.zig` / `codegen_api.zig`; sema 域模块为 `sema_tokens` / `sema_shapes` / `sema_function_*` / `sema_structures` / `sema_type_checks` / `sema_imports` / `sema_control`; codegen 域模块以 `codegen_*` / `wat_*` 命名并保持单向依赖; 纯类型/布局 SSOT 在 `src/build/type_name.zig`; storage 指针与 payload/Tuple pack 的纯 WAT 在 `src/build/wat_storage.zig` / `src/build/wat_payload.zig` (见 `AGENTS.md` 与 `doc/start_here.md`)。
@@ -58,13 +59,13 @@
 3. `doc/grammar.peg` 是 parser 可执行文法单一来源; `spec.md` 和 `spec_rules.md` 不再内嵌完整 PEG。
 4. `builtin` special form、core 路径 primitive 和 core 固定函数名都必须通过保留形态调用, 不参与普通函数声明、重载、遮蔽或 import alias。
 5. `[T]` 是 core 连续存储 primitive; `text` 是源码文本基础类型, 语义要求有效 UTF-8。二者边界必须显式转换。
-6. v1 managed-memory contract 是 GC-first: 源码值保持值语义, 只读传递不复制 payload, 更新保持旧逻辑值可观察。当前 ARC lowering 是实现迁移债务, 不表示 `do build` 已完成 GC migration; 详见 `doc/memory.md` 和 `doc/design/2026-08-11-gc-first-memory-decision.md`.
+6. 普通 Do 对象由 Wasm GC 按可达性回收，词法块退出不释放普通对象；函数参数默认只读借用。普通赋值保持逻辑独立值，允许共享不可变存储和 COW；`@set` 作为表达式产生新逻辑值，作为语句只修改当前作用域中的可变变量，参数不能作为修改目标。外部 resource 必须显式 close/drop；详见 `doc/memory.md`.
 7. `Error` 是编译器内部合成诊断/工具视图, 源码类型位不能直接写 `Error`。
 8. union 只以内联平铺类型表达式出现; 源码没有顶层类型别名声明。返回位、字段、局部绑定、storage 元素、type args 和普通固定数据参数可写 union/nullable; 变参元素、函数类型和接口约束参数不接收 union/nullable。
 9. 函数重载只按参数类型序列决议; 返回类型不参与重载身份。
 10. `@get/@set` 只承载结构字段和 `[T]` storage 路径 primitive; `List/HashMap` 等高层集合由 `std` 或用户库提供普通函数。
 11. `loop` 分为无限循环、集合循环、消费循环和字段反射循环; v1 不提供通用 iterator 协议。
-12. `@host_func` 与 `@host_async_func` 的 WASI locator/member 形态声明的是 WIT binding, 不是普通 core Wasm import。前者只表示普通 WIT `func`（包括显式返回 `Future<T>` 的普通 future），后者只表示 WIT `async func`（源签名写 payload，调用结果暴露为 `Future<T>`）；旧 `@host` 与 `@host_sync_func` 不再接受。当前只开放已登记的 scalar/record/list<u8> 与少量 result-area wrapper 子集进入 lowering, 完整 component/resource/future/variant 支持仍后置。GC 只管理 Do allocation, 不替代 WIT resource 的显式 drop 或 Component terminal cleanup.
+12. `@host_func` 与 `@host_async_func` 的 WASI locator/member 形态声明的是 WIT binding, 不是普通 core Wasm import。前者只表示普通 WIT `func`（包括显式返回 `Future<T>` 的普通 future），后者只表示 WIT `async func`（源签名写 payload，调用结果暴露为 `Future<T>`）；旧 `@host` 与 `@host_sync_func` 不再接受。当前只开放已登记的 scalar/record/list<u8> 与少量 result-area wrapper 子集进入 lowering, 完整 component/resource/future/variant 支持仍后置。Wasm GC 不负责 WIT resource 的 close/drop 或 Component terminal cleanup；这些仍由 ABI contract 管理.
 13. 顶层入口固定为 `start() { ... }`; 测试声明固定为 `test "name" { ... }`。
 14. runtime trap / safety failure 与源码可见错误枚举分离; 越界、primitive safety failure 不通过 `Error` 或普通错误枚举返回。
 

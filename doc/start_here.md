@@ -4,6 +4,8 @@
 
 当前基线日期: `2026-11-20`。
 
+当前内存模型是 GC-first: 普通 Do 对象由 Wasm GC 按可达性回收，词法块退出不释放普通对象；普通赋值保持逻辑独立值，允许共享不可变存储并对可变动态字段使用 COW；`@set` 按是否接收结果区分新值和语句式修改，函数参数只读；外部 resource 必须显式 close/drop，Future 必须显式 await/cancel。生产编译器和源码契约均以 Wasm GC 为准，详见 `doc/memory.md`。
+
 最新闭环: G5c 15-row migration inventory final gate、G6.2 shared emitter/state-IR
 single-route private pilot 的 Task 6 artifact/default-route parity/rollback/
 repository inventory gate，以及 D2 私有 `descriptor.read-via-stream` bounded
@@ -40,7 +42,7 @@ checker、ReleaseSmall 与 release smoke 均通过。本文下方带日期的旧
 3. [doc/pending_blocked.md](pending_blocked.md) — **待处理与阻断** (G6 / P2 / deferred / skip)
 4. [doc/master_plan.md](master_plan.md) — 当前规划摘要
 5. [doc/roadmap_status.md](roadmap_status.md) — 当前执行状态
-6. [doc/memory.md](memory.md) — GC-first 运行时目标与迁移边界 (按需)
+6. [doc/memory.md](memory.md) — GC-first 生命周期和值语义 (按需)
 
 模块地图见仓库根 [AGENTS.md](../AGENTS.md)。
 
@@ -62,11 +64,12 @@ checker、ReleaseSmall 与 release smoke 均通过。本文下方带日期的旧
 | --- | --- |
 | v1 子集 | 发布候选已收口 |
 | GC-first runtime cutover | Task 6 已闭环；普通 `do build`/`do test` 只走 `codegen_runtime_api.zig` 的 Wasm GC route，ARC 仅由显式 test-only `gc_arc_equivalence_oracle.zig` 调用；当前 ARC inventory `rows=55 matches=492 unclassified=0 normal_route_matches=0`，生产依赖闭包 `modules=164 forbidden=0` |
-| 当前验证基线 | `run_tests.sh` 为 `14/14 steps; 56/56 tests`；项目专用 Zig cache 下 `zig test main.zig` 为 `1743/1743`；GC default gate `87 fixtures`、semantic-equivalence `26 rows; 0 pending`、ReleaseSmall/release smoke 通过 |
+| GC-first memory contract | 普通 Do 对象由 Wasm GC 按可达性回收，词法块退出不释放普通对象；函数参数默认只读借用；普通赋值和 `@set` 保持逻辑值语义并允许 COW；外部 resource 显式 close/drop，Future 显式 await/cancel |
+| 当前验证基线 | `run_tests.sh` 为 `14/14 steps; 36/36 tests`；GC core focused `zig test build/codegen_pipeline.zig`（从 `src/`）为 `1058/1058`；GC default gate `87 fixtures`、semantic-equivalence `26 rows; 0 pending`、ReleaseSmall/release smoke 通过 |
 | G6.2 shared emitter/state-IR pilot | 单 route private pilot 的 artifact、byte parity、rollback、inventory 与 test-only runtime callback counter gate 已通过；callback 十模式为单调用 `1/1`、repeat `2/2`、invalid `0/0`；Core-global tuple 仅诊断，默认 dispatch、能力矩阵和公开 ownership syntax 不变 |
-| 当前能力边界 | G5c inventory 已为 `complete_rows=15 pending_rows=0`、exit `0`；通用 async/map/producer/resource lowering 与 public `own<T>`/`borrow<T>`/`ref<T>` syntax 继续 pending，未准入形状在 WAT 前 fail-closed |
+| 当前能力边界 | G5c inventory 已为 `complete_rows=15 pending_rows=0`、exit `0`；通用 async/map/producer/resource lowering 继续 pending，未准入形状在 WAT 前 fail-closed。公开 `own<T>`/`borrow<T>`/`ref<T>` 语法不属于当前 GC-first 源码模型 |
 | Private async map compiler admission | 精确 `HashMap<u32,u32>` async host route 已由 `--p3-async-map-component` 准入；WIT/WAT snapshot、五个 WAT 前负例、Component validate 与 Rust/Wasmtime `ready/pending/cancel/drop` 均通过；默认 route 仍返回 `AsyncLoweringUnavailable`，通用 async map、Stream 跨 poll buffer 与 ownership syntax 继续 pending |
-| GC-first memory migration | G5a 已完成 parsed fixed-index + 参数化 `[u8] @set` + 全部当前标量 list literal/update（`[bool]`、`[i8]`、`[i16]`、`[i32]`、`[i64]`、`[u16]`、`[u32]`、`[u64]`、`[isize]`、`[usize]`、`[f32]`、`[f64]`）+ bounded text/list/struct/tuple/union/generic/import slices、直接局部对象的一层、两层、三层、四层与五层 nested managed-struct `@get/@set`，以及 `--p3-wait-for-component` 的 bounded `Future<nil>` GC frame/table slice 和 private resource `Result` terminal Component gate；G5b 已完成当前 admitted synchronous 的 26 行 ARC/GC executable equivalence matrix，`future_stream_frames` 的两个 sequential `Future<nil>` 也已完成 GC/linear backend-neutral equivalence，non-CLI probes 验证旧值保持、新值更新和 root 保活。Task 3 已将默认同步 pipeline 的已准入 managed candidates（含 bounded synchronous `defer`、`return nil` no-result cleanup、推断出的 `text` body binding、推断出的 `[u8]`/`[u32]` body storage `@put`，以及 body-only managed-struct storage ctor/field update）接到 typed GC/root 输出，GC path 过滤旧 storage compiler locals；普通 host/WIT 的 C14 lift/lower、C15-B/C15-D lower、C16-C/C16-D lift、bounded mixed scalar-record lower、bounded byte-list record lower/lift、bounded `list<u32>` record lower 与 bounded `list<u32>` record lift、bounded mixed text/u32-list record lower/lift 已接入 manifest-backed 默认 GC route，未准入的 host/WIT shape、普通 GC sync async 和 Stream 在 WAT 前 fail-closed；G5c 15-row inventory 已完成最终闭环，但 generic async/resource、未准入 host/WIT shape、root/storage conversion 和旧 ARC implementation debt 仍按边界保留。新增 C10–C16-B 私有 manifest-backed nested/scalar-plus-text/multi-managed-text record lift/lower 与真实 source-level host boundary 证据，其中固定 descriptor 的默认 gate 已闭合。 |
+| GC backend implementation evidence | G5a/G5b/G5c 的 GC lowering、26 行等价矩阵及 Component gates 同时是当前实现证据和 v1 GC-first 契约的验证证据。 |
 | G5c route consolidation | C14–C20 已统一消费一次 manifest-backed `LoadedRequest`、descriptor registry 与 measured `SyncValuePlan`；default/explicit route 不重复解析 request，已登记 locator 的 member drift 在 WAT 前 fail-closed。新鲜 focused route/residual gate、Zig harness `14/14 steps; 56/56 tests`、default `87 fixtures`、semantic-equivalence `26 rows; 0 pending`、ReleaseSmall/release smoke 已通过；最终 inventory 为 `complete_rows=15 pending_rows=0`、exit 0。 |
 | G5c bounded mixed text + two `list<u32>` lower | 精确 descriptor `demo:marshal-record-mixed-text-two-u32-lists-lower/api.write@1.0.0/lower` 已通过默认 route、Component/Rust/Wasmtime、negative 与 ARC/GC equivalence；root 28 bytes、canonical 七个 `i32`、三 span `second -> first -> label` exactly-once cleanup，host 观察 `allocations=3/frees=3`、`write-calls=1`。这是固定形状 promotion，不关闭 migration row。 |
 | G5c bounded mixed text + two `list<u32>` lift | 精确 descriptor `demo:marshal-record-mixed-text-two-u32-lists-lift/api.read@1.0.0/lift` 已通过默认 route、Component/Rust/Wasmtime、negative 与 ARC/GC equivalence；result area 28 bytes、canonical 单个 `(i32)` pointer、三 span `second -> first -> label` exactly-once cleanup，host 观察 `result=54`、`stats=51`、`read-calls=1`、`allocations=3/frees=3`，equivalence 为 `54/54`、`51/51`、`1/1`。这是固定形状 promotion，不关闭 migration row。 |

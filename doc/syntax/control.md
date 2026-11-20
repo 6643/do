@@ -129,7 +129,7 @@ work() -> nil {
 }
 ```
 
-`defer` 离开当前词法区域时执行。条件 defer 在注册时保存条件值, 后续修改条件不会改变 cleanup 是否运行。cleanup 调用及参数在区域退出时求值, 与普通 `defer` 一致。循环体每轮是独立的区域执行; `continue`、`break` 和 `return` 离开区域时按 LIFO 顺序执行 cleanup。
+`defer` 离开当前词法区域时执行。条件 defer 在注册时保存条件值, 后续修改条件不会改变 cleanup 是否运行。cleanup 调用及参数在区域退出时求值, 与普通 `defer` 一致。循环体每轮是独立的区域执行; `continue`、`break` 和 `return` 离开区域时按 LIFO 顺序执行 cleanup。普通 runtime trap 不执行 `defer`；如果 cleanup 自身发生 trap, 立即终止当前执行, 尚未执行的 cleanup 不保证运行。
 
 ```do
 cleanup() -> nil {

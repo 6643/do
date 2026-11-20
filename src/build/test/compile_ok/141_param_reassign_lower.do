@@ -1,9 +1,8 @@
-update(x i32) -> i32 {
-    x = @add(x, 1)
-    return x
+increment(x i32) -> i32 {
+    return @add(x, 1)
 }
 
 start() {
-    _ = update(1)
+    _ = increment(1)
     return
 }

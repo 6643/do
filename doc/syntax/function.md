@@ -52,10 +52,9 @@ one(value i32) -> i32 {
     return value
 }
 
-// 参数可重新赋值
+// 参数只读, 返回计算后的新值
 inc(value i32) -> i32 {
-    value = @add(value, 1)
-    return value
+    return @add(value, 1)
 }
 
 // 多参数
@@ -64,7 +63,7 @@ many(id i64, name text, active bool) -> User {
 }
 ```
 
-规则: 函数参数必须显式写类型, 不支持 `value` 这种只写参数名的省略形式。普通固定数据参数可写平铺 union/nullable, 例如 `value text | nil`; 变参元素、函数类型约束参数、lambda 参数和接口约束参数不接收 union/nullable。参数名使用 `snake_case`, 不使用 `_name` 只读名, 也不能和当前可见普通函数名、函数 import alias 或 host import alias 同名。参数绑定是可写局部绑定, 命中后赋值会更新当前参数值, 不会创建新的同名局部声明。
+规则: 函数参数必须显式写类型, 不支持 `value` 这种只写参数名的省略形式。普通固定数据参数可写平铺 union/nullable, 例如 `value text | nil`; 变参元素、函数类型约束参数、lambda 参数和接口约束参数不接收 union/nullable。参数名使用 `snake_case`, 不使用 `_name` 只读名, 也不能和当前可见普通函数名、函数 import alias 或 host import alias 同名。函数参数是只读借用绑定, 不能作为普通赋值左值, 也不能作为语句式 `@set` 的修改目标; 需要更新对象时, 由函数返回新值并由调用方接收。
 
 ## 同类型变参
 

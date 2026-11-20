@@ -11,6 +11,51 @@
   `./src/build/test/run_tests.sh` (`14/14 steps; 36/36 tests`) and focused
   `cd src && zig test build/codegen_pipeline.zig` (`1058/1058`).
 
+# 2026-11-19 GC-first v1 memory contract:
+  confirmed Wasm GC reachability as both the production implementation and the
+  v1 source memory model. Ordinary Do objects are not released at lexical block
+  exit; function parameters are read-only borrows; ordinary assignment and
+  `@set` preserve logical value semantics and may use sharing/COW internally.
+  External WASI/Component resources still require explicit close/drop, and
+  Futures require explicit await/cancel. Region allocation, block-exit object
+  reclamation, allocation-region ABI, and public `own<T>`/`borrow<T>`/`ref<T>`
+  are not v1 targets. The 2026-11-18 lexical-region proposal is retained as
+  historical design discussion only.
+
+# 2026-11-18 Lexical-region memory target:
+  selected lexical-block allocation lifetime as the target source contract.
+  Allocations belong to their creating block and are released when that block
+  exits; each lexical block uses an internal Region handle linked to its parent; function
+  parameters are read-only borrows by default and do not take ownership.
+  Assignment produces logically independent ordinary values and recursively places
+  dynamic fields in the destination region; the observable result is logically independent,
+  while immutable storage may be shared and mutable fields may use copy-on-write;
+  string literals use global read-only storage and uncertain runtime lifetimes fall back
+  to copying. Function results are promoted to the
+  receiving variable's region. `@set` returns a new value when assigned and mutates
+  only a mutable variable in the current scope in statement form; parameters cannot
+  be modified through `@set`. Borrowed Futures must be explicitly awaited or cancelled
+  before their owner region exits (otherwise compilation fails). Block exit runs
+  registered `defer` handlers in reverse order, then required explicit cleanup,
+  and finally reclaims the region while the region remains valid during cleanup.
+  External resource handle assignment aliases the same resource;
+  each close call dispatches to the resource API, which defines its result and
+  repeated-close behavior. Await timeout automatically cancels the task and
+  waits for terminal cleanup before returning `T | E | FutureTimeoutError` (`T | E` without
+  timeout). Undeclared runtime faults clean up first and then terminate the task or program
+  instead of becoming a catchable `FutureRuntimeError`. Cleanup functions must return
+  `nil`; potentially failing close/destructor calls are handled explicitly before
+  registering defer cleanup. Allocation failure uses a
+  Runtime fault diagnostics include the fault kind/reason, fault location, task creation
+  location, await location, and cleanup status; the report does not change Future types.
+  payload enum `AllocationError = OutOfMemory(usize)` carrying the requested
+  size, with no zero sentinel; callers explicitly handle or propagate the
+  allocation error through their return union.
+  Returned allocations are caller-managed; WASI
+  resources such as File handles are explicitly closed by the caller. The
+  production compiler still uses Wasm GC; implementation migration and ABI region
+  passing details remain open.
+
 # 2026-09-16 G5c final inventory closeout and release-candidate verification:
   all 15 G5c migration rows now pass the repository inventory gate:
   `complete_rows=15 pending_rows=0`, exit code `0`. Fresh verification reports

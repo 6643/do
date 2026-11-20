@@ -1,6 +1,6 @@
 # do 编译器主计划
 
-状态: v1 子集发布候选已收口; G5c 15-row capability inventory 已全部闭环且最终门禁通过; G6 generic consumer、bounded nested resource paths、私有双 owned-field record producer、参数化双 owned-field record producer、固定三字段 `ResourceTriple`、nested-owned-record private compiler admission、private async `map<u32,u32>` compiler admission、private list-owned-record producer 与 G6.2 general producer/resource internal contract consolidation 已闭环, D2 私有 descriptor slices 与私有有界 `stream<list<u32>>` producer promotion 已闭环, G6.2 shared emitter/state-IR single-route pilot 的 artifact/default/rollback/repository inventory 与 test-only runtime callback counter gate 已闭环, 剩余 producer/resource residual；Task 8 Step 4/5 Shell-to-Zig parity 与 Task 9 active gate/文档/回归/回滚检查点已闭环；Task 6 GC-first runtime cutover 已闭环，普通编译入口现为 GC-only，ARC 仅保留显式 test-only equivalence oracle
+状态: v1 子集发布候选已收口; G5c 15-row capability inventory 已全部闭环且最终门禁通过; G6/D2 已关闭若干固定形状 gate，仍有 producer/resource residual；Task 6 GC-first backend cutover 同时是当前实现事实和 v1 源码内存契约。普通 Do 对象由 Wasm GC 按可达性回收，词法块退出不释放普通对象；函数参数默认只读借用；普通赋值、`@set`、Future 和外部 resource 分别遵循值语义、显式消费和显式 close/drop 规则。
 更新时间: 2026-09-16
 
 实时接手入口: `doc/start_here.md`。  

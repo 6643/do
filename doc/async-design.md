@@ -65,8 +65,34 @@ parser 不再把它登记为函数，正常编译会报告 `DeprecatedAsyncFunct
 ## Future 与 Stream
 
 `Future<T>` 是 affine 的一次性结果句柄。`await`、`await_all`、`await_any` 和
-`@cancel` 都消费其所有权；未消费 Future 不能静默离开作用域。`@cancel` 是任务
-生命周期操作，不产生源码可见的 `Cancelled` 结果分支。
+`@cancel` 都消费其句柄；未消费 Future 不能静默离开其词法绑定作用域。若 Future 绑定
+离开作用域时仍未消费则编译报错，不隐式取消；必须显式 await/cancel。这里的作用域检查
+约束 Future 句柄的消费，不管理普通 Do 对象的内存生命周期。`@cancel`
+是任务生命周期操作，不产生源码可见的 `Cancelled` 结果分支。
+
+Future 若同时依赖多个 GC roots, 所有 root 都必须在 Future 终止前保持可达。async frame、
+buffer 和 Component resource state 不通过词法块释放管理，也不会自动把普通 Do 对象转成
+源码可见的 owner 类型。
+
+词法作用域退出时，先按注册逆序运行该作用域的 `defer`，再完成必要的外部 resource
+关闭。普通 GC 对象继续由 GC 管理，Future 绑定的词法作用域结束前必须完成终态检查。
+
+带 timeout 的 `@await(future, timeout_ms)` 在等待超时时自动取消任务，并等待异步 ABI
+到达终态、完成清理后再返回。这样 Future 的 frame、buffer 和外部 resource state 在
+`@await` 返回时都已完成终态处理。
+取消清理可以使总耗时超过 `timeout_ms`；该参数限制正常等待时间，不中断终态清理。超时
+时的结果类型为 `T | E | FutureTimeoutError`；`FutureTimeoutError` 表示任务取消且清理
+到终态。该标准错误枚举定义为 `FutureTimeoutError error = FutureTimedOut`。无 timeout
+时，`@await` 返回任务声明的 `T | E`。
+
+Future 的 `E` 只包含函数签名显式声明的业务错误。trap、ABI 违规等未声明运行时故障不
+转换为 `FutureRuntimeError`，也不作为普通 `@await` 分支返回；任务先完成 Future、必要 GC
+root 和外部资源的终态清理，然后直接终止当前任务或程序。需要由调用方处理的错误必须
+显式加入函数返回 union。
+
+未声明运行时故障使用固定字段诊断：故障类别和原因、发生位置、任务创建位置、`@await`
+位置和清理状态。清理完成后再输出诊断；无法取得异步栈时，至少保留故障位置和清理状态。
+这只是运行时报告格式，不改变 `Future<T | E>` 的类型。
 
 G6.2 现已增加一个仅限登记 descriptor 的 resource Result 取消切片。源码必须显式
 保存并消费 `Future<Result<HttpResponse, HttpError>>`：
@@ -294,13 +320,20 @@ completion；证据是 `test_do_http_request_body_await_completion_lowering.sh`
 
 ## Scope 与取消
 
-每个包含异步操作的 root 创建一个 Scope；async frame、Future、Stream endpoint、defer payload 和
-host resource 都由它统一拥有。对已 pinned 的 Component async lowering，`@cancel(future)`
+每个包含异步操作的 root 创建一个 Scope，并登记 async frame、Future、Stream endpoint、
+defer payload 和 host resource 的 GC roots/Component handles。owner 作用域结束检查必须
+先确认所有未消费 Future 已经终止；对已 pinned 的 Component async lowering，`@cancel(future)`
 直接调用该 Future 的 `subtask.cancel`，等待 ABI 终态后执行 `subtask.drop`。它不创建 Do
 operation ID、取消确认事件或 host broker。
 
 任务取消不承诺撤销已经对数据库、网络或其他外部系统提交的副作用。该类补偿、幂等和
 结果协调由 host API 与业务协议定义；编译器只遵循 Component 的任务/subtask 生命周期。
+
+任务发生未声明运行时故障时，仍使用同一条终态清理路径完成 `defer`、GC root release
+和 Component resource cleanup；清理完成后故障直接终止当前任务或程序，不包装成可捕获的 Future 错误。
+
+异步任务的作用域退出清理函数必须返回 `nil`。可能失败的 resource `close`/析构必须在
+注册 `defer` 前显式处理；`defer` 不聚合或隐式传播清理错误。
 
 ## 后端边界
 

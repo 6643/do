@@ -1,0 +1,2 @@
+array.get_u $do_bytes
+array.set $do_bytes

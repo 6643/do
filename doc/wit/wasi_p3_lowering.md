@@ -5,12 +5,13 @@
 > and component/core validation coverage; this is not a claim that executable
 > WASI component lowering is implemented.
 
-> **GC-first execution note (2026-08-11):** `doc/memory.md` and
-> `doc/design/2026-08-11-gc-first-memory-decision.md` select Wasm GC for v1.
-> References below to ARC storage/handles describe the current Core WAT
-> transition implementation only, not the selected runtime contract. Values
-> crossing Component/WIT boundaries remain copied or marshaled, and resource
-> ownership/drop remains explicit ABI behavior rather than GC finalization.
+> **GC-first execution note (2026-11-19):** `doc/memory.md` defines the v1 memory
+> contract; `doc/design/2026-08-11-gc-first-memory-decision.md` records its
+> decision and implementation evidence. ARC storage/handle references below describe historical artifacts or
+> the explicit test-only equivalence oracle; ordinary `do build` uses the Wasm
+> GC production route. Values crossing Component/WIT boundaries are copied or
+> marshaled, and resource ownership/drop remains explicit ABI behavior rather
+> than GC finalization.
 
 ## Generic component async evidence
 
@@ -84,7 +85,7 @@ the registered filesystem `result<_,error-code>` /
 direct-call subset to `cm32p2` core imports and Do-level wrapper code. The
 shipped subset covers the current clocks `Datetime/u64` bindings, scalar
 `random/get-random-u64`, and `random/get-random-bytes(u64) -> list<u8>` copied
-into Do `[u8]` ARC storage.
+into Do `[u8]` Wasm GC managed storage.
 The current `descriptor.sync -> result<_,error-code>` increment supports
 statement-position ignore and explicit status reads:
 
@@ -140,11 +141,11 @@ descriptor, status = host_file_open_at(dir, path_flags, path, open_flags, descri
 
 The two WIT `string` parameters are lowered as canonical ABI `ptr,len` pairs.
 Direct string literals use static data segments; Do `text` locals/parameters use
-their ARC storage payload pointer and length. `[u8]` is raw bytes and is not
+their marshaled payload pointer and length. `[u8]` is raw bytes and is not
 accepted as a WIT `string` argument.
-At the ordinary Do call boundary, Do `text` parameters and returns are ARC storage
-handles; direct string literals in known `text` argument or return positions
-allocate storage handles before the call/return.
+Inside Do, `text` parameters and returns use the active Wasm GC representation;
+the WIT boundary marshals payload bytes according to canonical ABI. Direct string
+literals in known `text` argument or return positions produce managed values.
 
 `status == 0` means ok. Nonzero status is the WIT `error-code` variant index
 plus 1, so variant index 0 cannot collide with ok. Converting that status into a
@@ -585,7 +586,7 @@ This artifact is still not the Do-level wrapper body. The compiler's direct WAT
 path has a minimal bridge for the registered record-result subset: it uses a
 reserved result-area scratch buffer, calls the `cm32p2` import, then loads the
 fields into the flattened Do struct return. It also bridges the registered
-`list<u8>` result by copying canonical ABI `ptr,len` into Do `[u8]` ARC storage.
+`list<u8>` result by copying canonical ABI `ptr,len` into Do `[u8]` Wasm GC managed storage.
 Registered filesystem `result<_,error-code>`, `result<filesize,error-code>`,
 `result<tuple<list<u8>,bool>,error-code>`, and `result<descriptor,error-code>`
 calls are bridged through a
@@ -945,7 +946,7 @@ Acceptance for that slice:
   the list result writes `ptr,len` into the canonical result area.
 - Direct core `do build` currently bridges registered record results through a
   reserved result-area scratch buffer, bridges `list<u8>` by copying the
-  returned bytes into Do `[u8]` ARC storage, and can call registered
+  returned bytes into Do `[u8]` Wasm GC managed storage, and can call registered
   `result<_,error-code>`, `result<filesize,error-code>`,
   `result<tuple<list<u8>,bool>,error-code>`, `result<descriptor,error-code>`
   filesystem functions,
@@ -954,6 +955,6 @@ Acceptance for that slice:
   through their checked result-area bridges. `descriptor.link-at` additionally supports
   direct string literal or Do `text` local/parameter path arguments and
   `_,status` result reads. Ordinary Do `text` call/return positions can now
-  lower direct string literals to ARC storage handles, which lets wrappers pass
+  lower direct string literals to managed `text` values, which lets wrappers pass
   Do `text` locals/parameters through to the WIT string bridge. Unknown or
   complex WIT calls are still rejected when reachable.

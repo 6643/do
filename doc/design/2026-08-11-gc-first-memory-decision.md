@@ -1,8 +1,9 @@
 # GC-First Memory Decision
 
-**Status:** Active language and runtime target. Documentation decision only; the
-current compiler implementation still contains ARC-specific code that must be
-replaced in a later implementation phase.
+**Status:** Confirmed on 2026-11-19 as the v1 source-memory contract. It supersedes
+the lexical-region proposal in
+[`2026-11-18-lexical-region-memory-decision.md`](2026-11-18-lexical-region-memory-decision.md).
+The Wasm GC backend and verification described here remain implementation evidence.
 
 ## Decision
 
@@ -65,3 +66,7 @@ Any earlier document that calls ARC the active v1 backend or describes an
 ARC-to-GC switch as a future product decision is superseded by this document.
 Historical ARC layouts, tests, commands, and pass counts remain evidence of
 previous implementation work and are not rewritten.
+
+> Status note (2026-11-19): the GC-first contract above was reaffirmed as the v1
+> target. The lexical-region model is retained only as a rejected historical
+> proposal. See `2026-11-18-lexical-region-memory-decision.md`.

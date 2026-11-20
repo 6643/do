@@ -1,10 +1,11 @@
 # do ARC Transition 内存布局 Zig 结构伪代码
 
-**状态**: 当前 ARC transition implementation draft. `doc/memory.md` 与
-`doc/design/2026-08-11-gc-first-memory-decision.md` 定义 GC-first v1
-contract; 本文不是 v1 runtime specification。
+**状态**: 历史 ARC transition implementation draft. 当前目标内存契约见
+`doc/memory.md` 与
+`doc/memory.md`；当前生产编译器和 v1 契约均使用 Wasm GC。本文只记录旧
+allocator/layout/ARC 实现，不是目标 runtime specification。
 **目标**: 只描述当前 allocator block、managed object、layout table 和 ARC
-release/COW 的字段与作用, 作为 GC migration debt 的实现对照。
+release/COW 的字段与作用，作为历史实现对照。
 
 ---
 

@@ -900,6 +900,162 @@ pub fn check_tuple_get_index(tokens: []const lexer.Token) !void {
     }
 }
 
+pub fn check_literal_storage_bounds(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i + 2 < tokens.len) : (i += 1) {
+        if (!tok_eq(tokens[i], "@") or !tok_eq(tokens[i + 1], "get") and
+            !tok_eq(tokens[i + 1], "set") and !is_memory_load_name(tokens[i + 1])) continue;
+        if (!tok_eq(tokens[i + 2], "(")) continue;
+
+        const close_paren = find_matching(tokens, i + 2, "(", ")") catch continue;
+        const first_end = find_argument_end(tokens, i + 3, close_paren) orelse continue;
+        const literal_len = aggregate_literal_len(tokens, i + 3, first_end) orelse continue;
+
+        const name = tokens[i + 1].lexeme;
+        if (tok_eq(tokens[i + 1], "get") or tok_eq(tokens[i + 1], "set")) {
+            if (first_end >= close_paren or !tok_eq(tokens[first_end], ",")) continue;
+            const index_start = first_end + 1;
+            const index_end = find_argument_end(tokens, index_start, close_paren) orelse continue;
+            const index = parse_constant_usize(tokens, index_start, index_end) orelse continue;
+            if (index >= literal_len) return mark_error_at(tokens, index_start, error.StaticIndexOutOfBounds);
+            continue;
+        }
+
+        if (first_end >= close_paren or !tok_eq(tokens[first_end], ",")) continue;
+        const offset_start = first_end + 1;
+        const offset_end = find_argument_end(tokens, offset_start, close_paren) orelse continue;
+        if (offset_end != close_paren) continue;
+        const offset = parse_constant_usize(tokens, offset_start, offset_end) orelse continue;
+        const width = memory_load_width(name) orelse continue;
+        if (offset > literal_len or width > literal_len - offset) {
+            return mark_error_at(tokens, offset_start, error.StaticIndexOutOfBounds);
+        }
+    }
+}
+
+fn aggregate_literal_len(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    if (end_idx < start_idx + 3 or !tok_eq(tokens[start_idx], ".") or !tok_eq(tokens[start_idx + 1], "{")) return null;
+    const close_brace = find_matching(tokens, start_idx + 1, "{", "}") catch return null;
+    if (close_brace + 1 != end_idx) return null;
+
+    var len: usize = 0;
+    var has_value = false;
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_bracket: usize = 0;
+    var depth_angle: usize = 0;
+    var i = start_idx + 2;
+    while (i < close_brace) : (i += 1) {
+        if (tok_eq(tokens[i], "(")) depth_paren += 1 else if (tok_eq(tokens[i], ")") and depth_paren > 0) {
+            depth_paren -= 1;
+        } else if (tok_eq(tokens[i], "{")) depth_brace += 1 else if (tok_eq(tokens[i], "}") and depth_brace > 0) {
+            depth_brace -= 1;
+        } else if (tok_eq(tokens[i], "[")) depth_bracket += 1 else if (tok_eq(tokens[i], "]") and depth_bracket > 0) {
+            depth_bracket -= 1;
+        } else if (tok_eq(tokens[i], "<") and (depth_angle > 0 or generic_args_close(tokens, i, close_brace) != null)) depth_angle += 1 else if (tok_eq(tokens[i], ">") and depth_angle > 0) {
+            depth_angle -= 1;
+        } else if (tok_eq(tokens[i], ",") and depth_paren == 0 and depth_brace == 0 and depth_bracket == 0 and depth_angle == 0) {
+            if (has_value) len += 1;
+            has_value = false;
+            continue;
+        }
+        has_value = true;
+    }
+    if (has_value) len += 1;
+    return len;
+}
+
+fn find_argument_end(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    var depth_paren: usize = 0;
+    var depth_brace: usize = 0;
+    var depth_bracket: usize = 0;
+    var i = start_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tok_eq(tokens[i], "(")) depth_paren += 1 else if (tok_eq(tokens[i], ")") and depth_paren > 0) {
+            depth_paren -= 1;
+        } else if (tok_eq(tokens[i], "{")) depth_brace += 1 else if (tok_eq(tokens[i], "}") and depth_brace > 0) {
+            depth_brace -= 1;
+        } else if (tok_eq(tokens[i], "[")) depth_bracket += 1 else if (tok_eq(tokens[i], "]") and depth_bracket > 0) {
+            depth_bracket -= 1;
+        } else if (tok_eq(tokens[i], ",") and depth_paren == 0 and depth_brace == 0 and depth_bracket == 0) {
+            return i;
+        }
+    }
+    return end_idx;
+}
+
+fn generic_args_close(tokens: []const lexer.Token, open_idx: usize, end_idx: usize) ?usize {
+    if (open_idx == 0 or tokens[open_idx - 1].kind != .ident) return null;
+    var depth: usize = 0;
+    var i = open_idx;
+    while (i < end_idx) : (i += 1) {
+        if (tok_eq(tokens[i], "<")) {
+            depth += 1;
+        } else if (tok_eq(tokens[i], ">")) {
+            if (depth == 0) return null;
+            depth -= 1;
+            if (depth == 0) {
+                if (i + 1 < end_idx and (tok_eq(tokens[i + 1], "(") or tok_eq(tokens[i + 1], "{"))) return i;
+                return null;
+            }
+        }
+    }
+    return null;
+}
+
+fn parse_constant_usize(tokens: []const lexer.Token, start_idx: usize, end_idx: usize) ?usize {
+    if (end_idx != start_idx + 1 or tokens[start_idx].kind != .number) return null;
+    return std.fmt.parseInt(usize, tokens[start_idx].lexeme, 10) catch null;
+}
+
+fn is_memory_load_name(token: lexer.Token) bool {
+    const names = [_][]const u8{
+        "load_u8", "load_i8", "load_u16_le", "load_i16_le",
+        "load_u32_le", "load_i32_le", "load_u64_le", "load_i64_le",
+    };
+    for (names) |name| if (std.mem.eql(u8, token.lexeme, name)) return true;
+    return false;
+}
+
+fn memory_load_width(name: []const u8) ?usize {
+    if (std.mem.eql(u8, name, "load_u8") or std.mem.eql(u8, name, "load_i8")) return 1;
+    if (std.mem.eql(u8, name, "load_u16_le") or std.mem.eql(u8, name, "load_i16_le")) return 2;
+    if (std.mem.eql(u8, name, "load_u32_le") or std.mem.eql(u8, name, "load_i32_le")) return 4;
+    if (std.mem.eql(u8, name, "load_u64_le") or std.mem.eql(u8, name, "load_i64_le")) return 8;
+    return null;
+}
+
+test "literal storage bounds require a direct aggregate and constant index" {
+    const allocator = std.testing.allocator;
+    const source_cases = [_][]const u8{
+        "@get(.{1, 2}, 1)",
+        "@set(.{1, 2}, 1, 3)",
+        "@load_u16_le(.{1, 2}, 0)",
+    };
+    for (source_cases) |source| {
+        const tokens = try lexer.tokenize(allocator, source);
+        defer allocator.free(tokens);
+        try check_literal_storage_bounds(tokens);
+    }
+
+    const out_of_bounds_cases = [_][]const u8{
+        "@get(.{1, 2}, 2)",
+        "@set(.{1, 2}, 2, 3)",
+        "@get(.{@add(1, 2), 3}, 2)",
+        "@load_u16_le(.{1}, 0)",
+        "@load_u64_le(.{1, 2, 3, 4, 5, 6, 7, 8}, 18446744073709551615)",
+    };
+    for (out_of_bounds_cases) |source| {
+        const tokens = try lexer.tokenize(allocator, source);
+        defer allocator.free(tokens);
+        try std.testing.expectError(error.StaticIndexOutOfBounds, check_literal_storage_bounds(tokens));
+    }
+
+    const dynamic_index_tokens = try lexer.tokenize(allocator, "@get(.{1, 2}, index)");
+    defer allocator.free(dynamic_index_tokens);
+    try check_literal_storage_bounds(dynamic_index_tokens);
+}
+
 /// Returns arity when the nearest binding type of `name` before `before_idx` is `Tuple<...>`.
 
 /// Returns arity when the nearest binding type of `name` before `before_idx` is `Tuple<...>`.

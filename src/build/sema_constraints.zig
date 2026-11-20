@@ -23,6 +23,7 @@ const find_struct_field_type_end = sema_tokens.find_struct_field_type_end;
 const find_struct_info = sema_tokens.find_struct_info;
 const find_top_level_assign_eq_on_line = sema_tokens.find_top_level_assign_eq_on_line;
 const find_top_level_comma = sema_tokens.find_top_level_comma;
+const find_enclosing_func_param_type_name = sema_function_support.find_enclosing_func_param_type_name;
 const free_call_arg_shapes = sema_function_support.free_call_arg_shapes;
 const free_func_shapes = sema_function_support.free_func_shapes;
 const free_struct_infos = sema_function_support.free_struct_infos;
@@ -503,6 +504,8 @@ fn scopes_contain_loop_binding(scopes: []const Scope, name: []const u8) bool {
 }
 
 pub fn check_assignment_constraints(allocator: std.mem.Allocator, tokens: []const lexer.Token) !void {
+    try check_parameter_set_statements(tokens);
+
     var scopes: std.ArrayListUnmanaged(Scope) = .empty;
     defer {
         for (scopes.items) |*scope| scope.deinit(allocator);
@@ -585,6 +588,29 @@ pub fn check_assignment_constraints(allocator: std.mem.Allocator, tokens: []cons
                 try current.names.append(allocator, t.lexeme);
             }
         }
+    }
+}
+
+fn check_parameter_set_statements(tokens: []const lexer.Token) !void {
+    var i: usize = 0;
+    while (i < tokens.len) : (i += 1) {
+        if (!tok_eq(tokens[i], "set") or i == 0 or !tok_eq(tokens[i - 1], "@")) continue;
+        if (i + 2 >= tokens.len or !tok_eq(tokens[i + 1], "(")) continue;
+
+        const close_paren = find_matching(tokens, i + 1, "(", ")") catch continue;
+        const line_start = line_start_idx(tokens, i - 1);
+        if (line_start != i - 1) {
+            i = close_paren;
+            continue;
+        }
+
+        const target_idx = i + 2;
+        if (target_idx < close_paren and tokens[target_idx].kind == .ident and
+            find_enclosing_func_param_type_name(tokens, target_idx, tokens[target_idx].lexeme) != null)
+        {
+            return mark_error_at(tokens, target_idx, error.InvalidAssignExpr);
+        }
+        i = close_paren;
     }
 }
 
@@ -749,6 +775,9 @@ fn validate_assignment_lhs_names(tokens: []const lexer.Token, start_idx: usize, 
         const t = tokens[i];
         if (t.kind != .ident) continue;
         if (t.lexeme.len == 0) continue;
+        if (find_enclosing_func_param_type_name(tokens, i, t.lexeme) != null) {
+            return mark_error_at(tokens, i, error.InvalidAssignExpr);
+        }
         if (t.lexeme[0] == '.') return mark_error_at(tokens, i, error.PrivateIdentCannotBeLValue);
         if (std.mem.eql(u8, t.lexeme, "_")) {
             expect_name = false;
