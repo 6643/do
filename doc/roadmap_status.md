@@ -1,6 +1,6 @@
 # Roadmap 执行状态
 
-更新时间: 2026-09-16
+更新时间: 2026-11-20
 
 **本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
@@ -17,6 +17,17 @@ smoke、GC default gate（87 fixtures）、ARC post-cutover
 `modules=164 forbidden=0`）、semantic-equivalence（26 rows; 0 pending）和
 evidence checker 均通过。本文下方带日期的旧增量保留当时快照；其中历史的
 `complete_rows=15 pending_rows=15` 不代表当前状态。
+
+2026-11-20 增量: GC synchronous core parity 已闭环一组纯同步标量 lowering。
+GC route 现在覆盖 `@add/@sub/@mul/@div/@rem`、`@abs/@min/@max`、整数
+`@and/@or/@xor/@shl/@shr/@rotl/@rotr`、`@clz/@ctz/@popcnt`、跨 Wasm
+宽度/浮点的 `@as`、布尔 `@not` 与短路 `@and/@or`、float unary 以及
+`@copysign`。compile fixtures `02/12/13/14/15/16/17/18/19/26` 已不再
+fail-closed；pending manifest 当前为 `compile_ok=119`、`run=5`、
+`compiled_must_pass=94`，另保留 `compiled_ok=16` 个 legacy compiled-test
+边界行，共跟踪 `234` 行。新鲜验证为 `run_tests.sh` `14/14 steps; 36/36 tests`
+和从 `src/` 运行的 `zig test build/codegen_pipeline.zig` `1058/1058`。
+通用 async/resource、aggregate 和未登记 host/WIT shapes 仍保持现有边界。
 
 2026-09-15 增量: D2 private `descriptor.read-via-stream` bounded byte-reader
 gate 已闭环。固定同步 `@host_func` method ABI 为

@@ -161,6 +161,14 @@ fn is_unsigned_scalar(ty: []const u8) bool {
         std.mem.eql(u8, ty, "usize");
 }
 
+fn memory_load_width(name: []const u8) ?usize {
+    if (std.mem.eql(u8, name, "load_u8") or std.mem.eql(u8, name, "load_i8")) return 1;
+    if (std.mem.eql(u8, name, "load_u16_le") or std.mem.eql(u8, name, "load_i16_le")) return 2;
+    if (std.mem.eql(u8, name, "load_u32_le") or std.mem.eql(u8, name, "load_i32_le")) return 4;
+    if (std.mem.eql(u8, name, "load_u64_le") or std.mem.eql(u8, name, "load_i64_le")) return 8;
+    return null;
+}
+
 const GenericNestedFieldPath = struct {
     root_local: []const u8,
     root_ty: []const u8,
@@ -1469,6 +1477,89 @@ const BodyEmitter = struct {
         return elem_ty;
     }
 
+    fn emit_memory_load_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
+        if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or
+            self.tokens[start_idx + 1].kind != .ident or !tok_eq(self.tokens[start_idx + 2], "(")) return null;
+        const call_name = self.tokens[start_idx + 1].lexeme;
+        if (!codegen_names.is_memory_load_name(call_name)) return null;
+        const result_ty = codegen_storage_layout.memory_load_result_type(call_name) orelse return error.UnsupportedGcSyncExpression;
+        const width = memory_load_width(call_name) orelse return error.UnsupportedGcSyncExpression;
+        const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
+        if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
+
+        const bytes_start = start_idx + 3;
+        const bytes_end = find_arg_end(self.tokens, bytes_start, close_idx);
+        if (bytes_end >= close_idx or !tok_eq(self.tokens[bytes_end], ",")) return error.UnsupportedGcSyncExpression;
+        const offset_start = bytes_end + 1;
+        const offset_end = find_arg_end(self.tokens, offset_start, close_idx);
+        if (offset_end != close_idx) return error.UnsupportedGcSyncExpression;
+
+        try ensure_compatible(expected, result_ty);
+        const bytes_local = try std.fmt.allocPrint(self.allocator, "__gc_load_bytes_{d}", .{start_idx});
+        defer self.allocator.free(bytes_local);
+        const offset_local = try std.fmt.allocPrint(self.allocator, "__gc_load_offset_{d}", .{start_idx});
+        defer self.allocator.free(offset_local);
+
+        const bytes_ty = try self.emit_expr(bytes_start, bytes_end, "[u8]");
+        try ensure_compatible("[u8]", bytes_ty);
+        try self.append_fmt("    local.set ${[name]s}\n", .{ .name = bytes_local });
+        const offset_ty = try self.emit_expr(offset_start, offset_end, "usize");
+        try ensure_compatible("usize", offset_ty);
+        try self.append_fmt("    local.set ${[name]s}\n", .{ .name = offset_local });
+
+        // Check offset <= len before subtracting, then ensure the full width fits.
+        try self.append_fmt_block(4,
+            \\local.get ${[bytes]s}
+            \\ref.as_non_null
+            \\array.len
+            \\local.get ${[offset]s}
+            \\i32.lt_u
+            \\if
+            \\unreachable
+            \\end
+            \\local.get ${[bytes]s}
+            \\ref.as_non_null
+            \\array.len
+            \\local.get ${[offset]s}
+            \\i32.sub
+            \\i32.const {[width]d}
+            \\i32.lt_u
+            \\if
+            \\unreachable
+            \\end
+            \\
+        , .{ .bytes = bytes_local, .offset = offset_local, .width = width });
+
+        const wasm_ty = gc_scalar_slot_wasm_type(self.tokens, result_ty, self.ctx.value_enums) orelse return error.UnsupportedGcSyncType;
+        for (0..width) |byte_index| {
+            try self.append_fmt_block(4,
+                \\local.get ${[bytes]s}
+                \\ref.as_non_null
+                \\local.get ${[offset]s}
+                \\i32.const {[index]d}
+                \\i32.add
+                \\array.get_u $do_bytes
+                \\
+            , .{ .bytes = bytes_local, .offset = offset_local, .index = byte_index });
+            if (byte_index == 0) {
+                if (std.mem.eql(u8, wasm_ty, "i64")) try self.append_static("    i64.extend_i32_u\n");
+                continue;
+            }
+            if (std.mem.eql(u8, wasm_ty, "i64")) {
+                try self.append_static("    i64.extend_i32_u\n");
+                try self.append_fmt("    i64.const {[shift]d}\n    i64.shl\n    i64.or\n", .{ .shift = byte_index * 8 });
+            } else {
+                try self.append_fmt("    i32.const {[shift]d}\n    i32.shl\n    i32.or\n", .{ .shift = byte_index * 8 });
+            }
+        }
+        if (std.mem.eql(u8, result_ty, "i8")) {
+            try self.append_static("    i32.const 24\n    i32.shl\n    i32.const 24\n    i32.shr_s\n");
+        } else if (std.mem.eql(u8, result_ty, "i16")) {
+            try self.append_static("    i32.const 16\n    i32.shl\n    i32.const 16\n    i32.shr_s\n");
+        }
+        return result_ty;
+    }
+
     fn emit_get_tuple_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
         if (start_idx + 1 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or !tok_eq(self.tokens[start_idx + 1], "get")) return null;
         if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx + 2], "(")) return null;
@@ -2347,29 +2438,203 @@ const BodyEmitter = struct {
         if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or
             (!tok_eq(self.tokens[start_idx + 1], "add") and
                 !tok_eq(self.tokens[start_idx + 1], "sub") and
-                !tok_eq(self.tokens[start_idx + 1], "mul"))) return null;
+                !tok_eq(self.tokens[start_idx + 1], "mul") and
+                !tok_eq(self.tokens[start_idx + 1], "div") and
+                !tok_eq(self.tokens[start_idx + 1], "rem"))) return null;
         if (!tok_eq(self.tokens[start_idx + 2], "(")) return error.UnsupportedGcSyncExpression;
         const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
         if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
         const first_end = find_arg_end(self.tokens, start_idx + 3, close_idx);
         if (first_end >= close_idx or !tok_eq(self.tokens[first_end], ",")) return error.UnsupportedGcSyncExpression;
-        const second_start = first_end + 1;
-        const second_end = find_arg_end(self.tokens, second_start, close_idx);
-        if (second_end != close_idx) return error.UnsupportedGcSyncExpression;
-
         const left_ty = try self.emit_expr(start_idx + 3, first_end, expected);
         if (!type_name.is_core_wasm_scalar(left_ty) or std.mem.eql(u8, left_ty, "bool")) return error.UnsupportedGcSyncType;
         try ensure_compatible(expected, left_ty);
-        const right_ty = try self.emit_expr(second_start, second_end, left_ty);
-        try ensure_compatible(left_ty, right_ty);
         const wasm_ty = payload_wat.wasm_type(left_ty);
         const op = if (tok_eq(self.tokens[start_idx + 1], "add"))
             if (std.mem.eql(u8, wasm_ty, "i64")) "i64.add" else if (std.mem.eql(u8, wasm_ty, "f32")) "f32.add" else if (std.mem.eql(u8, wasm_ty, "f64")) "f64.add" else "i32.add"
         else if (tok_eq(self.tokens[start_idx + 1], "sub"))
             if (std.mem.eql(u8, wasm_ty, "i64")) "i64.sub" else if (std.mem.eql(u8, wasm_ty, "f32")) "f32.sub" else if (std.mem.eql(u8, wasm_ty, "f64")) "f64.sub" else "i32.sub"
-        else if (std.mem.eql(u8, wasm_ty, "i64")) "i64.mul" else if (std.mem.eql(u8, wasm_ty, "f32")) "f32.mul" else if (std.mem.eql(u8, wasm_ty, "f64")) "f64.mul" else "i32.mul";
-        try self.append_fmt("    {[op]s}\n", .{ .op = op });
+        else if (tok_eq(self.tokens[start_idx + 1], "mul"))
+            if (std.mem.eql(u8, wasm_ty, "i64")) "i64.mul" else if (std.mem.eql(u8, wasm_ty, "f32")) "f32.mul" else if (std.mem.eql(u8, wasm_ty, "f64")) "f64.mul" else "i32.mul"
+        else if (tok_eq(self.tokens[start_idx + 1], "div"))
+            if (std.mem.eql(u8, wasm_ty, "f32")) "f32.div" else if (std.mem.eql(u8, wasm_ty, "f64")) "f64.div" else if (std.mem.eql(u8, wasm_ty, "i64")) (if (is_unsigned_scalar(left_ty)) "i64.div_u" else "i64.div_s") else (if (is_unsigned_scalar(left_ty)) "i32.div_u" else "i32.div_s")
+        else if (std.mem.eql(u8, wasm_ty, "i64")) (if (is_unsigned_scalar(left_ty)) "i64.rem_u" else "i64.rem_s") else (if (is_unsigned_scalar(left_ty)) "i32.rem_u" else "i32.rem_s");
+        var arg_start = first_end + 1;
+        var arg_count: usize = 1;
+        while (arg_start < close_idx) {
+            const arg_end = find_arg_end(self.tokens, arg_start, close_idx);
+            if (arg_end <= arg_start) return error.GcSyncArityMismatch;
+            const right_ty = try self.emit_expr(arg_start, arg_end, left_ty);
+            try ensure_compatible(left_ty, right_ty);
+            try self.append_fmt("    {[op]s}\n", .{ .op = op });
+            arg_count += 1;
+            arg_start = arg_end;
+            if (arg_start < close_idx and tok_eq(self.tokens[arg_start], ",")) arg_start += 1 else if (arg_start != close_idx) return error.GcSyncArityMismatch;
+        }
+        if (arg_count < 2) return error.GcSyncArityMismatch;
         return left_ty;
+    }
+
+    fn emit_scalar_bitwise_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
+        if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or
+            (!tok_eq(self.tokens[start_idx + 1], "and") and !tok_eq(self.tokens[start_idx + 1], "or") and
+                !tok_eq(self.tokens[start_idx + 1], "xor") and !tok_eq(self.tokens[start_idx + 1], "shl") and
+                !tok_eq(self.tokens[start_idx + 1], "shr") and !tok_eq(self.tokens[start_idx + 1], "rotl") and
+                !tok_eq(self.tokens[start_idx + 1], "rotr"))) return null;
+        // `@and` is also the boolean short-circuit core form. Leave it for
+        // the boolean emitter when the expected result is bool.
+        if ((tok_eq(self.tokens[start_idx + 1], "and") or tok_eq(self.tokens[start_idx + 1], "or")) and
+            expected != null and std.mem.eql(u8, expected.?, "bool")) return null;
+        if (!tok_eq(self.tokens[start_idx + 2], "(")) return error.UnsupportedGcSyncExpression;
+        const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
+        if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
+
+        const first_start = start_idx + 3;
+        const first_end = find_arg_end(self.tokens, first_start, close_idx);
+        if (first_end >= close_idx or !tok_eq(self.tokens[first_end], ",")) return error.GcSyncArityMismatch;
+        const first_ty = try self.emit_expr(first_start, first_end, expected);
+        if (!type_name.is_core_integer_scalar(first_ty)) return error.UnsupportedGcSyncType;
+        try ensure_compatible(expected, first_ty);
+
+        const name = self.tokens[start_idx + 1].lexeme;
+        const is_shift = std.mem.eql(u8, name, "shl") or std.mem.eql(u8, name, "shr") or
+            std.mem.eql(u8, name, "rotl") or std.mem.eql(u8, name, "rotr");
+        const second_start = first_end + 1;
+        const second_end = find_arg_end(self.tokens, second_start, close_idx);
+        if (second_end != close_idx) return error.GcSyncArityMismatch;
+        const wasm_ty = payload_wat.wasm_type(first_ty);
+        const second_ty = try self.emit_expr(second_start, second_end, if (is_shift) "usize" else first_ty);
+        if (is_shift) {
+            if (!std.mem.eql(u8, second_ty, "usize")) return error.GcSyncTypeMismatch;
+            if (std.mem.eql(u8, wasm_ty, "i64")) {
+                try self.append_static("    i64.extend_i32_u\n");
+            }
+        } else {
+            try ensure_compatible(first_ty, second_ty);
+        }
+
+        const op = if (std.mem.eql(u8, name, "and"))
+            if (std.mem.eql(u8, wasm_ty, "i64")) "i64.and" else "i32.and"
+        else if (std.mem.eql(u8, name, "or"))
+            if (std.mem.eql(u8, wasm_ty, "i64")) "i64.or" else "i32.or"
+        else if (std.mem.eql(u8, name, "xor"))
+            if (std.mem.eql(u8, wasm_ty, "i64")) "i64.xor" else "i32.xor"
+        else if (std.mem.eql(u8, name, "shl"))
+            if (std.mem.eql(u8, wasm_ty, "i64")) "i64.shl" else "i32.shl"
+        else if (std.mem.eql(u8, name, "shr"))
+            if (std.mem.eql(u8, wasm_ty, "i64")) (if (is_unsigned_scalar(first_ty)) "i64.shr_u" else "i64.shr_s") else (if (is_unsigned_scalar(first_ty)) "i32.shr_u" else "i32.shr_s")
+        else if (std.mem.eql(u8, name, "rotl"))
+            if (std.mem.eql(u8, wasm_ty, "i64")) "i64.rotl" else "i32.rotl"
+        else
+            if (std.mem.eql(u8, wasm_ty, "i64")) "i64.rotr" else "i32.rotr";
+        try self.append_fmt("    {[op]s}\n", .{ .op = op });
+        return first_ty;
+    }
+
+    fn emit_count_bits_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
+        if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or
+            (!tok_eq(self.tokens[start_idx + 1], "clz") and !tok_eq(self.tokens[start_idx + 1], "ctz") and
+                !tok_eq(self.tokens[start_idx + 1], "popcnt"))) return null;
+        if (!tok_eq(self.tokens[start_idx + 2], "(")) return error.UnsupportedGcSyncExpression;
+        const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
+        if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
+        const arg_start = start_idx + 3;
+        const arg_end = find_arg_end(self.tokens, arg_start, close_idx);
+        if (arg_end != close_idx) return error.GcSyncArityMismatch;
+        const arg_ty = try self.emit_expr(arg_start, arg_end, expected);
+        if (!type_name.is_core_integer_scalar(arg_ty)) return error.UnsupportedGcSyncType;
+        try ensure_compatible(expected, arg_ty);
+        const wasm_ty = payload_wat.wasm_type(arg_ty);
+        const op = if (tok_eq(self.tokens[start_idx + 1], "clz"))
+            if (std.mem.eql(u8, wasm_ty, "i64")) "i64.clz" else "i32.clz"
+        else if (tok_eq(self.tokens[start_idx + 1], "ctz"))
+            if (std.mem.eql(u8, wasm_ty, "i64")) "i64.ctz" else "i32.ctz"
+        else if (std.mem.eql(u8, wasm_ty, "i64")) "i64.popcnt" else "i32.popcnt";
+        try self.append_fmt("    {[op]s}\n", .{ .op = op });
+        return arg_ty;
+    }
+
+    fn emit_numeric_select_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
+        if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or
+            (!tok_eq(self.tokens[start_idx + 1], "abs") and !tok_eq(self.tokens[start_idx + 1], "min") and
+                !tok_eq(self.tokens[start_idx + 1], "max"))) return null;
+        if (!tok_eq(self.tokens[start_idx + 2], "(")) return error.UnsupportedGcSyncExpression;
+        const name = self.tokens[start_idx + 1].lexeme;
+        const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
+        if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
+
+        const first_start = start_idx + 3;
+        const first_end = find_arg_end(self.tokens, first_start, close_idx);
+        if (first_end > close_idx or (first_end == close_idx and !std.mem.eql(u8, name, "abs"))) return error.GcSyncArityMismatch;
+        const abs_expected = if (std.mem.eql(u8, name, "abs") and expected != null and type_name.is_core_float_scalar(expected.?)) expected else null;
+        const first_ty = try self.emit_expr(first_start, first_end, if (std.mem.eql(u8, name, "abs")) abs_expected else expected);
+        if (!type_name.is_core_wasm_scalar(first_ty) or std.mem.eql(u8, first_ty, "bool")) return error.UnsupportedGcSyncType;
+        const wasm_ty = payload_wat.wasm_type(first_ty);
+
+        if (std.mem.eql(u8, name, "abs")) {
+            if (first_end != close_idx) return error.GcSyncArityMismatch;
+            const result_ty = if (std.mem.eql(u8, first_ty, "i8")) "u8" else if (std.mem.eql(u8, first_ty, "i16")) "u16" else if (std.mem.eql(u8, first_ty, "i32")) "u32" else if (std.mem.eql(u8, first_ty, "i64")) "u64" else if (std.mem.eql(u8, first_ty, "isize")) "usize" else first_ty;
+            try ensure_compatible(expected, result_ty);
+            if (std.mem.eql(u8, wasm_ty, "f32") or std.mem.eql(u8, wasm_ty, "f64")) {
+                try self.append_fmt("    {[op]s}\n", .{ .op = if (std.mem.eql(u8, wasm_ty, "f32")) "f32.abs" else "f64.abs" });
+                return result_ty;
+            }
+            if (is_unsigned_scalar(first_ty)) return error.NoMatchingCall;
+            const tmp = if (std.mem.eql(u8, wasm_ty, "i64")) "__gc_numeric_i64_abs" else "__gc_numeric_i32_abs";
+            try self.append_fmt("    local.set ${[tmp]s}\n    {[wasm]s}.const 0\n    local.get ${[tmp]s}\n    {[wasm]s}.sub\n    local.get ${[tmp]s}\n    local.get ${[tmp]s}\n    {[wasm]s}.const 0\n", .{ .wasm = wasm_ty, .tmp = tmp });
+            const cmp = if (std.mem.eql(u8, wasm_ty, "i64")) "i64.lt_s" else "i32.lt_s";
+            try self.append_fmt("    {[cmp]s}\n    select\n", .{ .cmp = cmp });
+            return result_ty;
+        }
+
+        if (first_end >= close_idx or !tok_eq(self.tokens[first_end], ",")) return error.GcSyncArityMismatch;
+        if (std.mem.eql(u8, wasm_ty, "f32") or std.mem.eql(u8, wasm_ty, "f64")) {
+            try ensure_compatible(expected, first_ty);
+            const op = if (std.mem.eql(u8, name, "min"))
+                if (std.mem.eql(u8, wasm_ty, "f32")) "f32.min" else "f64.min"
+            else if (std.mem.eql(u8, wasm_ty, "f32")) "f32.max" else "f64.max";
+            var arg_start = first_end + 1;
+            var arg_count: usize = 1;
+            while (arg_start < close_idx) {
+                const arg_end = find_arg_end(self.tokens, arg_start, close_idx);
+                if (arg_end <= arg_start) return error.GcSyncArityMismatch;
+                const arg_ty = try self.emit_expr(arg_start, arg_end, first_ty);
+                try ensure_compatible(first_ty, arg_ty);
+                try self.append_fmt("    {[op]s}\n", .{ .op = op });
+                arg_count += 1;
+                arg_start = arg_end;
+                if (arg_start < close_idx and tok_eq(self.tokens[arg_start], ",")) arg_start += 1 else if (arg_start != close_idx) return error.GcSyncArityMismatch;
+            }
+            if (arg_count < 2) return error.GcSyncArityMismatch;
+            return first_ty;
+        }
+
+        if (!is_unsigned_scalar(first_ty) and !std.mem.eql(u8, first_ty, "i8") and
+            !std.mem.eql(u8, first_ty, "i16") and !std.mem.eql(u8, first_ty, "i32") and
+            !std.mem.eql(u8, first_ty, "i64")) return error.UnsupportedGcSyncType;
+        try ensure_compatible(expected, first_ty);
+        const left_tmp = if (std.mem.eql(u8, wasm_ty, "i64")) "__gc_numeric_i64_left" else "__gc_numeric_i32_left";
+        const right_tmp = if (std.mem.eql(u8, wasm_ty, "i64")) "__gc_numeric_i64_right" else "__gc_numeric_i32_right";
+        const cmp = if (std.mem.eql(u8, name, "min")) "lt" else "gt";
+        const cmp_op = if (std.mem.eql(u8, wasm_ty, "i64"))
+            if (std.mem.eql(u8, cmp, "lt")) (if (is_unsigned_scalar(first_ty)) "i64.lt_u" else "i64.lt_s") else (if (is_unsigned_scalar(first_ty)) "i64.gt_u" else "i64.gt_s")
+        else if (std.mem.eql(u8, cmp, "lt")) (if (is_unsigned_scalar(first_ty)) "i32.lt_u" else "i32.lt_s") else (if (is_unsigned_scalar(first_ty)) "i32.gt_u" else "i32.gt_s");
+        try self.append_fmt("    local.set ${[left]s}\n", .{ .left = left_tmp });
+        var arg_start = first_end + 1;
+        var arg_count: usize = 1;
+        while (arg_start < close_idx) {
+            const arg_end = find_arg_end(self.tokens, arg_start, close_idx);
+            if (arg_end <= arg_start) return error.GcSyncArityMismatch;
+            const arg_ty = try self.emit_expr(arg_start, arg_end, first_ty);
+            try ensure_compatible(first_ty, arg_ty);
+            try self.append_fmt("    local.set ${[right]s}\n    local.get ${[left]s}\n    local.get ${[right]s}\n    local.get ${[left]s}\n    local.get ${[right]s}\n    {[cmp]s}\n    select\n    local.set ${[left]s}\n", .{ .left = left_tmp, .right = right_tmp, .cmp = cmp_op });
+            arg_count += 1;
+            arg_start = arg_end;
+            if (arg_start < close_idx and tok_eq(self.tokens[arg_start], ",")) arg_start += 1 else if (arg_start != close_idx) return error.GcSyncArityMismatch;
+        }
+        if (arg_count < 2) return error.GcSyncArityMismatch;
+        try self.append_fmt("    local.get ${[left]s}\n", .{ .left = left_tmp });
+        return first_ty;
     }
 
     fn emit_scalar_comparison_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
@@ -2412,45 +2677,157 @@ const BodyEmitter = struct {
         const target_ty = self.tokens[start_idx + 3].lexeme;
         if (!type_name.is_core_wasm_scalar(target_ty)) return error.UnsupportedGcSyncType;
         const actual_ty = try self.emit_expr(type_end + 1, close_idx, null);
-        if (!type_name.is_core_wasm_scalar(actual_ty) or
-            !std.mem.eql(u8, payload_wat.wasm_type(actual_ty), payload_wat.wasm_type(target_ty))) return error.UnsupportedGcSyncType;
+        if (!type_name.is_core_wasm_scalar(actual_ty)) return error.UnsupportedGcSyncType;
         try ensure_compatible(expected, target_ty);
+        if (!std.mem.eql(u8, payload_wat.wasm_type(actual_ty), payload_wat.wasm_type(target_ty))) {
+            const source_wasm = payload_wat.wasm_type(actual_ty);
+            const target_wasm = payload_wat.wasm_type(target_ty);
+            const op: ?[]const u8 = if (std.mem.eql(u8, source_wasm, "i32") and std.mem.eql(u8, target_wasm, "i64"))
+                if (is_unsigned_scalar(actual_ty)) "i64.extend_i32_u" else "i64.extend_i32_s"
+            else if (std.mem.eql(u8, source_wasm, "i64") and std.mem.eql(u8, target_wasm, "i32"))
+                "i32.wrap_i64"
+            else if (std.mem.eql(u8, source_wasm, "i32") and std.mem.eql(u8, target_wasm, "f32"))
+                if (is_unsigned_scalar(actual_ty)) "f32.convert_i32_u" else "f32.convert_i32_s"
+            else if (std.mem.eql(u8, source_wasm, "i32") and std.mem.eql(u8, target_wasm, "f64"))
+                if (is_unsigned_scalar(actual_ty)) "f64.convert_i32_u" else "f64.convert_i32_s"
+            else if (std.mem.eql(u8, source_wasm, "i64") and std.mem.eql(u8, target_wasm, "f32"))
+                if (is_unsigned_scalar(actual_ty)) "f32.convert_i64_u" else "f32.convert_i64_s"
+            else if (std.mem.eql(u8, source_wasm, "i64") and std.mem.eql(u8, target_wasm, "f64"))
+                if (is_unsigned_scalar(actual_ty)) "f64.convert_i64_u" else "f64.convert_i64_s"
+            else if (std.mem.eql(u8, source_wasm, "f32") and std.mem.eql(u8, target_wasm, "i32"))
+                if (is_unsigned_scalar(target_ty)) "i32.trunc_f32_u" else "i32.trunc_f32_s"
+            else if (std.mem.eql(u8, source_wasm, "f32") and std.mem.eql(u8, target_wasm, "i64"))
+                if (is_unsigned_scalar(target_ty)) "i64.trunc_f32_u" else "i64.trunc_f32_s"
+            else if (std.mem.eql(u8, source_wasm, "f64") and std.mem.eql(u8, target_wasm, "i32"))
+                if (is_unsigned_scalar(target_ty)) "i32.trunc_f64_u" else "i32.trunc_f64_s"
+            else if (std.mem.eql(u8, source_wasm, "f64") and std.mem.eql(u8, target_wasm, "i64"))
+                if (is_unsigned_scalar(target_ty)) "i64.trunc_f64_u" else "i64.trunc_f64_s"
+            else if (std.mem.eql(u8, source_wasm, "f32") and std.mem.eql(u8, target_wasm, "f64"))
+                "f64.promote_f32"
+            else if (std.mem.eql(u8, source_wasm, "f64") and std.mem.eql(u8, target_wasm, "f32"))
+                "f32.demote_f64"
+            else
+                null;
+            const conversion = op orelse return error.UnsupportedGcSyncType;
+            try self.append_fmt("    {[op]s}\n", .{ .op = conversion });
+        }
         return target_ty;
     }
 
-    fn emit_bool_and_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
-        if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or !tok_eq(self.tokens[start_idx + 1], "and")) return null;
+    fn emit_float_unary_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
+        if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or
+            (!tok_eq(self.tokens[start_idx + 1], "neg") and !tok_eq(self.tokens[start_idx + 1], "sqrt") and
+                !tok_eq(self.tokens[start_idx + 1], "ceil") and !tok_eq(self.tokens[start_idx + 1], "floor") and
+                !tok_eq(self.tokens[start_idx + 1], "trunc") and !tok_eq(self.tokens[start_idx + 1], "nearest"))) return null;
         if (!tok_eq(self.tokens[start_idx + 2], "(")) return error.UnsupportedGcSyncExpression;
         const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
         if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
-        try ensure_compatible(expected, "bool");
+        const arg_start = start_idx + 3;
+        const arg_end = find_arg_end(self.tokens, arg_start, close_idx);
+        if (arg_end != close_idx) return error.GcSyncArityMismatch;
+        const arg_expected = if (expected != null and type_name.is_core_float_scalar(expected.?)) expected else null;
+        const arg_ty = try self.emit_expr(arg_start, arg_end, arg_expected);
+        if (!type_name.is_core_float_scalar(arg_ty)) return error.UnsupportedGcSyncType;
+        try ensure_compatible(expected, arg_ty);
+        const wasm_ty = payload_wat.wasm_type(arg_ty);
+        const op = if (tok_eq(self.tokens[start_idx + 1], "neg"))
+            if (std.mem.eql(u8, wasm_ty, "f32")) "f32.neg" else "f64.neg"
+        else if (tok_eq(self.tokens[start_idx + 1], "sqrt"))
+            if (std.mem.eql(u8, wasm_ty, "f32")) "f32.sqrt" else "f64.sqrt"
+        else if (tok_eq(self.tokens[start_idx + 1], "ceil"))
+            if (std.mem.eql(u8, wasm_ty, "f32")) "f32.ceil" else "f64.ceil"
+        else if (tok_eq(self.tokens[start_idx + 1], "floor"))
+            if (std.mem.eql(u8, wasm_ty, "f32")) "f32.floor" else "f64.floor"
+        else if (tok_eq(self.tokens[start_idx + 1], "trunc"))
+            if (std.mem.eql(u8, wasm_ty, "f32")) "f32.trunc" else "f64.trunc"
+        else
+            if (std.mem.eql(u8, wasm_ty, "f32")) "f32.nearest" else "f64.nearest";
+        try self.append_fmt("    {[op]s}\n", .{ .op = op });
+        return arg_ty;
+    }
 
-        var arg_start = start_idx + 3;
-        var arg_count: usize = 0;
-        while (arg_start < close_idx) {
-            const arg_end = find_arg_end(self.tokens, arg_start, close_idx);
-            if (arg_end <= arg_start) return error.GcSyncArityMismatch;
-            const actual_ty = self.emit_expr(arg_start, arg_end, "bool") catch |err| switch (err) {
+    fn emit_float_binary_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
+        if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx], "@") or !tok_eq(self.tokens[start_idx + 1], "copysign")) return null;
+        if (!tok_eq(self.tokens[start_idx + 2], "(")) return error.UnsupportedGcSyncExpression;
+        const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
+        if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
+        const first_start = start_idx + 3;
+        const first_end = find_arg_end(self.tokens, first_start, close_idx);
+        if (first_end >= close_idx or !tok_eq(self.tokens[first_end], ",")) return error.GcSyncArityMismatch;
+        const first_expected = if (expected != null and type_name.is_core_float_scalar(expected.?)) expected else null;
+        const first_ty = try self.emit_expr(first_start, first_end, first_expected);
+        if (!type_name.is_core_float_scalar(first_ty)) return error.UnsupportedGcSyncType;
+        try ensure_compatible(expected, first_ty);
+        const second_start = first_end + 1;
+        const second_end = find_arg_end(self.tokens, second_start, close_idx);
+        if (second_end != close_idx) return error.GcSyncArityMismatch;
+        const second_ty = try self.emit_expr(second_start, second_end, first_ty);
+        try ensure_compatible(first_ty, second_ty);
+        const wasm_ty = payload_wat.wasm_type(first_ty);
+        try self.append_fmt("    {[op]s}\n", .{ .op = if (std.mem.eql(u8, wasm_ty, "f32")) "f32.copysign" else "f64.copysign" });
+        return first_ty;
+    }
+
+    fn emit_bool_short_circuit_branch(self: *BodyEmitter, args: []const ExprRange, index: usize, is_and: bool) anyerror!void {
+        const arg_ty = self.emit_expr(args[index].start, args[index].end, "bool") catch |err| switch (err) {
+            error.GcSyncTypeMismatch,
+            error.UnsupportedGcSyncType,
+            error.UnsupportedGcSyncExpression,
+            => return error.NoMatchingCall,
+            else => return err,
+        };
+        if (!std.mem.eql(u8, arg_ty, "bool")) return error.NoMatchingCall;
+        if (index + 1 == args.len) return;
+        try self.append_static("    if (result i32)\n");
+        if (is_and) {
+            try self.emit_bool_short_circuit_branch(args, index + 1, is_and);
+            try self.append_static("    else\n    i32.const 0\n");
+        } else {
+            try self.append_static("    i32.const 1\n    else\n");
+            try self.emit_bool_short_circuit_branch(args, index + 1, is_and);
+        }
+        try self.append_static("    end\n");
+    }
+
+    fn emit_bool_short_circuit_expr(self: *BodyEmitter, start_idx: usize, end_idx: usize, expected: ?[]const u8) anyerror!?[]const u8 {
+        if (start_idx + 2 >= end_idx or !tok_eq(self.tokens[start_idx], "@")) return null;
+        if (tok_eq(self.tokens[start_idx + 1], "not")) {
+            if (!tok_eq(self.tokens[start_idx + 2], "(")) return error.UnsupportedGcSyncExpression;
+            const not_close = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
+            if (not_close + 1 != end_idx) return error.UnsupportedGcSyncExpression;
+            try ensure_compatible(expected, "bool");
+            const arg_start = start_idx + 3;
+            const arg_end = find_arg_end(self.tokens, arg_start, not_close);
+            if (arg_end != not_close) return error.GcSyncArityMismatch;
+            const arg_ty = self.emit_expr(arg_start, arg_end, "bool") catch |err| switch (err) {
                 error.GcSyncTypeMismatch,
                 error.UnsupportedGcSyncType,
                 error.UnsupportedGcSyncExpression,
                 => return error.NoMatchingCall,
                 else => return err,
             };
-            if (!std.mem.eql(u8, actual_ty, "bool")) return error.NoMatchingCall;
-            arg_count += 1;
+            if (!std.mem.eql(u8, arg_ty, "bool")) return error.NoMatchingCall;
+            try self.append_static("    i32.eqz\n");
+            return "bool";
+        }
+        if (!tok_eq(self.tokens[start_idx + 1], "and") and !tok_eq(self.tokens[start_idx + 1], "or")) return null;
+        if (!tok_eq(self.tokens[start_idx + 2], "(")) return error.UnsupportedGcSyncExpression;
+        const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
+        if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
+        try ensure_compatible(expected, "bool");
+
+        var args = std.ArrayList(ExprRange).empty;
+        defer args.deinit(self.allocator);
+        var arg_start = start_idx + 3;
+        while (arg_start < close_idx) {
+            const arg_end = find_arg_end(self.tokens, arg_start, close_idx);
+            if (arg_end <= arg_start) return error.GcSyncArityMismatch;
+            try args.append(self.allocator, .{ .start = arg_start, .end = arg_end });
             arg_start = arg_end;
-            if (arg_start < close_idx and tok_eq(self.tokens[arg_start], ",")) {
-                arg_start += 1;
-            } else if (arg_start != close_idx) {
-                return error.GcSyncArityMismatch;
-            }
+            if (arg_start < close_idx and tok_eq(self.tokens[arg_start], ",")) arg_start += 1 else if (arg_start != close_idx) return error.GcSyncArityMismatch;
         }
-        if (arg_count < 2) return error.GcSyncArityMismatch;
-        var reductions = arg_count - 1;
-        while (reductions > 0) : (reductions -= 1) {
-            try self.append_static("    i32.and\n");
-        }
+        if (args.items.len < 2) return error.GcSyncArityMismatch;
+        try self.emit_bool_short_circuit_branch(args.items, 0, tok_eq(self.tokens[start_idx + 1], "and"));
         return "bool";
     }
 
@@ -2769,13 +3146,19 @@ const BodyEmitter = struct {
             return self.emit_byte_list_literal(range.start, range.end, expected);
         }
         if (try self.emit_scalar_arithmetic_expr(range.start, range.end, expected)) |arithmetic_ty| return arithmetic_ty;
+        if (try self.emit_numeric_select_expr(range.start, range.end, expected)) |select_ty| return select_ty;
+        if (try self.emit_scalar_bitwise_expr(range.start, range.end, expected)) |bitwise_ty| return bitwise_ty;
+        if (try self.emit_count_bits_expr(range.start, range.end, expected)) |count_ty| return count_ty;
+        if (try self.emit_float_unary_expr(range.start, range.end, expected)) |float_ty| return float_ty;
+        if (try self.emit_float_binary_expr(range.start, range.end, expected)) |float_ty| return float_ty;
         if (try self.emit_scalar_comparison_expr(range.start, range.end, expected)) |comparison_ty| return comparison_ty;
         if (try self.emit_as_expr(range.start, range.end, expected)) |cast_ty| return cast_ty;
-        if (try self.emit_bool_and_expr(range.start, range.end, expected)) |boolean_ty| return boolean_ty;
+        if (try self.emit_bool_short_circuit_expr(range.start, range.end, expected)) |boolean_ty| return boolean_ty;
         if (try self.emit_invalid_unsigned_abs(range.start, range.end)) |abs_ty| return abs_ty;
         if (try self.emit_field_reflection_intrinsic(range.start, range.end, expected)) |reflection_ty| return reflection_ty;
         if (try self.emit_field_get_reflection_expr(range.start, range.end, expected)) |field_ty| return field_ty;
         if (try self.emit_len_expr(range.start, range.end, expected)) |length_ty| return length_ty;
+        if (try self.emit_memory_load_expr(range.start, range.end, expected)) |load_ty| return load_ty;
         if (try self.emit_is_expr(range.start, range.end, expected)) |is_ty| return is_ty;
         if (try self.emit_eq_expr(range.start, range.end, expected)) |comparison_ty| return comparison_ty;
         if (try self.emit_put_scalar_list_expr(range.start, range.end, expected)) |list_ty| return list_ty;
@@ -4159,6 +4542,35 @@ fn append_gc_locals(
         try append_fmt(allocator, out, "    (local ${[index]s} (ref null {[array_name]s}))\n", .{ .index = gc_list_temps.managed_next_names[index], .array_name = managed_array.array_name });
     }
     try append_fmt(allocator, out, "    (local ${[length_name]s} i32)\n", .{ .length_name = gc_list_temps.length_name });
+
+    var needs_numeric_select_temps = false;
+    var token_idx: usize = 0;
+    while (token_idx + 2 < tokens.len) : (token_idx += 1) {
+        if (!tok_eq(tokens[token_idx], "@") or tokens[token_idx + 1].kind != .ident or
+            !codegen_names.is_memory_load_name(tokens[token_idx + 1].lexeme)) continue;
+        try append_fmt(allocator, out, "    (local $__gc_load_bytes_{[index]d} (ref null $do_bytes))\n", .{ .index = token_idx });
+        try append_fmt(allocator, out, "    (local $__gc_load_offset_{[index]d} i32)\n", .{ .index = token_idx });
+    }
+    token_idx = 0;
+    while (token_idx + 1 < tokens.len) : (token_idx += 1) {
+        if (!tok_eq(tokens[token_idx], "@") or tokens[token_idx + 1].kind != .ident) continue;
+        if (tok_eq(tokens[token_idx + 1], "abs") or tok_eq(tokens[token_idx + 1], "min") or tok_eq(tokens[token_idx + 1], "max")) {
+            needs_numeric_select_temps = true;
+            break;
+        }
+    }
+    if (needs_numeric_select_temps) {
+        try append_static_local(allocator, out, "__gc_numeric_i32_abs", "i32");
+        try append_static_local(allocator, out, "__gc_numeric_i64_abs", "i64");
+        try append_static_local(allocator, out, "__gc_numeric_i32_left", "i32");
+        try append_static_local(allocator, out, "__gc_numeric_i32_right", "i32");
+        try append_static_local(allocator, out, "__gc_numeric_i64_left", "i64");
+        try append_static_local(allocator, out, "__gc_numeric_i64_right", "i64");
+    }
+}
+
+fn append_static_local(allocator: std.mem.Allocator, out: *std.ArrayList(u8), name: []const u8, wasm_ty: []const u8) !void {
+    try generated_text.append_fmt(allocator, out, "    (local ${[name]s} {[wasm_ty]s})\n", .{ .name = name, .wasm_ty = wasm_ty });
 }
 
 fn append_conditional_defer_locals(allocator: std.mem.Allocator, out: *std.ArrayList(u8), tokens: []const lexer.Token, start_idx: usize, end_idx: usize) !void {
@@ -5289,7 +5701,7 @@ test "GC sync lowers compiled storage alias set while preserving the old list" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_bytes") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "array.get_u $do_bytes") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "array.get $do_bytes") == null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.and") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "if (result i32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
@@ -5347,7 +5759,7 @@ test "GC sync lowers compiled managed struct alias set while preserving the old 
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $__gc_bytes_eq") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "array.get_u $do_bytes") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "array.get $do_bytes") == null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.and") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "if (result i32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 

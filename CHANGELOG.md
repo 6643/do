@@ -1,5 +1,16 @@
 # Changelog
 
+# 2026-11-20 GC synchronous core parity:
+  promoted the bounded scalar core fixture set through the default Wasm GC route.
+  The lowering now emits typed Wasm for variadic arithmetic including division and
+  remainder, integer bitwise and bit-count operations, signed/unsigned scalar
+  conversions, boolean `not` plus short-circuit `and/or`, and float unary/binary
+  operations. Fixtures `02/12/13/14/15/16/17/18/19/26` are no longer fail-closed
+  in `gc_compiled_pending.tsv`; unsupported aggregate, async/resource, and host/WIT
+  shapes retain their existing admission boundaries. Fresh verification passes
+  `./src/build/test/run_tests.sh` (`14/14 steps; 36/36 tests`) and focused
+  `cd src && zig test build/codegen_pipeline.zig` (`1058/1058`).
+
 # 2026-09-16 G5c final inventory closeout and release-candidate verification:
   all 15 G5c migration rows now pass the repository inventory gate:
   `complete_rows=15 pending_rows=0`, exit code `0`. Fresh verification reports

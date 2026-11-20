@@ -2,7 +2,7 @@
 
 这是当前主线的接手入口。状态以本文为准; 计划摘要见 `doc/master_plan.md`; 近期变更见 `CHANGELOG.md`。不保留向后兼容旧路径或历史流水账。
 
-当前基线日期: `2026-09-16`。
+当前基线日期: `2026-11-20`。
 
 最新闭环: G5c 15-row migration inventory final gate、G6.2 shared emitter/state-IR
 single-route private pilot 的 Task 6 artifact/default-route parity/rollback/
@@ -23,6 +23,15 @@ producer lowering 均未开放。
 gate 为 `87 fixtures`，semantic-equivalence 为 `26 rows; 0 pending`，evidence
 checker、ReleaseSmall 与 release smoke 均通过。本文下方带日期的旧 checkpoint
 保留当时快照；其中旧的 `pending_rows=15` 不代表当前状态。
+
+2026-11-20 GC synchronous core parity 已推进：默认 GC route 现在覆盖数值算术
+与除/余、整数 bitwise、clz/ctz/popcnt、标量转换、布尔 `not` 与短路
+`and/or`、float unary/binary core lowering。对应 compile fixtures
+`02/12/13/14/15/16/17/18/19/26` 已从 GC pending manifest 移除；当前 manifest
+仍有 `compile_ok=119`、`run=5`、`compiled_must_pass=94` 条活动边界记录，另有
+`compiled_ok=16` 个 legacy compiled-test 行，共跟踪 `234` 行。新鲜
+`run_tests.sh` 为 `14/14 steps; 36/36 tests`，从 `src/` 运行的 focused
+`zig test build/codegen_pipeline.zig` 为 `1058/1058`。
 
 ## 1. 阅读顺序
 

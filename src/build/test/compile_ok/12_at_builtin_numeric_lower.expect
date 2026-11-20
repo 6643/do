@@ -19,3 +19,27 @@ local.set $f
 i32.const -128
 local.set $tiny
 local.set $g
+i32.const -64
+local.set $size
+local.get $size
+local.set $__gc_numeric_i32_abs
+i32.const 0
+local.get $__gc_numeric_i32_abs
+i32.sub
+local.get $__gc_numeric_i32_abs
+local.get $__gc_numeric_i32_abs
+i32.const 0
+i32.lt_s
+select
+local.set $__gc_numeric_i32_left
+i32.const 1
+local.set $__gc_numeric_i32_right
+local.get $__gc_numeric_i32_left
+local.get $__gc_numeric_i32_right
+local.get $__gc_numeric_i32_left
+local.get $__gc_numeric_i32_right
+i32.lt_u
+select
+local.set $__gc_numeric_i32_left
+local.get $__gc_numeric_i32_left
+local.set $h

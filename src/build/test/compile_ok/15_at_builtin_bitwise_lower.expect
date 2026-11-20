@@ -20,7 +20,8 @@ i32.shl
 local.set $d
 (local $e i64)
 i64.const 8
-i64.const 1
+i32.const 1
+i64.extend_i32_u
 i64.shr_u
 local.set $e
 (local $f i32)
@@ -30,6 +31,7 @@ i32.rotl
 local.set $f
 (local $g i64)
 i64.const 16
-i64.const 1
+i32.const 1
+i64.extend_i32_u
 i64.rotr
 local.set $g

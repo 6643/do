@@ -1,34 +1,9 @@
-(memory (export "memory") 1)
-(data (i32.const 1024) "abcdefgh")
-local.get $data
-call $__arc_payload
-i32.const 8
-i32.add
-i32.const 0
-i32.add
-i32.load8_u
-local.set $a
-local.get $data
-call $__arc_payload
-i32.const 8
-i32.add
-i32.const 1
-i32.add
-i32.load16_u
-local.set $b
-local.get $data
-call $__arc_payload
-i32.const 8
-i32.add
-i32.const 2
-i32.add
-i32.load
-local.set $c
-local.get $data
-call $__arc_payload
-i32.const 8
-i32.add
-i32.const 0
-i32.add
-i64.load
-local.set $d
+local.get $__gc_load_bytes_
+array.len
+count=18 i32.lt_u
+count=0 i32.gt_u
+array.get_u $do_bytes
+i32.shr_s
+i64.const 56
+i64.or
+(func $read_u16 (param $data (ref null $do_bytes)) (param $offset i32) (result i32)

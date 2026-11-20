@@ -9,5 +9,7 @@ start() {
     f u64 = @max(e, 10, 11)
     tiny i8 = -128
     g u8 = @abs(tiny)
+    size isize = -64
+    h usize = @min(@abs(size), 1)
     return
 }
