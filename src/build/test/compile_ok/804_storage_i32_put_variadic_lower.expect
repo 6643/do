@@ -1,0 +1,9 @@
+;; gc-sync
+array.new_default $do_i32
+array.copy $do_i32 $do_i32
+i32.const 0
+array.set $do_i32
+i32.const 1
+array.set $do_i32
+i32.const 2
+array.set $do_i32

@@ -170,6 +170,21 @@ const FiveLevelNestedManagedScalarFieldProbe = struct {
     terminal_scalar_first: bool,
 };
 
+const UnboundedNestedScalarPathProbe = struct {
+    update_function_name: []const u8,
+    getter_function_name: []const u8,
+    nodes: []StructDecl,
+    child_fields: [][]const u8,
+    terminal_scalar_field: []const u8,
+    terminal_payload_field: []const u8,
+    replacement_value: u32,
+
+    fn deinit(self: UnboundedNestedScalarPathProbe, allocator: std.mem.Allocator) void {
+        allocator.free(self.nodes);
+        allocator.free(self.child_fields);
+    }
+};
+
 const ManagedTupleTextBytesProbe = struct {
     function_name: []const u8,
 };
@@ -369,14 +384,203 @@ pub fn main(init: std.process.Init) !void {
     }
     try codegen_collect_functions.collect_gc_sync_func_decls(allocator, tokens, structs.items, struct_layouts.items, payload_enums.items, null, &functions);
 
-    const call_shape = try find_probe_call_shape(functions.items, structs.items, payload_enums.items, args[3]);
+    const nested_path_probe = try find_unbounded_nested_scalar_path_probe(allocator, functions.items, structs.items, args[3]);
+    defer if (nested_path_probe) |probe| probe.deinit(allocator);
+    const call_shape: ?ProbeCallShape = if (nested_path_probe == null)
+        try find_probe_call_shape(functions.items, structs.items, payload_enums.items, args[3])
+    else
+        null;
     const wat = try codegen_gc_sync.emit_gc_wat_for_supported_program(allocator, program, tokens, &module_graph);
     defer allocator.free(wat);
 
     var probe_wat = std.ArrayList(u8).empty;
     defer probe_wat.deinit(allocator);
-    try append_byte_list_probe(allocator, &probe_wat, wat, args[3], call_shape);
+    if (nested_path_probe) |probe| {
+        try append_unbounded_nested_scalar_path_probe(allocator, &probe_wat, wat, probe);
+    } else if (call_shape) |shape| {
+        try append_byte_list_probe(allocator, &probe_wat, wat, args[3], shape);
+    } else {
+        return error.GcSyncProbeShapeNotFound;
+    }
     try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = args[2], .data = probe_wat.items });
+}
+
+fn find_unbounded_nested_scalar_path_probe(
+    allocator: std.mem.Allocator,
+    functions: []const FuncDecl,
+    structs: []const StructDecl,
+    function_name: []const u8,
+) !?UnboundedNestedScalarPathProbe {
+    for (functions) |func| {
+        if (!std.mem.eql(u8, func.source_name, function_name) and
+            !std.mem.eql(u8, public_decl_name(func.source_name), public_decl_name(function_name))) continue;
+        return try unbounded_nested_scalar_path_probe(allocator, functions, func, structs);
+    }
+    return null;
+}
+
+fn unbounded_nested_scalar_path_probe(
+    allocator: std.mem.Allocator,
+    functions: []const FuncDecl,
+    func: FuncDecl,
+    structs: []const StructDecl,
+) !?UnboundedNestedScalarPathProbe {
+    if (func.params.len != 1 or func.results.len != 1) return null;
+    const root = find_struct_decl(structs, func.params[0].ty) orelse return null;
+
+    var nodes = std.ArrayList(StructDecl).empty;
+    defer nodes.deinit(allocator);
+    var child_fields = std.ArrayList([]const u8).empty;
+    defer child_fields.deinit(allocator);
+
+    var current = root;
+    var terminal_scalar_field: ?[]const u8 = null;
+    var terminal_payload_field: ?[]const u8 = null;
+    var found_terminal = false;
+    for (0..structs.len) |_| {
+        try nodes.append(allocator, current);
+        if (current.fields.len != 2) return null;
+
+        var child: ?StructDecl = null;
+        var child_field: ?[]const u8 = null;
+        var scalar_field: ?[]const u8 = null;
+        var payload_field: ?[]const u8 = null;
+        for (current.fields) |field| {
+            if (find_struct_decl(structs, field.ty)) |candidate| {
+                if (child != null) return null;
+                child = candidate;
+                child_field = public_decl_name(field.name);
+            } else if (std.mem.eql(u8, field.ty, "i32")) {
+                if (scalar_field != null) return null;
+                scalar_field = public_decl_name(field.name);
+            } else if (std.mem.eql(u8, field.ty, "[u8]")) {
+                if (payload_field != null) return null;
+                payload_field = public_decl_name(field.name);
+            } else return null;
+        }
+
+        if (child) |next| {
+            if (scalar_field == null or payload_field != null) return null;
+            try child_fields.append(allocator, child_field.?);
+            current = next;
+            continue;
+        }
+        if (scalar_field == null or payload_field == null) return null;
+        terminal_scalar_field = scalar_field;
+        terminal_payload_field = payload_field;
+        found_terminal = true;
+        break;
+    }
+    if (!found_terminal or nodes.items.len <= 6) return null;
+
+    var update_func: ?FuncDecl = null;
+    var getter_func: ?FuncDecl = null;
+    var replacement_value: ?u32 = null;
+    if (std.mem.eql(u8, func.results[0], func.params[0].ty)) {
+        replacement_value = try match_unbounded_nested_scalar_set(
+            func,
+            child_fields.items,
+            terminal_scalar_field.?,
+        ) orelse return null;
+        update_func = func;
+    } else if (std.mem.eql(u8, func.results[0], "i32")) {
+        if (!try match_unbounded_nested_scalar_get(func, child_fields.items, terminal_scalar_field.?)) return null;
+        getter_func = func;
+    } else return null;
+
+    for (functions) |candidate| {
+        if (candidate.params.len != 1 or !std.mem.eql(u8, candidate.params[0].ty, func.params[0].ty)) continue;
+        if (update_func == null and candidate.results.len == 1 and
+            std.mem.eql(u8, candidate.results[0], candidate.params[0].ty))
+        {
+            if (try match_unbounded_nested_scalar_set(candidate, child_fields.items, terminal_scalar_field.?)) |value| {
+                update_func = candidate;
+                replacement_value = value;
+            }
+        }
+        if (getter_func == null and candidate.results.len == 1 and std.mem.eql(u8, candidate.results[0], "i32") and
+            try match_unbounded_nested_scalar_get(candidate, child_fields.items, terminal_scalar_field.?))
+        {
+            getter_func = candidate;
+        }
+    }
+    if (update_func == null or getter_func == null or replacement_value == null) return null;
+
+    const owned_nodes = try nodes.toOwnedSlice(allocator);
+    errdefer allocator.free(owned_nodes);
+    const owned_child_fields = try child_fields.toOwnedSlice(allocator);
+    return .{
+        .update_function_name = update_func.?.name,
+        .getter_function_name = getter_func.?.name,
+        .nodes = owned_nodes,
+        .child_fields = owned_child_fields,
+        .terminal_scalar_field = terminal_scalar_field.?,
+        .terminal_payload_field = terminal_payload_field.?,
+        .replacement_value = replacement_value.?,
+    };
+}
+
+fn match_unbounded_nested_scalar_get(
+    func: FuncDecl,
+    child_fields: []const []const u8,
+    terminal_scalar_field: []const u8,
+) !bool {
+    const range = body_expr_range(func) orelse return false;
+    const tokens = func.tokens;
+    if (range.start + 3 >= range.end or !tok_eq(tokens[range.start], "@") or
+        !tok_eq(tokens[range.start + 1], "get") or !tok_eq(tokens[range.start + 2], "(")) return false;
+    const close_idx = find_matching_in_range(tokens, range.start + 2, "(", ")", range.end) catch return false;
+    if (close_idx + 1 != range.end) return false;
+
+    var cursor = range.start + 3;
+    const root_end = find_arg_end(tokens, cursor, close_idx);
+    if (root_end != cursor + 1 or root_end >= close_idx or !tok_eq(tokens[root_end], ",") or
+        tokens[cursor].kind != .ident or !std.mem.eql(u8, tokens[cursor].lexeme, func.params[0].name)) return false;
+    cursor = root_end + 1;
+
+    for (child_fields) |field_name| {
+        const segment_end = find_arg_end(tokens, cursor, close_idx);
+        if (segment_end >= close_idx or !tok_eq(tokens[segment_end], ",") or
+            !field_token_matches(tokens[cursor], field_name)) return false;
+        cursor = segment_end + 1;
+    }
+
+    const scalar_end = find_arg_end(tokens, cursor, close_idx);
+    return scalar_end == close_idx and field_token_matches(tokens[cursor], terminal_scalar_field);
+}
+
+fn match_unbounded_nested_scalar_set(
+    func: FuncDecl,
+    child_fields: []const []const u8,
+    terminal_scalar_field: []const u8,
+) !?u32 {
+    const range = body_expr_range(func) orelse return null;
+    const tokens = func.tokens;
+    if (range.start + 3 >= range.end or !tok_eq(tokens[range.start], "@") or
+        !tok_eq(tokens[range.start + 1], "set") or !tok_eq(tokens[range.start + 2], "(")) return null;
+    const close_idx = find_matching_in_range(tokens, range.start + 2, "(", ")", range.end) catch return null;
+    if (close_idx + 1 != range.end) return null;
+
+    var cursor = range.start + 3;
+    const root_end = find_arg_end(tokens, cursor, close_idx);
+    if (root_end != cursor + 1 or root_end >= close_idx or !tok_eq(tokens[root_end], ",") or
+        tokens[cursor].kind != .ident or !std.mem.eql(u8, tokens[cursor].lexeme, func.params[0].name)) return null;
+    cursor = root_end + 1;
+
+    for (child_fields) |field_name| {
+        const segment_end = find_arg_end(tokens, cursor, close_idx);
+        if (segment_end >= close_idx or !tok_eq(tokens[segment_end], ",") or
+            !field_token_matches(tokens[cursor], field_name)) return null;
+        cursor = segment_end + 1;
+    }
+
+    const scalar_end = find_arg_end(tokens, cursor, close_idx);
+    if (scalar_end >= close_idx or !tok_eq(tokens[scalar_end], ",") or
+        !field_token_matches(tokens[cursor], terminal_scalar_field)) return null;
+    const value_start = scalar_end + 1;
+    const value_end = find_arg_end(tokens, value_start, close_idx);
+    if (value_end != close_idx or value_start + 1 != value_end or tokens[value_start].kind != .number) return null;
+    return std.fmt.parseInt(u32, tokens[value_start].lexeme, 10) catch null;
 }
 
 fn find_probe_call_shape(functions: []const FuncDecl, structs: []const StructDecl, payload_enums: []const PayloadEnumDecl, function_name: []const u8) !ProbeCallShape {
@@ -2250,10 +2454,7 @@ fn append_inline_scalar_struct_update_probe(
     const module_end = std.mem.lastIndexOf(u8, wat, ")\n") orelse return error.InvalidGcSyncProbeWat;
     if (module_end + 2 != wat.len) return error.InvalidGcSyncProbeWat;
     try out.appendSlice(allocator, wat[0..module_end]);
-    try generated_text.append_fmt_block(
-        allocator,
-        out,
-        2,
+    try generated_text.append_fmt_block(allocator, out, 2,
         \\  (func (export "probe") (result i32)
         \\    (local $value i32)
         \\    (local $tag i32)
@@ -3486,7 +3687,8 @@ fn append_managed_struct_call_payload_probe(
     if (probe.managed_field_first) {
         try generated_text.append_block(
             allocator,
-            out, 4,
+            out,
+            4,
             \\    i32.const 1
             \\    i32.const 2
             \\    i32.const 3
@@ -3515,7 +3717,8 @@ fn append_managed_struct_call_payload_probe(
     });
     try generated_text.append_block(
         allocator,
-        out, 4,
+        out,
+        4,
         \\    local.get $original_value
         \\    ref.as_non_null
         \\    array.len
@@ -3589,7 +3792,8 @@ fn append_managed_struct_call_text_probe(
     if (probe.managed_field_first) {
         try generated_text.append_block(
             allocator,
-            out, 4,
+            out,
+            4,
             \\    i32.const 3
             \\    i32.const 111
             \\    i32.const 108
@@ -3603,7 +3807,8 @@ fn append_managed_struct_call_text_probe(
     } else {
         try generated_text.append_block(
             allocator,
-            out, 4,
+            out,
+            4,
             \\    i32.const 7
             \\    i32.const 3
             \\    i32.const 111
@@ -3625,7 +3830,8 @@ fn append_managed_struct_call_text_probe(
     });
     try generated_text.append_block(
         allocator,
-        out, 4,
+        out,
+        4,
         \\    local.get $original_value
         \\    ref.as_non_null
         \\    struct.get $do_text $length
@@ -3881,7 +4087,8 @@ fn append_two_level_nested_managed_scalar_field_probe(
     if (probe.inner_payload_first) {
         try generated_text.append_block(
             allocator,
-            out, 4,
+            out,
+            4,
             \\    i32.const 111
             \\    i32.const 108
             \\    i32.const 100
@@ -3893,7 +4100,8 @@ fn append_two_level_nested_managed_scalar_field_probe(
     } else {
         try generated_text.append_block(
             allocator,
-            out, 4,
+            out,
+            4,
             \\    i32.const 3
             \\    i32.const 111
             \\    i32.const 108
@@ -3937,7 +4145,8 @@ fn append_two_level_nested_managed_scalar_field_probe(
 
     try generated_text.append_block(
         allocator,
-        out, 4,
+        out,
+        4,
         \\    local.get $original
         \\    local.get $updated
         \\    ref.as_non_null
@@ -4055,7 +4264,8 @@ fn append_three_level_nested_managed_scalar_field_probe(
 
     try generated_text.append_block(
         allocator,
-        out, 4,
+        out,
+        4,
         \\    local.get $original
         \\    local.get $updated
         \\    ref.as_non_null
@@ -4079,6 +4289,127 @@ fn append_three_level_nested_managed_scalar_field_probe(
         \\)
         \\
     );
+}
+
+fn append_unbounded_nested_scalar_path_probe(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    wat: []const u8,
+    probe: UnboundedNestedScalarPathProbe,
+) !void {
+    const module_end = std.mem.lastIndexOf(u8, wat,
+        \\)
+        \\
+    ) orelse return error.InvalidGcSyncProbeWat;
+    if (module_end + 2 != wat.len) return error.InvalidGcSyncProbeWat;
+
+    try out.appendSlice(allocator, wat[0..module_end]);
+    try out.appendSlice(allocator, "  (func (export \"probe\") (result i32)\n");
+    const root_name = try lowered_wat_name(allocator, probe.nodes[0].name);
+    defer allocator.free(root_name);
+    try out.appendSlice(allocator, "    (local $original (ref $");
+    try out.appendSlice(allocator, root_name);
+    try out.appendSlice(allocator, "))\n    (local $updated (ref null $");
+    try out.appendSlice(allocator, root_name);
+    try out.appendSlice(allocator, "))\n");
+    for (probe.nodes, 0..) |node, index| {
+        const lowered_name = try lowered_wat_name(allocator, node.name);
+        defer allocator.free(lowered_name);
+        try append_fmt(allocator, out, "    (local $__probe_node_{[index]d} (ref ${[name]s}))\n", .{ .index = index, .name = lowered_name });
+    }
+
+    const terminal_index = probe.nodes.len - 1;
+    const terminal = probe.nodes[terminal_index];
+    for (terminal.fields) |field| {
+        if (std.mem.eql(u8, field.ty, "[u8]")) {
+            try out.appendSlice(allocator, "    i32.const 111\n    i32.const 108\n    i32.const 100\n    array.new_fixed $do_bytes 3\n");
+        } else {
+            try out.appendSlice(allocator, "    i32.const 777\n");
+        }
+    }
+    const terminal_name = try lowered_wat_name(allocator, terminal.name);
+    defer allocator.free(terminal_name);
+    try append_fmt(allocator, out, "    struct.new ${[name]s}\n    local.set $__probe_node_{[index]d}\n", .{ .name = terminal_name, .index = terminal_index });
+
+    var parent_index = terminal_index;
+    while (parent_index > 0) {
+        parent_index -= 1;
+        const parent = probe.nodes[parent_index];
+        const child_field_name = probe.child_fields[parent_index];
+        for (parent.fields) |field| {
+            if (std.mem.eql(u8, public_decl_name(field.name), child_field_name)) {
+                try append_fmt(allocator, out, "    local.get $__probe_node_{[index]d}\n", .{ .index = parent_index + 1 });
+            } else {
+                try append_fmt(allocator, out, "    i32.const {[value]d}\n", .{ .value = 100 + parent_index });
+            }
+        }
+        const parent_name = try lowered_wat_name(allocator, parent.name);
+        defer allocator.free(parent_name);
+        try append_fmt(allocator, out, "    struct.new ${[name]s}\n    local.set $__probe_node_{[index]d}\n", .{ .name = parent_name, .index = parent_index });
+    }
+
+    try append_fmt(allocator, out, "    local.get $__probe_node_0\n    local.set $original\n    local.get $original\n    call ${[getter]s}\n    i32.const 777\n    i32.ne\n    if unreachable end\n    local.get $original\n    call ${[update]s}\n    local.set $updated\n    local.get $original\n    call ${[getter]s}\n    i32.const 777\n    i32.ne\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    call ${[getter]s}\n    i32.const {[updated_value]d}\n    i32.ne\n    if unreachable end\n", .{
+        .getter = probe.getter_function_name,
+        .update = probe.update_function_name,
+        .updated_value = probe.replacement_value,
+    });
+    try out.appendSlice(allocator, "    local.get $original\n    local.get $updated\n    ref.as_non_null\n    ref.eq\n    if unreachable end\n");
+
+    for (probe.nodes, 0..) |node, index| {
+        const scalar_field = if (index == terminal_index) probe.terminal_scalar_field else "tag";
+        const original_value: u32 = if (index == terminal_index) 777 else @as(u32, @intCast(index)) + 100;
+        try append_unbounded_path_scalar_check(allocator, out, probe, "$original", index, scalar_field, original_value);
+        const updated_value = if (index == terminal_index) probe.replacement_value else original_value;
+        try append_unbounded_path_scalar_check(allocator, out, probe, "$updated", index, scalar_field, updated_value);
+        _ = node;
+    }
+
+    try append_unbounded_path_field(allocator, out, probe, "$original", terminal_index, probe.terminal_payload_field);
+    try append_unbounded_path_field(allocator, out, probe, "$updated", terminal_index, probe.terminal_payload_field);
+    try out.appendSlice(allocator, "    ref.eq\n    i32.eqz\n    if unreachable end\n");
+    try append_unbounded_path_field(allocator, out, probe, "$updated", terminal_index, probe.terminal_payload_field);
+    try out.appendSlice(allocator, "    ref.as_non_null\n    array.len\n    i32.const 3\n    i32.ne\n    if unreachable end\n");
+    for ([_]u32{ 111, 108, 100 }, 0..) |value, index| {
+        try append_unbounded_path_field(allocator, out, probe, "$updated", terminal_index, probe.terminal_payload_field);
+        try append_fmt(allocator, out, "    ref.as_non_null\n    i32.const {[index]d}\n    array.get_s $do_bytes\n    i32.const {[value]d}\n    i32.ne\n    if unreachable end\n", .{ .index = index, .value = value });
+    }
+    try out.appendSlice(allocator, "    i32.const 27815)\n)\n");
+}
+
+fn append_unbounded_path_field(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    probe: UnboundedNestedScalarPathProbe,
+    root_local: []const u8,
+    node_index: usize,
+    field_name: []const u8,
+) !void {
+    try append_fmt(allocator, out, "    local.get {[root]s}\n", .{ .root = root_local });
+    for (0..node_index) |index| {
+        const node_name = try lowered_wat_name(allocator, probe.nodes[index].name);
+        defer allocator.free(node_name);
+        const child_field = try lowered_wat_name(allocator, probe.child_fields[index]);
+        defer allocator.free(child_field);
+        try append_fmt(allocator, out, "    ref.as_non_null\n    struct.get ${[node]s} ${[field]s}\n", .{ .node = node_name, .field = child_field });
+    }
+    const node_name = try lowered_wat_name(allocator, probe.nodes[node_index].name);
+    defer allocator.free(node_name);
+    const lowered_field = try lowered_wat_name(allocator, field_name);
+    defer allocator.free(lowered_field);
+    try append_fmt(allocator, out, "    ref.as_non_null\n    struct.get ${[node]s} ${[field]s}\n", .{ .node = node_name, .field = lowered_field });
+}
+
+fn append_unbounded_path_scalar_check(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    probe: UnboundedNestedScalarPathProbe,
+    root_local: []const u8,
+    node_index: usize,
+    field_name: []const u8,
+    expected: u32,
+) !void {
+    try append_unbounded_path_field(allocator, out, probe, root_local, node_index, field_name);
+    try append_fmt(allocator, out, "    i32.const {[value]d}\n    i32.ne\n    if unreachable end\n", .{ .value = expected });
 }
 
 fn append_five_level_nested_managed_scalar_field_probe(
@@ -4206,7 +4537,8 @@ fn append_five_level_nested_managed_scalar_field_probe(
 
     try generated_text.append_block(
         allocator,
-        out, 4,
+        out,
+        4,
         \\    local.get $original
         \\    local.get $updated
         \\    ref.as_non_null
@@ -4350,7 +4682,8 @@ fn append_four_level_nested_managed_scalar_field_probe(
 
     try generated_text.append_block(
         allocator,
-        out, 4,
+        out,
+        4,
         \\    local.get $original
         \\    local.get $updated
         \\    ref.as_non_null

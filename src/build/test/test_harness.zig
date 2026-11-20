@@ -63,6 +63,7 @@ const gc_core_oracle_cases = [_]GcCoreOracleCase{
     .{ .fixture = "managed-struct-payload.do", .mode = "update" },
     .{ .fixture = "managed-struct-payload-renamed.do", .mode = "rewrite" },
     .{ .fixture = "nested-managed-struct.do", .mode = "replace" },
+    .{ .fixture = "unbounded-nested-field-path.do", .mode = "read_tag" },
     .{ .fixture = "managed-tuple-text-bytes.do", .mode = "rewrite" },
 };
 
@@ -2293,7 +2294,7 @@ fn run_gc_default_matrix(
         if (!try file_exists(init.io, wasm)) return error.MissingCompiledArtifact;
         fixture_count += 1;
     }
-    if (fixture_count != 87) return error.GcFixtureManifestDrift;
+    if (fixture_count != 88) return error.GcFixtureManifestDrift;
 }
 
 fn assert_gc_default_wat(name: []const u8, source: []const u8) !void {

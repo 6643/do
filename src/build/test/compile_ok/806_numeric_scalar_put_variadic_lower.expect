@@ -1,0 +1,25 @@
+;; gc-sync
+array.copy $do_i8 $do_i8
+array.set $do_i8
+array.copy $do_i16 $do_i16
+array.set $do_i16
+array.copy $do_i32 $do_i32
+array.set $do_i32
+array.copy $do_i64 $do_i64
+array.set $do_i64
+array.copy $do_u16 $do_u16
+array.set $do_u16
+array.copy $do_u32 $do_u32
+array.set $do_u32
+array.copy $do_u64 $do_u64
+array.set $do_u64
+array.copy $do_isize $do_isize
+array.set $do_isize
+array.copy $do_usize $do_usize
+array.set $do_usize
+array.copy $do_f32 $do_f32
+array.set $do_f32
+array.copy $do_f64 $do_f64
+array.set $do_f64
+array.copy $do_bool $do_bool
+array.set $do_bool

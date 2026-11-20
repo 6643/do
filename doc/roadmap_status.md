@@ -23,11 +23,24 @@ GC route 现在覆盖 `@add/@sub/@mul/@div/@rem`、`@abs/@min/@max`、整数
 `@and/@or/@xor/@shl/@shr/@rotl/@rotr`、`@clz/@ctz/@popcnt`、跨 Wasm
 宽度/浮点的 `@as`、布尔 `@not` 与短路 `@and/@or`、float unary 以及
 `@copysign`。compile fixtures `02/12/13/14/15/16/17/18/19/26` 已不再
-fail-closed；pending manifest 当前为 `compile_ok=119`、`run=5`、
+fail-closed。GC route 另支持 `[u8]` 和全部注册标量数组类型（bool、整数、浮点）
+的多值 `@put(xs, value1, value2, ...)`，并支持同型 `[i32]` 的
+`@put(xs, ...rest)`；两种形式都分配新 array，保留输入值。managed-array
+多值 append 未开放，spread 仅支持 `[i32]`。pending manifest 当前为
+`compile_ok=118`、`run=5`、
 `compiled_must_pass=94`，另保留 `compiled_ok=16` 个 legacy compiled-test
-边界行，共跟踪 `234` 行。新鲜验证为 `run_tests.sh` `14/14 steps; 36/36 tests`
-和从 `src/` 运行的 `zig test build/codegen_pipeline.zig` `1058/1058`。
+边界行，共跟踪 `233` 行。验证为 `run_tests.sh` `14/14 steps; 36/36 tests`
+和从 `src/` 运行的 `zig test build/codegen_pipeline.zig` `1060/1060`。
 通用 async/resource、aggregate 和未登记 host/WIT shapes 仍保持现有边界。
+
+2026-11-20 增量: GC nested field path 的五 link 固定缓冲已替换为动态存储；GC
+program emitter 的单测覆盖 6/12 层路径和深层非法终端拒绝。能力仍限 managed-struct
+中间段与 inline-scalar 终端。GC core oracle 已加入 12 层 getter/setter Wasmtime
+执行：合成 WAT 构造输入后，getter 在原根和更新根上分别读取 `777` 与 `13`；同时
+验证 setter 返回新根、原根及各层 sibling tag 不变、末层 byte payload 保持，结果为
+`27815`。本轮验证为 GC opt-in harness `14/14 steps`、`codegen_gc_sync.zig`
+`295/295`、`gc_sync_probe.zig` `63/63`、`codegen_pipeline.zig` `1060/1060`。这不扩展
+普通 Do struct producer 准入，也不纳入 ARC backend 或 ARC equivalence。
 
 2026-09-15 增量: D2 private `descriptor.read-via-stream` bounded byte-reader
 gate 已闭环。固定同步 `@host_func` method ABI 为
@@ -644,7 +657,7 @@ fail-closed/pending。
 | v1 子集 | 发布候选已收口 |
 | GC-first runtime cutover | Task 6 已闭环；普通编译入口只走 `codegen_runtime_api.zig` 的 Wasm GC route，ARC 仅保留在显式 test-only equivalence oracle；当前 ARC inventory post-cutover `rows=55 matches=492 unclassified=0 normal_route_matches=0`，生产依赖闭包 `modules=164 forbidden=0` |
 | GC-first memory contract | 2026-11-19 决定普通 Do 对象生命周期正式采用 Wasm GC 可达性回收；词法块退出不释放普通对象，函数参数默认只读借用，普通赋值和 `@set` 保持逻辑值语义并允许 COW；外部 resource 显式 close/drop，Future 显式 await/cancel。Region allocator、词法区域释放和公开 `own<T>`/`borrow<T>`/`ref<T>` 不属于 v1 |
-| 当前验证基线 | 默认及 `RUN_WASM=1 RUN_GC_CORE=1` 为 `14/14 steps; 36/36 tests`；GC core focused `zig test build/codegen_pipeline.zig`（从 `src/`）为 `1058/1058`；GC default gate `87 fixtures`、semantic-equivalence `26 rows; 0 pending`、ReleaseSmall/release smoke 通过 |
+| 当前验证基线 | 最近 `RUN_GC_CORE=1` 为 `14/14 steps`；GC core focused tests: `codegen_pipeline.zig` `1060/1060`、`codegen_gc_sync.zig` `295/295`、`gc_sync_probe.zig` `63/63`；GC default gate `87 fixtures`、semantic-equivalence `26 rows; 0 pending` |
 | capability inventory | G5c 15-row inventory 已闭环为 `complete_rows=15 pending_rows=0`、exit `0`；通用 async/map/producer/resource lowering 与 public `own<T>`/`borrow<T>`/`ref<T>` syntax 继续 pending |
 | GC-first memory implementation evidence | G5a/G5b/G5c gates, admitted GC lowering, 26-row equivalence matrix and Component probes are evidence for the current Wasm GC implementation and the selected v1 GC-first source contract. |
 | GC-first scalar-leaf default route | `examples/gc-p3-runtime/scalar-leaf.do` 的纯同步 scalar identity/arithmetic 已走默认 typed GC route；递归、loop、defer、host/WIT、managed、async/resource 形状保持 fallback/fail-closed。独立 gate、默认 83-fixture build/parse gate 和 focused negative tests 已锁定；这不是 migration row closure 或 full G5c cutover。 |

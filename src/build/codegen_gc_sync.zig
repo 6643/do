@@ -134,8 +134,6 @@ const StructCtorValue = struct {
     end_idx: usize,
 };
 
-const max_nested_managed_segments: usize = 5;
-
 fn gc_array_get_op(array_name: []const u8) []const u8 {
     // `$do_bytes` is a packed i8 array. Current Wasm GC syntax requires the
     // signedness of packed reads to be explicit; Do's byte lists are unsigned.
@@ -172,12 +170,17 @@ fn memory_load_width(name: []const u8) ?usize {
 const GenericNestedFieldPath = struct {
     root_local: []const u8,
     root_ty: []const u8,
-    layouts: [max_nested_managed_segments + 1]gc_layout.GcStructLayout,
-    managed_fields: [max_nested_managed_segments]gc_layout.GcFieldLayout,
+    layouts: []gc_layout.GcStructLayout,
+    managed_fields: []gc_layout.GcFieldLayout,
     managed_depth: usize,
     terminal_field: gc_layout.GcFieldLayout,
     value_start: ?usize,
     value_end: ?usize,
+
+    fn deinit(self: GenericNestedFieldPath, allocator: std.mem.Allocator) void {
+        allocator.free(self.layouts);
+        allocator.free(self.managed_fields);
+    }
 };
 
 const GcListTemps = struct {
@@ -487,10 +490,14 @@ const BodyEmitter = struct {
         const root_ty = find_local_type(self.locals.locals.items, self.tokens[args_start].lexeme) orelse return null;
         const root_layout = find_gc_layout(self.gc_layouts, root_ty) orelse return null;
 
-        var path = std.mem.zeroes(GenericNestedFieldPath);
-        path.root_local = root_local;
-        path.root_ty = root_ty;
-        path.layouts[0] = root_layout;
+        var layouts = std.ArrayList(gc_layout.GcStructLayout).empty;
+        var managed_fields = std.ArrayList(gc_layout.GcFieldLayout).empty;
+        var transferred = false;
+        defer if (!transferred) {
+            layouts.deinit(self.allocator);
+            managed_fields.deinit(self.allocator);
+        };
+        try layouts.append(self.allocator, root_layout);
 
         var depth: usize = 0;
         var cursor = root_end + 1;
@@ -500,7 +507,7 @@ const BodyEmitter = struct {
             while (cursor < args_end) {
                 const segment_end = find_arg_end(self.tokens, cursor, args_end);
                 const segment_name = self.field_segment_name(cursor, segment_end) orelse return error.UnsupportedGcSyncExpression;
-                const current_layout = path.layouts[depth];
+                const current_layout = layouts.items[depth];
                 const field = find_gc_field(current_layout, segment_name) orelse return error.UnsupportedGcSyncExpression;
                 const has_next_segment = segment_end < args_end;
                 if (has_next_segment) {
@@ -509,17 +516,27 @@ const BodyEmitter = struct {
                     else
                         null;
                     if (child_layout == null) return null;
-                    if (depth >= max_nested_managed_segments) return error.UnsupportedGcSyncExpression;
-                    path.managed_fields[depth] = field;
-                    path.layouts[depth + 1] = child_layout.?;
+                    try managed_fields.append(self.allocator, field);
+                    try layouts.append(self.allocator, child_layout.?);
                     depth += 1;
                     cursor = segment_end + 1;
                     continue;
                 }
                 if (depth == 0) return null;
-                path.managed_depth = depth;
-                path.terminal_field = field;
-                return path;
+                const owned_layouts = try layouts.toOwnedSlice(self.allocator);
+                errdefer self.allocator.free(owned_layouts);
+                const owned_fields = try managed_fields.toOwnedSlice(self.allocator);
+                transferred = true;
+                return .{
+                    .root_local = root_local,
+                    .root_ty = root_ty,
+                    .layouts = owned_layouts,
+                    .managed_fields = owned_fields,
+                    .managed_depth = depth,
+                    .terminal_field = field,
+                    .value_start = null,
+                    .value_end = null,
+                };
             }
             return null;
         }
@@ -528,7 +545,7 @@ const BodyEmitter = struct {
             const segment_end = find_arg_end(self.tokens, cursor, args_end);
             if (segment_end >= args_end) return null;
             const segment_name = self.field_segment_name(cursor, segment_end) orelse return error.UnsupportedGcSyncExpression;
-            const current_layout = path.layouts[depth];
+            const current_layout = layouts.items[depth];
             const field = find_gc_field(current_layout, segment_name) orelse return error.UnsupportedGcSyncExpression;
             const value_start = segment_end + 1;
             if (value_start >= args_end) return error.UnsupportedGcSyncExpression;
@@ -540,20 +557,28 @@ const BodyEmitter = struct {
                 else
                     null;
                 if (child_layout == null) return null;
-                if (depth >= max_nested_managed_segments) return error.UnsupportedGcSyncExpression;
-                path.managed_fields[depth] = field;
-                path.layouts[depth + 1] = child_layout.?;
+                try managed_fields.append(self.allocator, field);
+                try layouts.append(self.allocator, child_layout.?);
                 depth += 1;
                 cursor = value_start;
                 continue;
             }
             if (depth == 0) return null;
             if (value_end != args_end) return error.UnsupportedGcSyncExpression;
-            path.managed_depth = depth;
-            path.terminal_field = field;
-            path.value_start = value_start;
-            path.value_end = value_end;
-            return path;
+            const owned_layouts = try layouts.toOwnedSlice(self.allocator);
+            errdefer self.allocator.free(owned_layouts);
+            const owned_fields = try managed_fields.toOwnedSlice(self.allocator);
+            transferred = true;
+            return .{
+                .root_local = root_local,
+                .root_ty = root_ty,
+                .layouts = owned_layouts,
+                .managed_fields = owned_fields,
+                .managed_depth = depth,
+                .terminal_field = field,
+                .value_start = value_start,
+                .value_end = value_end,
+            };
         }
         return null;
     }
@@ -1368,6 +1393,7 @@ const BodyEmitter = struct {
         const close_idx = find_matching_in_range(self.tokens, start_idx + 2, "(", ")", end_idx) catch return error.UnsupportedGcSyncExpression;
         if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
         if (try self.parse_generic_nested_field_path(start_idx + 3, close_idx, false)) |path| {
+            defer path.deinit(self.allocator);
             try ensure_compatible(expected, path.terminal_field.ty);
             try self.emit_generic_nested_get(path);
             return path.terminal_field.ty;
@@ -1895,6 +1921,7 @@ const BodyEmitter = struct {
         if (close_idx + 1 != end_idx) return error.UnsupportedGcSyncExpression;
 
         if (try self.parse_generic_nested_field_path(start_idx + 3, close_idx, true)) |path| {
+            defer path.deinit(self.allocator);
             return @as(?[]const u8, try self.emit_generic_nested_set(path, expected));
         }
         const target_end = find_arg_end(self.tokens, start_idx + 3, close_idx);
@@ -2326,17 +2353,47 @@ const BodyEmitter = struct {
         if (!is_scalar_list and !is_managed_list) return error.UnsupportedGcSyncType;
 
         const value_start = receiver_end + 1;
-        if (value_start >= close_idx or tok_eq(self.tokens[value_start], "...")) return error.UnsupportedGcSyncExpression;
+        if (value_start >= close_idx) return error.UnsupportedGcSyncExpression;
+        if (tok_eq(self.tokens[value_start], "...")) {
+            if (!std.mem.eql(u8, receiver_ty, "[i32]")) return error.UnsupportedGcSyncExpression;
+            const rest_start = value_start + 1;
+            const rest_end = find_arg_end(self.tokens, rest_start, close_idx);
+            if (rest_end != close_idx or rest_end != rest_start + 1 or self.tokens[rest_start].kind != .ident) {
+                return error.UnsupportedGcSyncExpression;
+            }
+            const rest_ty = find_local_type(self.locals.locals.items, self.tokens[rest_start].lexeme) orelse return error.UnknownGcSyncLocal;
+            if (!std.mem.eql(u8, rest_ty, receiver_ty)) return error.GcSyncTypeMismatch;
+            try ensure_compatible(expected, receiver_ty);
+            return try self.emit_put_spread_i32_list(receiver_name, self.tokens[rest_start].lexeme);
+        }
         const value_end = find_arg_end(self.tokens, value_start, close_idx);
-        if (value_end != close_idx) return error.UnsupportedGcSyncExpression;
+        if (value_end != close_idx) {
+            const is_byte_list = std.mem.eql(u8, receiver_ty, "[u8]");
+            const is_scalar_value_list = gc_layout.scalar_array_spec_for_type(receiver_ty) != null;
+            if (!is_byte_list and !is_scalar_value_list) return error.UnsupportedGcSyncExpression;
+            var value_count: usize = 0;
+            var value_cursor = value_start;
+            while (value_cursor < close_idx) {
+                const current_end = find_arg_end(self.tokens, value_cursor, close_idx);
+                if (current_end <= value_cursor) return error.UnsupportedGcSyncExpression;
+                try self.ensure_exact_put_value(value_cursor, current_end, elem_ty);
+                value_count += 1;
+                if (current_end == close_idx) break;
+                if (!tok_eq(self.tokens[current_end], ",")) return error.UnsupportedGcSyncExpression;
+                value_cursor = current_end + 1;
+                if (value_cursor >= close_idx) return error.UnsupportedGcSyncExpression;
+            }
+            if (value_count < 2) return error.UnsupportedGcSyncExpression;
+            try ensure_compatible(expected, receiver_ty);
+            return try self.emit_put_variadic_scalar_list(receiver_name, receiver_ty, elem_ty, value_start, close_idx, value_count);
+        }
         if (value_end == value_start + 2 and tok_eq(self.tokens[value_start], "-") and self.tokens[value_start + 1].kind == .number) return error.GcSyncTypeMismatch;
         try ensure_compatible(expected, receiver_ty);
         try self.ensure_exact_put_value(value_start, value_end, elem_ty);
         const array_name = try self.list_array_name(receiver_ty);
         const next_name = try self.list_next_name(receiver_ty);
 
-        // Published lists remain immutable. Copy the source into a private
-        // result backing, then append exactly one checked u8 element.
+        // GC list updates allocate a result backing, preserving the source value.
         try generated_text.append_fmt_block(self.allocator, self.out, 4,
             \\    local.get ${[receiver]s}
             \\    ref.as_non_null
@@ -2382,6 +2439,132 @@ const BodyEmitter = struct {
             .next = next_name,
         });
         return receiver_ty;
+    }
+
+    fn emit_put_variadic_scalar_list(
+        self: *BodyEmitter,
+        receiver_name: []const u8,
+        list_ty: []const u8,
+        elem_ty: []const u8,
+        values_start: usize,
+        values_end: usize,
+        value_count: usize,
+    ) ![]const u8 {
+        const array_name = try self.list_array_name(list_ty);
+        const next_name = try self.list_next_name(list_ty);
+
+        try self.append_fmt_block(4,
+            \\local.get ${[receiver]s}
+            \\ref.as_non_null
+            \\array.len
+            \\local.set ${[length]s}
+            \\local.get ${[length]s}
+            \\i32.const {[count]d}
+            \\i32.add
+            \\array.new_default {[array]s}
+            \\local.set ${[next]s}
+        , .{
+            .receiver = receiver_name,
+            .length = self.gc_list_temps.length_name,
+            .count = value_count,
+            .array = array_name,
+            .next = next_name,
+        });
+        try self.append_static("\n");
+        try self.append_fmt_block(4,
+            \\local.get ${[next]s}
+            \\i32.const 0
+            \\local.get ${[receiver]s}
+            \\ref.as_non_null
+            \\i32.const 0
+            \\local.get ${[length]s}
+            \\array.copy {[array]s} {[array]s}
+        , .{
+            .next = next_name,
+            .receiver = receiver_name,
+            .length = self.gc_list_temps.length_name,
+            .array = array_name,
+        });
+        try self.append_static("\n");
+
+        var value_cursor = values_start;
+        var value_index: usize = 0;
+        while (value_cursor < values_end) : (value_index += 1) {
+            const current_end = find_arg_end(self.tokens, value_cursor, values_end);
+            if (current_end <= value_cursor) return error.UnsupportedGcSyncExpression;
+            try self.append_fmt_block(4,
+                \\local.get ${[next]s}
+                \\local.get ${[length]s}
+                \\i32.const {[index]d}
+                \\i32.add
+            , .{
+                .next = next_name,
+                .length = self.gc_list_temps.length_name,
+                .index = value_index,
+            });
+            try self.append_static("\n");
+            _ = try self.emit_expr(value_cursor, current_end, elem_ty);
+            try self.append_fmt("    array.set {[array]s}\n", .{ .array = array_name });
+            if (current_end == values_end) break;
+            if (!tok_eq(self.tokens[current_end], ",")) return error.UnsupportedGcSyncExpression;
+            value_cursor = current_end + 1;
+        }
+        try self.append_fmt("    local.get ${[next]s}\n", .{ .next = next_name });
+        return list_ty;
+    }
+
+    fn emit_put_spread_i32_list(self: *BodyEmitter, receiver_name: []const u8, rest_name: []const u8) ![]const u8 {
+        const array_name = try self.list_array_name("[i32]");
+        const next_name = try self.list_next_name("[i32]");
+
+        try self.append_fmt_block(4,
+            \\    local.get ${[receiver]s}
+            \\    ref.as_non_null
+            \\    array.len
+            \\    local.get ${[rest]s}
+            \\    ref.as_non_null
+            \\    array.len
+            \\    i32.add
+            \\    array.new_default {[array]s}
+            \\    local.set ${[next]s}
+        , .{
+            .receiver = receiver_name,
+            .rest = rest_name,
+            .array = array_name,
+            .next = next_name,
+        });
+        try self.append_static("\n");
+        try self.append_fmt_block(4,
+            \\    ;; gc-storage-put-spread-i32
+            \\    local.get ${[next]s}
+            \\    i32.const 0
+            \\    local.get ${[receiver]s}
+            \\    ref.as_non_null
+            \\    i32.const 0
+            \\    local.get ${[receiver]s}
+            \\    ref.as_non_null
+            \\    array.len
+            \\    array.copy {[array]s} {[array]s}
+            \\    local.get ${[next]s}
+            \\    local.get ${[receiver]s}
+            \\    ref.as_non_null
+            \\    array.len
+            \\    local.get ${[rest]s}
+            \\    ref.as_non_null
+            \\    i32.const 0
+            \\    local.get ${[rest]s}
+            \\    ref.as_non_null
+            \\    array.len
+            \\    array.copy {[array]s} {[array]s}
+            \\    local.get ${[next]s}
+        , .{
+            .next = next_name,
+            .receiver = receiver_name,
+            .rest = rest_name,
+            .array = array_name,
+        });
+        try self.append_static("\n");
+        return "[i32]";
     }
 
     fn emit_field_reflection_body(self: *BodyEmitter, start_idx: usize, end_idx: usize, result_ty: ?[]const u8, deferred: *std.ArrayList(DeferredCall)) anyerror!bool {
@@ -2836,7 +3019,11 @@ const BodyEmitter = struct {
             const token = self.tokens[start_idx];
             if (token.kind == .number) return validate_numeric_literal(elem_ty, token.lexeme);
             if (token.kind == .ident) {
-                if (std.mem.eql(u8, token.lexeme, "true") or std.mem.eql(u8, token.lexeme, "false") or std.mem.eql(u8, token.lexeme, "nil")) return error.UnsupportedGcSyncType;
+                if (std.mem.eql(u8, token.lexeme, "true") or std.mem.eql(u8, token.lexeme, "false")) {
+                    if (std.mem.eql(u8, elem_ty, "bool")) return;
+                    return error.UnsupportedGcSyncType;
+                }
+                if (std.mem.eql(u8, token.lexeme, "nil")) return error.UnsupportedGcSyncType;
                 const local_ty = find_local_type(self.locals.locals.items, token.lexeme) orelse return error.UnknownGcSyncLocal;
                 if (!std.mem.eql(u8, local_ty, elem_ty)) return error.UnsupportedGcSyncType;
                 return;
@@ -5988,14 +6175,30 @@ test "GC sync lowers remaining scalar list types through typed GC arrays" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_usize (array (mut i32)))") != null);
 }
 
-test "GC sync rejects multi-value put before WAT emission" {
+test "GC sync rejects managed multi-value put before WAT emission" {
     const source =
-        \\append(values [u8]) -> [u8] {
-        \\    return @put(values, 1, 2)
+        \\Box {
+        \\    value i32
+        \\}
+        \\append(values [Box], first Box, second Box) -> [Box] {
+        \\    return @put(values, first, second)
         \\}
         \\start() {}
     ;
-    try std.testing.expectError(error.UnsupportedGcSyncExpression, emit_test_source(std.testing.allocator, source));
+    try std.testing.expectError(error.UnsupportedGcSyncType, emit_test_source(std.testing.allocator, source));
+}
+
+test "GC sync lowers bool multi-value put through a typed GC array" {
+    const source =
+        \\append(values [bool], first bool, second bool) -> [bool] {
+        \\    return @put(values, first, second)
+        \\}
+        \\start() {}
+    ;
+    const wat = try emit_test_source(std.testing.allocator, source);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_bool $do_bool") != null);
+    try std.testing.expect(std.mem.count(u8, wat, "array.set $do_bool") == 2);
 }
 
 test "GC sync lowers a managed struct multi-result carrier" {
@@ -6884,50 +7087,58 @@ test "GC sync keeps direct scalar field setters on the single-level path" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
-test "GC sync rejects paths deeper than five nested managed fields" {
-    const source =
-        \\Stem {
-        \\    value [u8]
-        \\    tag i32
-        \\}
-        \\Core {
-        \\    stem Stem
-        \\    tag i32
-        \\}
-        \\Bud {
-        \\    core Core
-        \\    tag i32
-        \\}
-        \\Twig {
-        \\    bud Bud
-        \\    tag i32
-        \\}
-        \\Leaf {
-        \\    twig Twig
-        \\    tag i32
-        \\}
-        \\Inner {
-        \\    leaf Leaf
-        \\    tag i32
-        \\}
-        \\Outer {
-        \\    inner Inner
-        \\    tag i32
-        \\}
-        \\read_value(outer Outer) -> i32 {
-        \\    return @get(outer, .inner, .leaf, .twig, .bud, .core, .stem, .tag)
-        \\}
-        \\start() {}
-    ;
-    try std.testing.expectError(error.UnsupportedGcSyncExpression, emit_test_source(std.testing.allocator, source));
+fn append_nested_path_test_source(allocator: std.mem.Allocator, source: *std.ArrayList(u8), depth: usize, missing_terminal: bool) !void {
+    for (0..depth + 1) |index| {
+        const declaration = try std.fmt.allocPrint(allocator, "Level{d} {{\n", .{index});
+        defer allocator.free(declaration);
+        try source.appendSlice(allocator, declaration);
+        if (index < depth) {
+            const child = try std.fmt.allocPrint(allocator, "    child Level{d}\n", .{index + 1});
+            defer allocator.free(child);
+            try source.appendSlice(allocator, child);
+        } else {
+            try source.appendSlice(allocator, "    payload [u8]\n");
+        }
+        try source.appendSlice(allocator, "    tag i32\n}\n");
+    }
+
+    try source.appendSlice(allocator, "read_path(top Level0) -> i32 {\n    return @get(top");
+    for (0..depth) |_| try source.appendSlice(allocator, ", .child");
+    try source.appendSlice(allocator, if (missing_terminal) ", .missing)\n}\n" else ", .tag)\n}\n");
+
+    try source.appendSlice(allocator, "write_path(top Level0) -> Level0 {\n    return @set(top");
+    for (0..depth) |_| try source.appendSlice(allocator, ", .child");
+    try source.appendSlice(allocator, if (missing_terminal) ", .missing, 7)\n}\n" else ", .tag, 7)\n}\n");
+    try source.appendSlice(allocator, "start() {}\n");
 }
 
-test "GC sync generic nested path records the bounded link capacity" {
-    var path = std.mem.zeroes(GenericNestedFieldPath);
-    path.managed_depth = max_nested_managed_segments;
-    try std.testing.expectEqual(@as(usize, 5), path.managed_depth);
-    try std.testing.expectEqual(@as(usize, 6), path.layouts.len);
-    try std.testing.expectEqual(@as(usize, 5), path.managed_fields.len);
+test "GC sync lowers nested managed scalar paths without a depth cap" {
+    for ([_]usize{ 6, 12 }) |depth| {
+        var source = std.ArrayList(u8).empty;
+        defer source.deinit(std.testing.allocator);
+        try append_nested_path_test_source(std.testing.allocator, &source, depth, false);
+
+        const wat = try emit_test_source(std.testing.allocator, source.items);
+        defer std.testing.allocator.free(wat);
+        for (0..depth) |index| {
+            const child_read = try std.fmt.allocPrint(std.testing.allocator, "struct.get $level{d} $child", .{index});
+            defer std.testing.allocator.free(child_read);
+            try std.testing.expect(std.mem.indexOf(u8, wat, child_read) != null);
+        }
+        const terminal_read = try std.fmt.allocPrint(std.testing.allocator, "struct.get $level{d} $tag", .{depth});
+        defer std.testing.allocator.free(terminal_read);
+        try std.testing.expect(std.mem.indexOf(u8, wat, terminal_read) != null);
+        const expected_struct_news = depth + 1;
+        try std.testing.expectEqual(expected_struct_news, std.mem.count(u8, wat, "struct.new $level"));
+        try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+    }
+}
+
+test "GC sync rejects a missing terminal field at arbitrary nested depth" {
+    var source = std.ArrayList(u8).empty;
+    defer source.deinit(std.testing.allocator);
+    try append_nested_path_test_source(std.testing.allocator, &source, 12, true);
+    try std.testing.expectError(error.UnsupportedGcSyncExpression, emit_test_source(std.testing.allocator, source.items));
 }
 
 test "GC sync lowers a five-level nested managed scalar field" {

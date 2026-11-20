@@ -9,14 +9,23 @@ Verification Status: verified
 - Run: `.tmp/g5c-full-cutover/task-4-other-lists-verify-20260916-173916-2346492`
 - Commit: `d7cdb55d698593bf6cec925dea4ec7484a5855a9`
 - Branch: `main`
-- Current implementation boundary: `scalar list literal/fixed-index update and one-value @put slices for all registered scalar list types, bounded managed-element text-list @put, bounded inferred [u8]/[u32] body storage @put, and the bounded [[u8]] nested-list @put are admitted as G5a; spread/multi-value @put, dynamic producers, and other producer lists remain UnsupportedGcSyncType or UnsupportedGcSyncExpression`
+- Current implementation boundary: `scalar list literal/fixed-index update and one-value @put slices for all registered scalar list types, bounded multi-value @put for every scalar_array_specs type and [u8], bounded managed-element text-list @put, bounded inferred [u8]/[u32] body storage @put, and bounded [[u8]] nested-list @put are admitted; [i32] spread @put is covered separately; other spread/multi-value/dynamic producers remain UnsupportedGcSyncType or UnsupportedGcSyncExpression`
 
 The frozen row scope contains 25 fixtures and 20 probe scripts covering the
 registered scalar lists, text lists, nested byte lists, scalar-list `@put`, and
 inferred list storage. The exact fixture and probe lists remain in the TSV row
 of `src/build/test/check_gc_migration_inventory.sh`.
 
-The row gate did not widen this boundary or modify any route implementation.
+At the time of the archived row gate, it did not widen this boundary or modify
+any route implementation.
+
+After this archived row verification, `@put(xs, value1, value2, ...)` was
+admitted for `[u8]` and every scalar array in `scalar_array_specs`, including
+bool. Regression fixtures 804-806 and 417-419 check lowering and compiled value
+semantics, including source preservation and empty byte-list append. Managed
+arrays and spread are not part of this multi-value path. This bounded
+implementation update does not extend the archived G5c semantic-equivalence
+matrix.
 
 ## Verification
 
@@ -53,9 +62,10 @@ the complete probe and lock snapshot in `commands.log` and
 
 ## Closure decision
 
-The S-profile gates, default GC route checks, equivalence check, and the
-preserved rejection boundary all passed. This evidence authorizes only the
-`other_lists` G5c inventory field to move from `pending` to `complete`; it does
-not authorize spread or multi-value producers, dynamic producers, arbitrary
-list shapes, host/WIT, async/resource, ownership, `Option`/`Result`, or any
-other row.
+The archived S-profile gates, default GC route checks, equivalence check, and
+the preserved rejection boundary all passed. This evidence authorizes only the
+`other_lists` G5c inventory field to move from `pending` to `complete`. The
+later bounded `@put` additions above are implementation updates; they do not
+change this archived row result or authorize dynamic producers, arbitrary list
+shapes, host/WIT, async/resource, ownership, `Option`/`Result`, or any other
+row.

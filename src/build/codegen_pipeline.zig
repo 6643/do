@@ -5016,6 +5016,48 @@ test "GC route lowers a four-level nested scalar field path" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $outer") != null);
 }
 
+fn append_gc_nested_path_source(allocator: std.mem.Allocator, source: *std.ArrayList(u8), depth: usize) !void {
+    for (0..depth + 1) |index| {
+        const declaration = try std.fmt.allocPrint(allocator, "Level{d} {{\n", .{index});
+        defer allocator.free(declaration);
+        try source.appendSlice(allocator, declaration);
+        if (index < depth) {
+            const child = try std.fmt.allocPrint(allocator, "    child Level{d}\n", .{index + 1});
+            defer allocator.free(child);
+            try source.appendSlice(allocator, child);
+        } else {
+            try source.appendSlice(allocator, "    payload [u8]\n");
+        }
+        try source.appendSlice(allocator, "    tag i32\n}\n");
+    }
+
+    try source.appendSlice(allocator, "read_path(top Level0) -> i32 {\n    return @get(top");
+    for (0..depth) |_| try source.appendSlice(allocator, ", .child");
+    try source.appendSlice(allocator, ", .tag)\n}\n");
+
+    try source.appendSlice(allocator, "write_path(top Level0) -> Level0 {\n    return @set(top");
+    for (0..depth) |_| try source.appendSlice(allocator, ", .child");
+    try source.appendSlice(allocator, ", .tag, 7)\n}\nstart() {}\n");
+}
+
+test "GC route lowers nested scalar field paths beyond the former depth limit" {
+    const depth: usize = 12;
+    var source = std.ArrayList(u8).empty;
+    defer source.deinit(std.testing.allocator);
+    try append_gc_nested_path_source(std.testing.allocator, &source, depth);
+
+    const wat = try emit_gc_wat_for_source(std.testing.allocator, source.items);
+    defer std.testing.allocator.free(wat);
+    for (0..depth) |index| {
+        const child_read = try std.fmt.allocPrint(std.testing.allocator, "struct.get $level{d} $child", .{index});
+        defer std.testing.allocator.free(child_read);
+        try std.testing.expect(std.mem.indexOf(u8, wat, child_read) != null);
+    }
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $level12 $tag") != null);
+    try std.testing.expectEqual(depth + 1, std.mem.count(u8, wat, "struct.new $level"));
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
+}
+
 test "compiled test GC fallback accepts only explicit admission rejections" {
     try std.testing.expect(codegen_gc_sync.is_gc_sync_admission_rejection(error.UnsupportedGcSyncType));
     try std.testing.expect(codegen_gc_sync.is_gc_sync_admission_rejection(error.UnsupportedGcSyncExpression));
@@ -5457,7 +5499,7 @@ test "synchronous GC keeps byte-list put outside the literal slice" {
         \\}
         \\start() {}
     ;
-    try std.testing.expectError(error.UnsupportedGcSyncExpression, emit_gc_wat_for_source(std.testing.allocator, source));
+    try std.testing.expectError(error.UnsupportedGcSyncType, emit_gc_wat_for_source(std.testing.allocator, source));
 }
 
 test "synchronous GC lowers one-value byte-list put" {
@@ -5495,14 +5537,17 @@ test "synchronous GC lowers one-value scalar-list put" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
-test "synchronous GC rejects byte-list put spread and multiple values" {
+test "synchronous GC lowers byte-list multi-value put and rejects spread" {
     const multiple_source =
         \\append_byte(input [u8]) -> [u8] {
         \\    return @put(input, 1, 2)
         \\}
         \\start() {}
     ;
-    try std.testing.expectError(error.UnsupportedGcSyncExpression, emit_gc_wat_for_source(std.testing.allocator, multiple_source));
+    const multiple_wat = try emit_gc_wat_for_source(std.testing.allocator, multiple_source);
+    defer std.testing.allocator.free(multiple_wat);
+    try std.testing.expect(std.mem.indexOf(u8, multiple_wat, "array.copy $do_bytes $do_bytes") != null);
+    try std.testing.expect(std.mem.count(u8, multiple_wat, "array.set $do_bytes") == 2);
 
     const spread_source =
         \\append_byte(input [u8], values [u8]) -> [u8] {

@@ -1,0 +1,7 @@
+;; gc-sync
+array.new_default $do_bytes
+array.copy $do_bytes $do_bytes
+i32.const 0
+array.set $do_bytes
+i32.const 1
+array.set $do_bytes

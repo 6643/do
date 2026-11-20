@@ -1,5 +1,6 @@
-storage-put-spread-scalar
-loop $storage_put_spread_scan
+;; gc-storage-put-spread-i32
+array.new_default $do_i32
+array.copy $do_i32 $do_i32
+array.copy $do_i32 $do_i32
 local.get $rest
-local.get $__storage_put_source_tmp
 local.set $xs

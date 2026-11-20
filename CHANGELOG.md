@@ -1,5 +1,28 @@
 # Changelog
 
+# 2026-11-20 GC nested field path storage:
+  replaced the fixed five-link path buffers with allocator-owned dynamic
+  storage. The GC emitter now has 6- and 12-link lowering coverage, including
+  malformed deep-path rejection. The path remains limited to managed-struct
+  intermediates and inline scalar terminals; this does not add an ARC backend
+  or ARC equivalence requirement. A harness-generated 12-link GC module now
+  passes parse, compile, and Wasmtime execution (`27815`), checking the 12-link
+  getter before and after update (`777` on the original root, `13` on the new
+  root), distinct root identity, every sibling tag, and the terminal byte
+  payload. The probe constructs its input graph directly in WAT; ordinary Do
+  struct producer admission is unchanged. Verification: GC opt-in harness
+  `14/14 steps`, `codegen_pipeline.zig` `1060/1060`,
+  `codegen_gc_sync.zig` `295/295`, and `gc_sync_probe.zig` `63/63`.
+
+# 2026-11-20 GC storage append:
+  the GC route now lowers `@put(xs, value1, value2, ...)` for `[u8]` and every
+  registered scalar array type, including bool, integer, and float arrays. It
+  also lowers `@put(xs, ...rest)` for same-typed `[i32]` values. Both forms
+  allocate a new result array and preserve their source arrays. Managed arrays
+  remain unsupported for multi-value append, and spread remains limited to
+  `[i32]`. Fixtures 804-806 and 417-419 cover the new multi-value forms;
+  fixture 128 and 416 cover spread lowering and value semantics.
+
 # 2026-11-20 GC synchronous core parity:
   promoted the bounded scalar core fixture set through the default Wasm GC route.
   The lowering now emits typed Wasm for variadic arithmetic including division and
