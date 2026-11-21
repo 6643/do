@@ -131,6 +131,7 @@ test {
     _ = @import("build/codegen_component_producer_runtime_audit_test.zig");
     _ = @import("build/codegen_component_producer_mapping_probe_test.zig");
     _ = @import("build/codegen_component_producer_lifecycle_state_probe_test.zig");
+    _ = @import("build/codegen_component_producer_lifecycle_test.zig");
     _ = @import("build/codegen_component_producer_state_ir_test.zig");
     _ = @import("build/codegen_component_producer_fragments_test.zig");
     _ = @import("build/codegen_component_producer_emitter_test.zig");
