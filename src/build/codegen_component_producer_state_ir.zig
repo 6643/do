@@ -1,5 +1,6 @@
 const std = @import("std");
 const facts = @import("codegen_component_producer_facts.zig");
+const lifecycle = @import("codegen_component_producer_lifecycle.zig");
 const producer_contract = @import("codegen_component_producer_contract.zig");
 
 pub const MapError = error{
@@ -39,6 +40,11 @@ pub const LifecycleGroup = struct { group_index: u32, asset_start: u32, asset_co
 pub const AtomicGroupTransfer = struct { group_index: u32, asset_start: u32, asset_count: u32 };
 pub const CancelPlan = struct { pre_transfer_state: []const u8, post_transfer_state: []const u8, rolls_back_host_effects: bool };
 pub const TerminalPlan = struct { close_action: []const u8, abort_action: ?[]const u8, cancel_action: []const u8 };
+pub const LifecyclePath = struct {
+    events: [8]lifecycle.Event,
+    len: u8,
+    final_state: lifecycle.State,
+};
 
 pub const LifecycleStateIR = struct {
     assets: [64]LifecycleAsset,
@@ -58,6 +64,9 @@ pub const LifecycleStateIR = struct {
     cleanup_count: u32,
     lifecycle_anchors: []const facts.LifecycleAnchor,
     terminal: TerminalPlan,
+    normal_path: LifecyclePath,
+    cancel_path: LifecyclePath,
+    early_drop_path: LifecyclePath,
 };
 
 pub const LifecycleError = error{
@@ -73,6 +82,7 @@ pub const LifecycleError = error{
     ParentCleanupBeforeChild,
     PostTransferRollback,
     TerminalBeforeCleanup,
+    InvalidLifecyclePath,
 };
 
 comptime {
@@ -180,7 +190,14 @@ pub fn build_lifecycle_ir(contract: producer_contract.ProducerContract, map: Can
             .abort_action = contract.terminal.abort_action,
             .cancel_action = contract.terminal.cancel_action,
         },
+        .normal_path = undefined,
+        .cancel_path = undefined,
+        .early_drop_path = undefined,
     };
+
+    ir.normal_path = try path_from_events(&.{ .begin_call, .complete_ready, .cleanup });
+    ir.cancel_path = try path_from_events(&.{ .begin_call, .poll_pending, .request_cancel, .cleanup });
+    ir.early_drop_path = try path_from_events(&.{ .begin_call, .poll_pending, .early_drop });
 
     for (0..@intCast(group_count)) |group_index| {
         const group = @as(u32, @intCast(group_index));
@@ -287,6 +304,28 @@ pub fn validate_lifecycle_ir(contract: producer_contract.ProducerContract, map: 
     {
         return error.TerminalBeforeCleanup;
     }
+
+    try validate_lifecycle_path(ir.normal_path);
+    try validate_lifecycle_path(ir.cancel_path);
+    try validate_lifecycle_path(ir.early_drop_path);
+}
+
+fn path_from_events(events: []const lifecycle.Event) LifecycleError!LifecyclePath {
+    if (events.len > 8) return error.InvalidLifecyclePath;
+    var path = LifecyclePath{
+        .events = undefined,
+        .len = @intCast(events.len),
+        .final_state = undefined,
+    };
+    for (events, 0..) |event, index| path.events[index] = event;
+    path.final_state = lifecycle.validate_path(events) catch return error.InvalidLifecyclePath;
+    return path;
+}
+
+fn validate_lifecycle_path(path: LifecyclePath) LifecycleError!void {
+    if (path.len > path.events.len or path.final_state != .dropped) return error.InvalidLifecyclePath;
+    const actual = lifecycle.validate_path(path.events[0..path.len]) catch return error.InvalidLifecyclePath;
+    if (actual != path.final_state) return error.InvalidLifecyclePath;
 }
 
 fn lifecycle_group_count(contract: producer_contract.ProducerContract, map: CanonicalFrameMap) LifecycleError!u32 {

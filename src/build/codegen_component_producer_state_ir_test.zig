@@ -2,6 +2,7 @@ const std = @import("std");
 const facts = @import("codegen_component_producer_facts.zig");
 const producer_contract = @import("codegen_component_producer_contract.zig");
 const p3_async_manifest = @import("p3_async_manifest.zig");
+const lifecycle_state = @import("codegen_component_producer_lifecycle.zig");
 const state_ir = @import("codegen_component_producer_state_ir.zig");
 
 const path = [_][]const u8{"ticket"};
@@ -215,6 +216,53 @@ test "producer lifecycle state IR accepts direct topology" {
     try std.testing.expectEqual(@as(u32, 1), ir.transfer_commit[0].asset_count);
     try std.testing.expectEqual(@as(u32, 0), ir.reverse_release[0].asset_index);
     try std.testing.expect(!ir.post_transfer_cancel.rolls_back_host_effects);
+}
+
+test "producer lifecycle IR records normal ready cleanup path" {
+    const ir = build_ir(contract(), lifecycle_map());
+    try std.testing.expectEqual(lifecycle_state.State.dropped, ir.normal_path.final_state);
+    try std.testing.expectEqual(@as(u8, 3), ir.normal_path.len);
+}
+
+test "producer lifecycle IR records cancellation path without rollback" {
+    const ir = build_ir(contract(), lifecycle_map());
+    try std.testing.expectEqual(lifecycle_state.State.dropped, ir.cancel_path.final_state);
+    try std.testing.expectEqual(@as(u8, 4), ir.cancel_path.len);
+    try std.testing.expect(!ir.post_transfer_cancel.rolls_back_host_effects);
+}
+
+test "producer lifecycle IR records early-drop path" {
+    const ir = build_ir(contract(), lifecycle_map());
+    try std.testing.expectEqual(lifecycle_state.State.dropped, ir.early_drop_path.final_state);
+    try std.testing.expectEqual(@as(u8, 3), ir.early_drop_path.len);
+}
+
+test "producer lifecycle IR rejects a path that cleans before terminal state" {
+    var ir = build_ir(contract(), lifecycle_map());
+    ir.normal_path.events[0] = .cleanup;
+    try std.testing.expectError(error.InvalidLifecyclePath, state_ir.validate_lifecycle_ir(contract(), lifecycle_map(), ir));
+}
+
+test "producer lifecycle IR keeps one independent path per frame group" {
+    var value = input();
+    value.contract.batch_count = 2;
+    value.contract.batch_lengths = &.{ 1, 1 };
+    const batched_fields = [_]facts.FrameFact{
+        fields[0],
+        fields[1],
+        .{ .name = "state-2", .offset = 8, .width = 4, .alignment = 4, .role = .ownership_state },
+    };
+    const batched_ownership = [_]facts.OwnershipFact{
+        ownership[0],
+        .{ .name = "ticket-2", .encoding = .scalar, .state_offset = 8, .guest_value = 4, .transferred_value = 5, .released_value = 6 },
+    };
+    value.frame_facts.frames = &batched_fields;
+    value.frame_facts.ownership = &batched_ownership;
+    const map = try state_ir.build_frame_map(value);
+    const ir = try state_ir.build_lifecycle_ir(value.contract, map);
+    try std.testing.expectEqual(lifecycle_state.State.dropped, ir.normal_path.final_state);
+    try std.testing.expectEqual(@as(u32, 0), ir.transfer_commit[0].group_index);
+    try std.testing.expectEqual(@as(u32, 1), ir.transfer_commit[1].group_index);
 }
 
 test "producer lifecycle state IR accepts list backing topology" {
