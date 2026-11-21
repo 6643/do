@@ -83,12 +83,64 @@ fn pilot_input(plan: producer.OwnedRecordStreamProducerPlan) emitter.PilotInput 
     };
 }
 
+fn contract_input(plan: producer.OwnedRecordStreamProducerPlan) emitter.ContractEmitInput {
+    const input = pilot_input(plan);
+    return .{
+        .route_id = input.facts.route_id,
+        .descriptor_id = input.facts.descriptor_id,
+        .contract = input.facts.contract,
+        .frame_facts = input.facts.frame_facts,
+        .fragments = input.facts.fragments,
+        .template_wat = input.template_wat,
+        .canonical_wit_hash = input.canonical_wit_hash,
+    };
+}
+
 test "producer shared emitter has no route template ownership" {
     try std.testing.expect(std.mem.indexOf(u8, emitter_source, "owned_record_stream_producer_template.wat") == null);
     try std.testing.expect(std.mem.indexOf(u8, emitter_source, "@embedFile") == null);
 }
 
-test "producer shared emitter pilot preserves direct route bytes" {
+test "shared contract emitter accepts direct route facts" {
+    var context = try PlanContext.init();
+    defer context.deinit();
+    const plan = context.plan;
+    const input = contract_input(plan);
+    const shared_wat = try emitter.emit_contract_wat(std.testing.allocator, input);
+    defer std.testing.allocator.free(shared_wat);
+    try std.testing.expectEqualSlices(u8, direct_template, shared_wat);
+}
+
+test "shared contract emitter rejects descriptor/hash mismatch" {
+    var context = try PlanContext.init();
+    defer context.deinit();
+    const plan = context.plan;
+    var input = contract_input(plan);
+    input.canonical_wit_hash = "wrong-hash";
+    try std.testing.expectError(error.InvalidHash, emitter.emit_contract_wat(std.testing.allocator, input));
+}
+
+test "shared contract emitter rejects lifecycle map mismatch" {
+    var context = try PlanContext.init();
+    defer context.deinit();
+    const plan = context.plan;
+    var input = contract_input(plan);
+    input.frame_facts.frame_size = 64;
+    try std.testing.expectError(error.InvalidMap, emitter.emit_contract_wat(std.testing.allocator, input));
+}
+
+test "shared contract emitter rejects unowned fragment marker" {
+    var context = try PlanContext.init();
+    defer context.deinit();
+    const plan = context.plan;
+    var changed_fragments = direct_fragments;
+    changed_fragments[1].required_markers = &.{"[unknown-marker]"};
+    var input = contract_input(plan);
+    input.fragments = &changed_fragments;
+    try std.testing.expectError(error.InvalidFragments, emitter.emit_contract_wat(std.testing.allocator, input));
+}
+
+test "pilot wrapper preserves direct byte parity" {
     var context = try PlanContext.init();
     defer context.deinit();
     const plan = context.plan;

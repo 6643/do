@@ -59,18 +59,20 @@ if ! command -v cc >/dev/null 2>&1; then
   export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$runner_dir/zig-cc.sh"
 fi
 
-cargo build --quiet --locked --manifest-path "$runner_dir/Cargo.toml" \
-  --bin do-p3-g6-2-owned-record-producer-abi
-runner="$runner_dir/target/debug/do-p3-g6-2-owned-record-producer-abi"
-test -x "$runner"
+run_abi() {
+  local component="$1"
+  local mode="$2"
+  cargo run --quiet --locked --manifest-path "$runner_dir/Cargo.toml" \
+    --bin do-p3-g6-2-owned-record-producer-abi -- "$component" "$mode"
+}
 
 modes=(ready pending sink-error-before sink-error-after cancel-before-transfer \
   cancel-after-transfer early-drop-before-transfer early-drop-after-transfer repeat invalid)
 for mode in "${modes[@]}"; do
   canonical_output="$tmp_dir/canonical-$mode.out"
   generated_output="$tmp_dir/generated-$mode.out"
-  "$runner" "$canonical_component" "$mode" >"$canonical_output"
-  "$runner" "$generated_component" "$mode" >"$generated_output"
+  run_abi "$canonical_component" "$mode" >"$canonical_output"
+  run_abi "$generated_component" "$mode" >"$generated_output"
   diff -u "$canonical_output" "$generated_output"
   rg -Fq "mode=$mode" "$canonical_output"
   rg -Fq 'table-empty=true' "$canonical_output"

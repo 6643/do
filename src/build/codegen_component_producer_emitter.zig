@@ -32,6 +32,16 @@ pub const PilotInput = struct {
     template_wat: []const u8,
 };
 
+pub const ContractEmitInput = struct {
+    route_id: []const u8,
+    descriptor_id: []const u8,
+    contract: producer_contract.ProducerContract,
+    frame_facts: facts.RouteFrameFacts,
+    fragments: []const fragments.Fragment,
+    template_wat: []const u8,
+    canonical_wit_hash: []const u8,
+};
+
 const direct_route_id = "owned-record-direct";
 const direct_descriptor_id = "do:g6-2-owned-record-producer@0.1.0";
 const direct_source_module = "do:g6-2-owned-record-producer/source@0.1.0";
@@ -42,16 +52,43 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
     try validate_direct_admission(input.facts.contract);
     if (!facts.route_facts_equal(input.facts.frame_facts, facts.direct_route_facts())) return error.InvalidAdmission;
 
-    const map = state_ir.build_frame_map(.{
+    const assembled = try emit_contract_wat(allocator, .{
         .route_id = input.facts.route_id,
         .descriptor_id = input.facts.descriptor_id,
         .contract = input.facts.contract,
         .frame_facts = input.facts.frame_facts,
-    }) catch return error.InvalidMap;
-    const lifecycle = state_ir.build_lifecycle_ir(input.facts.contract, map) catch return error.InvalidLifecycle;
+        .fragments = input.facts.fragments,
+        .template_wat = input.template_wat,
+        .canonical_wit_hash = input.canonical_wit_hash,
+    });
+    errdefer allocator.free(assembled);
 
-    validate_fragment_marker_ownership(input.facts.fragments, map) catch return error.InvalidFragments;
-    const assembled = fragments.assemble_with_lifecycle(allocator, input.template_wat, input.facts.fragments, lifecycle) catch |err| switch (err) {
+    if (!std.mem.eql(u8, assembled, input.facts.golden_wat)) return error.ByteParityMismatch;
+    return assembled;
+}
+
+pub fn emit_contract_wat(allocator: std.mem.Allocator, input: ContractEmitInput) PilotError![]u8 {
+    if (input.route_id.len == 0 or input.descriptor_id.len == 0 or
+        !std.mem.eql(u8, input.route_id, input.frame_facts.route_id) or
+        !std.mem.eql(u8, input.descriptor_id, input.frame_facts.descriptor_id) or
+        !std.mem.eql(u8, input.descriptor_id, input.contract.descriptor_id))
+    {
+        return error.InvalidIdentity;
+    }
+    if (input.canonical_wit_hash.len == 0) return error.InvalidHash;
+    const contract_hash = input.contract.descriptor_hash orelse return error.InvalidHash;
+    if (!std.mem.eql(u8, input.canonical_wit_hash, contract_hash)) return error.InvalidHash;
+
+    const map = state_ir.build_frame_map(.{
+        .route_id = input.route_id,
+        .descriptor_id = input.descriptor_id,
+        .contract = input.contract,
+        .frame_facts = input.frame_facts,
+    }) catch return error.InvalidMap;
+    const lifecycle = state_ir.build_lifecycle_ir(input.contract, map) catch return error.InvalidLifecycle;
+
+    validate_fragment_marker_ownership(input.fragments, map) catch return error.InvalidFragments;
+    const assembled = fragments.assemble_with_lifecycle(allocator, input.template_wat, input.fragments, lifecycle) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         error.LifecycleMismatch => return error.InvalidLifecycle,
         else => return error.InvalidFragments,
@@ -62,8 +99,6 @@ pub fn emit_pilot_wat(allocator: std.mem.Allocator, input: PilotInput) PilotErro
     if (contains_canonical_gc_reference(assembled)) {
         return error.CanonicalGcReference;
     }
-    if (!std.mem.eql(u8, assembled, input.facts.golden_wat)) return error.ByteParityMismatch;
-
     return assembled;
 }
 

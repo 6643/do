@@ -165,18 +165,20 @@ pub fn emit_component_wat(allocator: std.mem.Allocator, plan: OwnedRecordStreamP
 pub fn emit_component_wat_pilot(allocator: std.mem.Allocator, plan: OwnedRecordStreamProducerPlan) pilot_emitter.PilotError![]u8 {
     validate_direct_plan(plan) catch return error.InvalidAdmission;
     const measured = producer_facts.direct_route_facts();
-    return pilot_emitter.emit_pilot_wat(allocator, .{
-        .facts = .{
-            .route_id = measured.route_id,
-            .descriptor_id = plan.contract.descriptor_id,
-            .contract = plan.contract,
-            .frame_facts = measured,
-            .fragments = &direct_fragments,
-            .golden_wat = canonical_core_wat,
-        },
-        .canonical_wit_hash = plan.contract.descriptor_hash orelse "",
+    const wat = try pilot_emitter.emit_contract_wat(allocator, .{
+        .route_id = measured.route_id,
+        .descriptor_id = plan.contract.descriptor_id,
+        .contract = plan.contract,
+        .frame_facts = measured,
+        .fragments = &direct_fragments,
         .template_wat = canonical_core_wat,
+        .canonical_wit_hash = plan.contract.descriptor_hash orelse "",
     });
+    if (!std.mem.eql(u8, wat, canonical_core_wat)) {
+        allocator.free(wat);
+        return error.ByteParityMismatch;
+    }
+    return wat;
 }
 
 /// Private test-only seam: instrument the already-admitted direct pilot artifact.
