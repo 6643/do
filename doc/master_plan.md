@@ -6,6 +6,20 @@
 实时接手入口: `doc/start_here.md`。  
 执行证据与历史勾选不再维护在本文; 需要追溯时查 git 与 `CHANGELOG.md`。
 
+## 0.5 2026-11-21 G6.2 producer lifecycle foundation
+
+内部 producer contract/frame/lifecycle validation 已迁移到两个既有 private
+golden route: direct `stream<resource-entry>` producer 与 resource-free
+`stream<list<u32>>` producer。direct route 保持 canonical WAT/WIT byte parity;
+scalar/list route 保持 pointer `64`、length `68`、stride `4`、capacity `3`，并把
+list backing 作为独立 lifecycle asset。normal/pending/error/cancel/early-drop/
+repeat cleanup paths 继续由统一 state IR 验证。
+
+focused Zig tests、Do Component、canonical/generated equivalence、ABI 和
+Rust/Wasmtime gates 均通过。该项只建立内部复用，不扩大 default route，不新增
+GC inventory row，不开放 generic producer/resource、borrowed payload 或 public
+ownership syntax。通用 G6.2 仍按 `doc/pending_blocked.md` 的边界 pending。
+
 ## 0.0 2026-09-16 G5c final verification and G6.2 pilot closeout
 
 单 route private pilot 的 Task 6 artifact、default-route parity、rollback 与
@@ -251,7 +265,7 @@ producer 或 general async/resource lowering。
 | E 后端 IR / codegen | done |
 | F LSP | done (v1 无 rename) |
 | GC-first runtime cutover | **done** (Task 6); normal compiler route is GC-only, ARC is explicit test-only oracle |
-| G WASI / Component | G1–G5、G6.1、G6.2 bounded read-directory slice + generic record-stream consumer + multi-owned/multiple-path/one-/two-/three-/four-/five-/six-level nested-owned resource consumer + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + **private async host scalar-argument compiler promotion** + helper-mediated lease（含六跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized forwarding-helper（含 typed-parameter reorder）+ branch-selected terminal checkpoints + private resource Result error/cancellation + pinned HTTP payload cancellation + private variant-resource-stream checkpoint + record-layout/source-mirror checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private bounded scalar `stream<list<u32>>` producer promotion + **private direct owned-record `stream<resource-entry>` producer lifecycle checkpoint** + **private bounded two-owned-field `stream<resource-pair>` producer lifecycle checkpoint** + **private parameterized two-owned-field `stream<resource-pair>` producer lifecycle checkpoint** + **private fixed three-owned-field `ResourceTriple` compiler admission** + **private mixed scalar/owned `MixedEntry` compiler admission** + **private list-owned-record `ListEntry` producer admission** + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at` slices、G6.3、G6.4 done; G6.2 general producer/resource extensions and general async/D2 methods pending |
+| G WASI / Component | G1–G5、G6.1、G6.2 bounded read-directory slice + generic record-stream consumer + multi-owned/multiple-path/one-/two-/three-/four-/five-/six-level nested-owned resource consumer + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + **private async host scalar-argument compiler promotion** + helper-mediated lease（含六跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized forwarding-helper（含 typed-parameter reorder）+ branch-selected terminal checkpoints + private resource Result error/cancellation + pinned HTTP payload cancellation + private variant-resource-stream checkpoint + record-layout/source-mirror checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private bounded scalar `stream<list<u32>>` producer promotion + **private producer lifecycle foundation for direct owned-record and resource-free scalar/list routes** + **private direct owned-record `stream<resource-entry>` producer lifecycle checkpoint** + **private bounded two-owned-field `stream<resource-pair>` producer lifecycle checkpoint** + **private parameterized two-owned-field `stream<resource-pair>` producer lifecycle checkpoint** + **private fixed three-owned-field `ResourceTriple` compiler admission** + **private mixed scalar/owned `MixedEntry` compiler admission** + **private list-owned-record `ListEntry` producer admission** + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at` slices、G6.3、G6.4 done; G6.2 general producer/resource extensions and general async/D2 methods pending |
 | D2 `descriptor.set-size` / `descriptor.advise` | private bounded async method slices closed; `set-size` fixture `552` and mutation matrix, plus `advise` fixture `806`, direct `(i32,i64,i64,i32,i32)->i32` ABI, six-advice, invalid-discriminant, cancellation, early-drop, repeat, and generated Component/Rust/Wasmtime gates green; general filesystem async remains pending |
 | H 发布前治理 | done |
 | I 语言扩展 | **closed** (I1 递归/TCO + I2 Tuple 第一版) |
@@ -270,7 +284,7 @@ I2 已收窄: managed/`text` 叶子、pure-scalar struct 嵌套子槽、以及�
 1. 发布候选维护与文档基线已复核通过（显式项目缓存路径下）；2026-11-20 ReleaseSmall 构建和 release smoke 通过。后续只处理新出现的真实发布阻断或文档漂移。
 2. G5c 的 15-row inventory 与 residual matrix 已重新逐行核验；当前为 `complete_rows=15 pending_rows=0`，没有残留 inventory row 阻断。后续新的 producer/resource shape 仍须另立 design、manifest/hash/ABI、source matcher、negative fixtures、Component parity 和 Rust/Wasmtime cleanup gate。
 3. 当前没有第二个满足 admission contract 的同步 exact candidate；不扩大通用 aggregate/list、任意 producer、async/resource 或 ownership，也不从邻近 descriptor 推断通用能力。
-4. G6.2 direct、static two-owned-field、parameterized two-owned-field、固定三字段 `ResourceTriple`、mixed scalar/owned、single-list-owned-record 与 two-list-owned-record producer private compiler admission 的独立 lifecycle/design gates 均已闭环；当前没有第二个满足 admission contract 的同步 exact candidate。后续如需新的 producer/resource shape，仍须另立 design、manifest/hash/ABI、source matcher、negative fixtures、Component parity 和 Rust/Wasmtime cleanup gate；不得直接扩大 default route。
+4. G6.2 direct、resource-free scalar/list、static two-owned-field、parameterized two-owned-field、固定三字段 `ResourceTriple`、mixed scalar/owned、single-list-owned-record 与 two-list-owned-record producer private compiler admission 的独立 lifecycle/design gates 均已闭环；当前没有第二个满足 admission contract 的同步 exact candidate。后续如需新的 producer/resource shape，仍须另立 design、manifest/hash/ABI、source matcher、negative fixtures、Component parity 和 Rust/Wasmtime cleanup gate；不得直接扩大 default route。
 5. D2 通用 filesystem async/external HTTP 与 deferred codegen/ownership/JSON/LSP 继续保持明确阻断或单独授权，不与本阶段混合。
 
 验收命令:

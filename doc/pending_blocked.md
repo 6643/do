@@ -22,6 +22,15 @@ provider 行为证据。独立手写 canonical WAT 对照也只覆盖代表性�
 矩阵见 `doc/wit/wasi_http_error_payload_evidence.md`。这些是明确记录的验证边界,
 不阻塞当前 pinned ABI compiler closeout。
 
+2026-11-21 G6.2 producer lifecycle foundation 已完成两个内部迁移：direct
+`stream<resource-entry>` producer 和 resource-free `stream<list<u32>>` producer
+现在都经过统一的 contract/frame/lifecycle validation。前者保持 WAT/WIT byte
+parity; 后者保持 list pointer `64`、length `68`、stride `4`、capacity `3`，并
+将 list backing 作为独立 lifecycle asset。focused emitter/scalar tests、Do
+Component、canonical/generated equivalence、ABI 与 Rust/Wasmtime gates 均通过。
+这仍是内部 foundation，不开放 generic producer/resource lowering、borrowed
+payload 或 public `own<T>`/`borrow<T>`/`ref<T>`，也不新增 GC inventory row。
+
 2026-11-20 GC 同步实现增量：标量 core parity、受限标量数组多值 `@put`、`[i32]`
 spread `@put` 和动态 nested field path emitter 已落地。nested path 的 6/12 层
 emitter 测试及 12 层合成 WAT/Wasmtime oracle 只证明后端实现，不扩大普通 Do

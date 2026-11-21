@@ -1,5 +1,15 @@
 # Changelog
 
+# 2026-11-21 G6.2 producer lifecycle foundation:
+  routed the private direct `stream<resource-entry>` producer and the
+  resource-free `stream<list<u32>>` producer through validated shared
+  contract/frame/lifecycle state. Direct WAT/WIT byte parity remains intact;
+  scalar/list ABI remains pointer `64`, length `68`, stride `4`, capacity `3`,
+  with list backing represented as its own lifecycle asset. Focused Zig,
+  Component, canonical/generated equivalence, ABI, and Rust/Wasmtime gates pass.
+  This is internal foundation work and does not open generic producer/resource
+  lowering, borrowed payloads, public ownership syntax, or a GC inventory row.
+
 # 2026-11-21 D2 private `descriptor.advise` bounded promotion:
   added exact source admission, direct Core/WIT lowering, regular/cancellation
   ABI snapshots, and a Rust/Wasmtime lifecycle gate for the pinned filesystem

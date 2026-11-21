@@ -22,6 +22,14 @@ byte-reader gate 已完成。
 `test_rust_http_payload_cancellation_request_header_size_probe.sh`、HTTP
 producer write-error lowering/runtime gates 与 ReleaseSmall/release smoke 均通过。
 header-size probe 只验证 canonical ABI discard, 不开放生成式 cancellation lowering。
+
+G6.2 producer lifecycle foundation 已迁移 direct `stream<resource-entry>` 与
+resource-free `stream<list<u32>>` 两条 private golden route 到统一的
+contract/frame/lifecycle validation。direct route 保持 canonical WAT/WIT byte
+parity; scalar/list route 保持 pointer `64`、length `68`、stride `4`、capacity
+`3`，list backing 单独计为 lifecycle asset。Do Component、equivalence、ABI 与
+Rust/Wasmtime gates 均通过。该 foundation 不开放 generic producer/resource、
+borrowed payload 或 public ownership syntax。
 最近记录的
 `RUN_GC_CORE=1` harness 为 `14/14 steps`；focused GC tests 为
 `codegen_pipeline.zig` `1060/1060`、`codegen_gc_sync.zig` `295/295`、
