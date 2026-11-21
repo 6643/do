@@ -120,4 +120,3 @@
 - [x] **Step 1: Update the design status and evidence** with exact commands, the direct signature, enum observations, cleanup counts, and remaining generic filesystem/HTTP blockers.
 - [x] **Step 2: Update current-status documents** to move `descriptor.advise` from ABI-only to a private bounded compiler/runtime slice; retain the 1.263.0 local pin disclosure and do not alter the global lock.
 - [x] **Step 3: Run the focused ABI/runtime gates, `./src/build/test/run_tests.sh`, `./src/build/test/run_release_smoke.sh`, and `git diff --check`.**
-

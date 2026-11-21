@@ -4,4 +4,3 @@ Advice u32 = Normal(0) | Sequential(1) | Random(2) | WillNeed(3) | DontNeed(4) |
 AdviseError error = Io | Invalid | BadDescriptor
 run(file File, offset u64, length u64, advice Advice) -> Result<nil, AdviseError> { pending Future<Result<nil, AdviseError>> = advise_descriptor(file, offset, length, advice) return @await(pending) }
 start() {}
-
