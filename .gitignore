@@ -23,6 +23,9 @@ examples/ui-signal/dist/
 bin/do
 bin/*
 
+# Zig build output
+src/zig-out/
+
 # Local scratch and diagnostic outputs
 .tmp/
 **/.tmp/
