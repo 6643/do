@@ -54,7 +54,7 @@
 **Interfaces:**
 
 - Produces `State = enum { init, calling, pending, ready, error, cancelled, dropped }`.
-- Produces `Event = enum { begin_call, poll_pending, complete_ready, complete_error, request_cancel, early_drop, cleanup }`.
+- Produces `Event = enum { begin_call, poll_pending, complete_ready, complete_error, request_cancel, early_drop, cleanup, unknown_terminal }`.
 - Produces `TransitionError` with explicit invalid-transition errors, including `AlreadyDropped`, `PendingRequired`, `TerminalRequired`, and `UnknownTerminal`.
 - Produces `pub fn advance(state: State, event: Event) TransitionError!State`.
 - Produces `pub fn validate_path(events: []const Event) TransitionError!State`.
@@ -72,7 +72,7 @@
   - `cancel without pending is rejected`;
   - `cleanup before terminal is rejected`.
 
-  Assert the exact final state `.dropped` for valid paths and the named error for invalid paths.
+  Assert the exact final state `.dropped` for valid paths and the named error for invalid paths. `unknown_terminal` must fail closed with `UnknownTerminal` from every non-dropped state.
 
 - [ ] **Step 2: Run the focused test and verify it fails.**
 
