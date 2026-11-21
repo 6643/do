@@ -537,6 +537,10 @@ path = "src/bin/do-p3-wasi-filesystem-stat-host-runner.rs"
 name = "wasi-filesystem-metadata-hash"
 path = "src/bin/wasi_filesystem_metadata_hash.rs"
 
+[[bin]]
+name = "wasi-filesystem-write-via-stream"
+path = "src/bin/wasi_filesystem_write_via_stream.rs"
+
 [profile.dev]
 debug = 0
 incremental = false

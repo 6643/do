@@ -1,7 +1,7 @@
 # do 编译器主计划
 
 状态: v1 子集发布候选已收口; G5c 15-row capability inventory 已全部闭环且最终门禁通过; G6/D2 已关闭若干固定形状 gate，仍有 producer/resource residual；Task 6 GC-first backend cutover 同时是当前实现事实和 v1 源码内存契约。普通 Do 对象由 Wasm GC 按可达性回收，词法块退出不释放普通对象；函数参数默认只读借用；普通赋值、`@set`、Future 和外部 resource 分别遵循值语义、显式消费和显式 close/drop 规则。
-更新时间: 2026-11-21
+更新时间: 2026-11-22
 
 实时接手入口: `doc/start_here.md`。  
 执行证据与历史勾选不再维护在本文; 需要追溯时查 git 与 `CHANGELOG.md`。
@@ -19,6 +19,22 @@ focused Zig tests、Do Component、canonical/generated equivalence、ABI 和
 Rust/Wasmtime gates 均通过。该项只建立内部复用，不扩大 default route，不新增
 GC inventory row，不开放 generic producer/resource、borrowed payload 或 public
 ownership syntax。通用 G6.2 仍按 `doc/pending_blocked.md` 的边界 pending。
+
+## 0.6 2026-11-22 D2 `descriptor.write-via-stream` bounded route
+
+该 route 已完成 ABI snapshot、manifest/target admission、固定 source grammar
+和 compiler-generated Component assembly。Rust/Wasmtime lifecycle gate 也已通过
+ready、pending、method-error、sink-error、cancel-before-completion、
+cancel-after-close、Store-disposal early-drop、repeat；正常完成路径对 writer、
+method completion 和 descriptor 各清理一次，host 观察到 offset `1234` 与 byte
+`[65]`。它锁定
+`wasi:filesystem/types@0.3.0-rc-2025-09-16`、WIT hash
+`8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f` 以及
+`(i32, i32, i64, i32) -> i32` 的 method import。当前实现不生成
+`stream.forward`，而标准 route 被 `wasm-tools 1.263.0` 拒绝。sink-error 是
+host trap + Store disposal，early-drop 在 Store disposal 后不再访问 Store；该
+bounded private route 已关闭，但不开放通用 filesystem async、真实 OS 文件修改、
+外部写入回滚或 public ownership syntax。
 
 ## 0.0 2026-09-16 G5c final verification and G6.2 pilot closeout
 
@@ -149,7 +165,7 @@ producer 或 general async/resource lowering。
 - `do lsp`: diagnostics + formatting + semantic tokens + hover + completion + definition (无 rename)。
 - `do fmt`: stdout / check-only / write 单文件。
 - `do check`: lexer/parser/sema/import diagnostics only; 诊断收集在 `src/build/diagnostics.zig`。
-- 阶段 A–F、H 已完成; D 可推进项与 D2.1 已收口; D2 真实本地 file/dir/CLI stream、compiler-generated TCP/UDP socket create/bind/drop loopback smoke 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size`/`descriptor.read-via-stream`/`descriptor.advise` async slices 已收口；D2 总项仍受通用 filesystem async/external HTTP 阻断; G1–G5、G6.4 已完成; **阶段 I (I1+I2) 已关闭**。
+- 阶段 A–F、H 已完成; D 可推进项与 D2.1 已收口; D2 真实本地 file/dir/CLI stream、compiler-generated TCP/UDP socket create/bind/drop loopback smoke 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size`/`descriptor.read-via-stream`/`descriptor.advise`/`descriptor.write-via-stream` async slices 已收口；D2 总项仍受通用 filesystem async/external HTTP 阻断; G1–G5、G6.4 已完成; **阶段 I (I1+I2) 已关闭**。
 - 架构扁平拆分已落地: `type_name` / `sema_error` / `diagnostics` / `gen_*` 域竖切 / `sema_*` 域竖切 (见 `AGENTS.md`)。
 - 2026-11-21 fresh release-candidate maintenance: `./src/build/test/run_tests.sh` 为 `14/14 steps`；HTTP payload-error all-variant gate、request-header-size canonical cancellation probe、HTTP producer write-error lowering/runtime gates、`./src/build/test/run_release_smoke.sh` 的 ReleaseSmall build 与 CLI smoke、`git diff --check` 均通过。本轮未重跑独立 `zig test main.zig`、GC default、ARC inventory、semantic-equivalence 或 migration inventory。
 - 最近一次完整 GC/inventory evidence 仍记录为：隔离 cache 下 `zig test main.zig` `1743/1743`；GC default gate `87 fixtures`；ARC post-cutover（`rows=55 matches=492 unclassified=0 normal_route_matches=0`）、生产依赖闭包（`modules=164 forbidden=0`）、semantic-equivalence（26 rows; 0 pending）通过；migration inventory `complete_rows=15 pending_rows=0`，退出码 `0`。这些结果不是本轮重新执行的门禁。
@@ -266,7 +282,7 @@ producer 或 general async/resource lowering。
 | F LSP | done (v1 无 rename) |
 | GC-first runtime cutover | **done** (Task 6); normal compiler route is GC-only, ARC is explicit test-only oracle |
 | G WASI / Component | G1–G5、G6.1、G6.2 bounded read-directory slice + generic record-stream consumer + multi-owned/multiple-path/one-/two-/three-/four-/five-/six-level nested-owned resource consumer + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + **private async host scalar-argument compiler promotion** + helper-mediated lease（含六跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized forwarding-helper（含 typed-parameter reorder）+ branch-selected terminal checkpoints + private resource Result error/cancellation + pinned HTTP payload cancellation + private variant-resource-stream checkpoint + record-layout/source-mirror checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private bounded scalar `stream<list<u32>>` producer promotion + **private producer lifecycle foundation for direct owned-record and resource-free scalar/list routes** + **private direct owned-record `stream<resource-entry>` producer lifecycle checkpoint** + **private bounded two-owned-field `stream<resource-pair>` producer lifecycle checkpoint** + **private parameterized two-owned-field `stream<resource-pair>` producer lifecycle checkpoint** + **private fixed three-owned-field `ResourceTriple` compiler admission** + **private mixed scalar/owned `MixedEntry` compiler admission** + **private list-owned-record `ListEntry` producer admission** + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at` slices、G6.3、G6.4 done; G6.2 general producer/resource extensions and general async/D2 methods pending |
-| D2 `descriptor.set-size` / `descriptor.advise` | private bounded async method slices closed; `set-size` fixture `552` and mutation matrix, plus `advise` fixture `806`, direct `(i32,i64,i64,i32,i32)->i32` ABI, six-advice, invalid-discriminant, cancellation, early-drop, repeat, and generated Component/Rust/Wasmtime gates green; general filesystem async remains pending |
+| D2 `descriptor.set-size` / `descriptor.advise` / `descriptor.write-via-stream` | private bounded async method slices closed; `set-size` fixture `552` and mutation matrix, `advise` fixture `806`, and write-via-stream fixture `821` with direct `(i32,i64,i64,i32,i32)->i32` advise ABI and `(i32,i32,i64,i32)->i32` write ABI; six-advice, invalid-discriminant, stream write, cancellation, early-drop, repeat, and generated Component/Rust/Wasmtime gates green; general filesystem async remains pending |
 | H 发布前治理 | done |
 | I 语言扩展 | **closed** (I1 递归/TCO + I2 Tuple 第一版) |
 | Colorless async / WIT bindgen | bounded unit/scalar runtime-manifest contracts, opt-in root-owned local-frame async-call contract including one inline `u32` scalar argument, private `--p3-async-host-arg-component` scalar-argument compiler promotion, and private `Future<Ticket>` -> `future<own<ticket>>` compiler contract verified; automatic manifest-to-lowering generalization and unrestricted generic async lowering pending |

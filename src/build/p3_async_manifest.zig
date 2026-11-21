@@ -56,6 +56,7 @@ pub const LoweringShape = union(enum) {
     scalar_list_stream_producer: ScalarListStreamProducerShape,
     variant_resource_stream_reader: VariantResourceStreamShape,
     stream_writer: StreamWriterShape,
+    filesystem_byte_stream_writer: FilesystemByteStreamWriterShape,
 };
 
 /// ABI facts for the one private async `map<u32, u32>` admission slice.
@@ -576,6 +577,18 @@ pub const FilesystemByteStreamReaderShape = struct {
     future: FutureCanonical,
 };
 
+/// ABI facts for the private asynchronous filesystem byte writer. The
+/// descriptor method consumes a writable byte stream and returns its
+/// completion through the component async task-return path.
+pub const FilesystemByteStreamWriterShape = struct {
+    receiver: []const u8,
+    offset: []const u8,
+    source_result: []const u8,
+    method: StreamOperation,
+    stream: StreamCanonical,
+    resource_drop_import: []const u8,
+};
+
 pub const StreamOperation = struct {
     import_name: []const u8,
     core_params: []const []const u8,
@@ -595,6 +608,11 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
 
     if (std.mem.eql(u8, descriptor.effect, "filesystem-byte-stream-reader")) {
         if (valid_filesystem_byte_stream_reader_descriptor(descriptor)) |shape| return .{ .filesystem_byte_stream_reader = shape };
+        return null;
+    }
+
+    if (std.mem.eql(u8, descriptor.effect, "filesystem-byte-stream-writer")) {
+        if (valid_filesystem_byte_stream_writer_descriptor(descriptor)) |shape| return .{ .filesystem_byte_stream_writer = shape };
         return null;
     }
 
@@ -1621,7 +1639,8 @@ fn parse_descriptor(allocator: std.mem.Allocator, value: std.json.Value) !Descri
         !std.mem.eql(u8, effect, "record-resource-list-stream-batched-producer") and
         !std.mem.eql(u8, effect, "scalar-list-stream-producer") and
         !std.mem.eql(u8, effect, "variant-resource-stream-reader") and
-        !std.mem.eql(u8, effect, "stream-writer")) return error.InvalidP3AsyncManifest;
+        !std.mem.eql(u8, effect, "stream-writer") and
+        !std.mem.eql(u8, effect, "filesystem-byte-stream-writer")) return error.InvalidP3AsyncManifest;
     const owned_params = try duplicate_params(allocator, array_value(object.get("params")) orelse return error.InvalidP3AsyncManifest);
     errdefer {
         for (owned_params) |param| allocator.free(param);
@@ -2349,6 +2368,63 @@ fn valid_filesystem_byte_stream_reader_descriptor(descriptor: Descriptor) ?Files
         },
         .stream = stream,
         .future = future,
+    };
+}
+
+fn valid_filesystem_byte_stream_writer_descriptor(descriptor: Descriptor) ?FilesystemByteStreamWriterShape {
+    const stream = descriptor.canonical.stream orelse return null;
+
+    if (!std.mem.eql(u8, descriptor.locator, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.member, "descriptor.write-via-stream") or
+        !std.mem.eql(u8, descriptor.effect, "filesystem-byte-stream-writer") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, p3_filesystem_wit_manifest.directory_types_sha256) or
+        descriptor.params.len != 3 or
+        !std.mem.eql(u8, descriptor.params[0], "descriptor") or
+        !std.mem.eql(u8, descriptor.params[1], "stream<u8>") or
+        !std.mem.eql(u8, descriptor.params[2], "filesize") or
+        !std.mem.eql(u8, descriptor.result, "Result<nil,error-code>") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
+        !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i32", "i64", "i32" }) or
+        !equal_core_types(descriptor.canonical.core_results, &.{"i32"}) or
+        !equal_core_types(descriptor.canonical.completion_params, &.{ "i32", "i32" }) or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower][method]descriptor.write-via-stream") or
+        !std.mem.eql(u8, descriptor.wit.package, "wasi:filesystem@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.wit.interface, "types") or
+        !std.mem.eql(u8, descriptor.wit.operation, "descriptor.write-via-stream") or
+        !std.mem.eql(u8, descriptor.wit.world, "imports") or
+        descriptor.wit.parameter.len != 0 or
+        !std.mem.eql(u8, stream.element, "u8")) return null;
+
+    if (!valid_stream_operation(stream.new, &.{}, &.{"i64"}) or
+        !valid_stream_operation(stream.cancel_read, &.{"i32"}, &.{"i32"}) or
+        !valid_stream_operation(stream.cancel_write, &.{"i32"}, &.{"i32"}) or
+        !valid_stream_operation(stream.drop_readable, &.{"i32"}, &.{}) or
+        !valid_stream_operation(stream.drop_writable, &.{"i32"}, &.{}) or
+        !valid_stream_operation(stream.read, &.{ "i32", "i32", "i32" }, &.{"i32"}) or
+        !valid_stream_operation(stream.write, &.{ "i32", "i32", "i32" }, &.{"i32"})) return null;
+
+    if (!valid_named_stream_operation(stream.new, "[stream-new-0][method]descriptor.write-via-stream", &.{}, &.{"i64"}) or
+        !valid_named_stream_operation(stream.cancel_read, "[stream-cancel-read-0][method]descriptor.write-via-stream", &.{"i32"}, &.{"i32"}) or
+        !valid_named_stream_operation(stream.cancel_write, "[stream-cancel-write-0][method]descriptor.write-via-stream", &.{"i32"}, &.{"i32"}) or
+        !valid_named_stream_operation(stream.drop_readable, "[stream-drop-readable-0][method]descriptor.write-via-stream", &.{"i32"}, &.{}) or
+        !valid_named_stream_operation(stream.drop_writable, "[stream-drop-writable-0][method]descriptor.write-via-stream", &.{"i32"}, &.{}) or
+        !valid_named_stream_operation(stream.read, "[async-lower][stream-read-0][method]descriptor.write-via-stream", &.{ "i32", "i32", "i32" }, &.{"i32"}) or
+        !valid_named_stream_operation(stream.write, "[async-lower][stream-write-0][method]descriptor.write-via-stream", &.{ "i32", "i32", "i32" }, &.{"i32"})) return null;
+
+    return .{
+        .receiver = descriptor.params[0],
+        .offset = descriptor.params[2],
+        .source_result = descriptor.result,
+        .method = .{
+            .import_name = descriptor.canonical.async_import_name,
+            .core_params = descriptor.canonical.core_params,
+            .core_results = descriptor.canonical.core_results,
+        },
+        .stream = stream,
+        .resource_drop_import = "[resource-drop]descriptor",
     };
 }
 
@@ -6556,6 +6632,58 @@ test "checked-in registry admits the pinned filesystem descriptor set-size ABI" 
     try std.testing.expectEqual(@as(usize, 0), shape.ok.len);
     try std.testing.expectEqualStrings("i32", shape.err[0]);
     try std.testing.expectEqualStrings("[resource-drop]descriptor", shape.resource_drop_import);
+}
+
+test "checked-in registry admits the pinned filesystem descriptor write-via-stream ABI" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.write-via-stream") orelse return error.TestUnexpectedResult;
+    const shape = switch (lowering_shape(descriptor) orelse return error.TestUnexpectedResult) {
+        .filesystem_byte_stream_writer => |value| value,
+        else => return error.TestUnexpectedResult,
+    };
+    try std.testing.expectEqualStrings("descriptor", shape.receiver);
+    try std.testing.expectEqualStrings("filesize", shape.offset);
+    try std.testing.expectEqualStrings("Result<nil,error-code>", shape.source_result);
+    try std.testing.expectEqualStrings("u8", shape.stream.element);
+    try std.testing.expectEqualStrings("[async-lower][method]descriptor.write-via-stream", shape.method.import_name);
+    try std.testing.expectEqualStrings("[async-lower][stream-write-0][method]descriptor.write-via-stream", shape.stream.write.import_name);
+    try std.testing.expectEqualStrings("[stream-drop-writable-0][method]descriptor.write-via-stream", shape.stream.drop_writable.import_name);
+    try std.testing.expectEqualStrings("[resource-drop]descriptor", shape.resource_drop_import);
+}
+
+test "filesystem descriptor write-via-stream lowering rejects ABI drift" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.write-via-stream") orelse return error.TestUnexpectedResult;
+
+    var drifted = descriptor;
+    drifted.member = "descriptor.read-via-stream";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.params = &.{ "descriptor", "filesize", "stream<u8>" };
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.params = &.{ "descriptor", "stream<u32>", "filesize" };
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.result = "Result<u32,error-code>";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.canonical.completion = "result-area";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    var stream = descriptor.canonical.stream.?;
+    stream.write.import_name = "[async-lower][stream-write-0]drifted";
+    var canonical = descriptor.canonical;
+    canonical.stream = stream;
+    drifted = descriptor;
+    drifted.canonical = canonical;
+    try std.testing.expect(lowering_shape(drifted) == null);
 }
 
 test "filesystem descriptor set-size lowering rejects ABI drift" {

@@ -1,6 +1,6 @@
 # Roadmap 执行状态
 
-更新时间: 2026-11-21
+更新时间: 2026-11-22
 
 **本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
@@ -25,6 +25,26 @@ standalone export. This is a private bounded method slice; generic filesystem
 async and other WIT methods remain blocked. Verification:
 `bash examples/p3-runtime/test_d2_wasi_filesystem_advise_abi.sh` and
 `bash examples/p3-runtime/test_rust_wasi_filesystem_advise.sh`.
+
+## 2026-11-22 D2 private `descriptor.write-via-stream` bounded promotion
+
+The pinned ABI, fail-closed manifest admission, bounded source matcher, dedicated
+emitter, and compiler-generated Core/WIT assembly are present. The selected source
+shape is `@host_async_func(..., (File, StreamWriter<u8>, u64) ->
+Result<nil, FileError>)`; its measured method ABI is
+`(i32, i32, i64, i32) -> i32`, and the pinned upstream WIT hash is
+`8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`.
+
+The compiler route deliberately omits `stream.forward`. The standard WIT route is
+rejected by the installed `wasm-tools 1.263.0` when that operation is present.
+Compiler-generated Core/WIT assembly and the Rust/Wasmtime lifecycle gate pass
+ready, pending, method-error, sink-error, cancel-before-completion,
+cancel-after-close, Store-disposal early-drop, and repeat. Normal completion
+releases writer, method completion, and descriptor state exactly once; the host
+observes offset `1234` and byte `[65]`. Sink-error is a host trap plus Store
+disposal, and early-drop stops at Store disposal. This closes the private bounded
+route; generic filesystem async, real OS file mutation, external write rollback,
+and public ownership syntax remain outside the capability.
 
 ## 2026-11-21 G6.2 pinned HTTP error payload closeout
 
@@ -738,8 +758,8 @@ fail-closed/pending。
 | GC-first scalar call-graph boundary | `examples/gc-p3-runtime/scalar-call-graph.do` 的同模块、同步、无环 scalar helper calls 已走默认 typed GC route；self/mutual/longer recursion 在 WAT 前 fail-closed。独立 gate、`130/130` scalar focused tests 和默认 83-fixture build/parse gate 已锁定；imported graph、host/WIT、managed、async/resource 与任意 producer expression 仍不准入。 |
 | 阶段 A–F、H | done |
 | 阶段 D | 可推进项 done; D2.1 按 B 方案绿色 regression 收口 |
-| D2 真实 host smoke | in progress; real local filesystem preopen/read-directory, CLI pipe, compiler-generated TCP/UDP socket create/bind/drop loopback, and the private pinned `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size`/`descriptor.read-via-stream` async method gates are green; the method-level recovery matrix is documented, while general filesystem async and external HTTP remain blocked |
-| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + private bounded `descriptor.read-via-stream` byte-reader + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + **private bounded async host scalar-argument compiler promotion** + helper-mediated lease（含六跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含六跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + **private bounded scalar `stream<list<u32>>` producer promotion** + **private direct owned-record `stream<resource-entry>` producer lifecycle checkpoint** + **private bounded two-owned-field `stream<resource-pair>` producer lifecycle checkpoint** + **private parameterized two-owned-field `stream<resource-pair>` producer lifecycle checkpoint** + **private fixed three-owned-field `ResourceTriple` compiler admission** + **private mixed scalar/owned `MixedEntry` producer compiler admission** + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size`/`descriptor.read-via-stream` slices、G6.3、G6.4 done; generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel 仍 pending |
+| D2 真实 host smoke | in progress; real local filesystem preopen/read-directory, CLI pipe, compiler-generated TCP/UDP socket create/bind/drop loopback, and the private pinned `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size`/`descriptor.read-via-stream`/`descriptor.advise`/`descriptor.write-via-stream` async method gates are green; the method-level recovery matrix is documented, while general filesystem async and external HTTP remain blocked |
+| 阶段 G | G1–G5、G6.1、G6.2 bounded read-directory slice + private bounded `descriptor.read-via-stream` byte-reader + generic consumer + multi-owned-resource + one-/two-/three-/four-/five-/six-level nested-owned-resource + multiple nested-owned-resource paths checkpoints + descriptor-bounded single-read `stream<list<resource-entry>>` ownership lowering/runtime checkpoint + bounded scalar producer + scalar-argument async-call + inline scalar-argument async-call + **private bounded async host scalar-argument compiler promotion** + helper-mediated lease（含六跳 forwarding）+ fixed/parameterized `u64` countdown producer + parameterized helper（含六跳 forwarding）producer + reordered helper lease + branch-selected terminal checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + registry record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + **private bounded scalar `stream<list<u32>>` producer promotion** + **private direct owned-record `stream<resource-entry>` producer lifecycle checkpoint** + **private bounded two-owned-field `stream<resource-pair>` producer lifecycle checkpoint** + **private parameterized two-owned-field `stream<resource-pair>` producer lifecycle checkpoint** + **private fixed three-owned-field `ResourceTriple` compiler admission** + **private mixed scalar/owned `MixedEntry` producer compiler admission** + private D2 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size`/`descriptor.read-via-stream`/`descriptor.advise`/`descriptor.write-via-stream` slices、G6.3、G6.4 done; generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel 仍 pending |
 | Colorless async / WIT bindgen | canonical `@async/@await/@cancel` surface, legacy `async` deprecation, schema 1/2 generated manifest checks, automatic discovery for the admitted schema 2 unit and scalar capabilities, plus opt-in v2 variant/scalar-i64 slices, the `--p3-async-call-component` root-owned local-frame slice including one inline `u32` scalar argument, the private `--p3-async-host-arg-component` scalar-argument compiler slice, and the private `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` slice verified; general async-call promotion and D2 recovery designs are frozen without compiler widening; unrestricted generated WIT lowering remains pending |
 | 阶段 I | **closed** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构扁平拆分 | 已落地: `diagnostics` / `type_name` / `sema_error` / codegen 域竖切 / **`sema_*` 域竖切** (`sema_tokens`/`sema_shapes`/`sema_function_*`/`sema_structures`/`sema_type_checks`/`sema_imports`/`sema_control`) |

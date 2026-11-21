@@ -1,6 +1,6 @@
 # 待处理与阻断清单
 
-更新时间: 2026-11-21
+更新时间: 2026-11-22
 基线: 默认回归由 `./src/build/test/run_tests.sh` 薄入口转发到 Zig harness
 关系: 总规划 `doc/master_plan.md`; 接手 `doc/start_here.md`; 执行状态 `doc/roadmap_status.md`
 约定: **只记未关闭项**; 完成后从本文件删除或移入「已关闭摘要」, 并同步入口文档与 `CHANGELOG.md`。
@@ -83,7 +83,7 @@ repeat，并精确检查 completion/pending-future 与 stream/future/descriptor
 各一次 drop，live Store 的 `ResourceTable` 为空。
 
 这只是私有固定形状能力，不开放通用 filesystem/Stream async lowering、
-`write-via-stream`、`append-via-stream`、无限读取、任意 producer expression，
+`append-via-stream`、无限读取、任意 producer expression，
 也不开放 public `own<T>`/`borrow<T>`/`ref<T>` 语法；这些能力仍按阻断清单单独
 推进。
 
@@ -621,7 +621,7 @@ filesystem WIT hash
 `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`; each
 records its own measured import, Result/payload layout, descriptor drop,
 ready/pending/error/cancel cleanup, and empty `ResourceTable`.
-`write-via-stream`, `append-via-stream`,
+`append-via-stream`,
 `read-directory`, path mutation, borrowed
 descriptor methods, and metadata records other than `metadata-hash` and
 `metadata-hash-at` remain
@@ -651,6 +651,25 @@ changed. Run the ABI and runtime gates:
 `bash examples/p3-runtime/test_rust_wasi_filesystem_advise.sh`. Generic
 filesystem async, other unmeasured methods, and public ownership syntax remain
 blocked.
+
+**D2 `descriptor.write-via-stream` private bounded promotion (已关闭,
+2026-11-22):** the fixed declaration is
+`(File, StreamWriter<u8>, u64) -> Result<nil, FileError>` under the pinned
+`wasi:filesystem/types@0.3.0-rc-2025-09-16` WIT hash
+`8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`, with method
+Core ABI `(i32,i32,i64,i32)->i32`. Manifest/source admission, compiler lowering,
+Core/WIT assembly, and the Rust/Wasmtime generated-component gate pass. The
+matrix covers ready, pending, method-error, sink-error, cancel-before-completion,
+cancel-after-close, Store-disposal early-drop, and repeat. Normal completion
+paths release writer/method/descriptor state exactly once; cancellation waits
+for both stream and method terminal states; early-drop performs no post-disposal
+access. The host observes offset `1234` and byte `[65]`.
+
+The compiler route intentionally omits `stream.forward`; the standard route is
+rejected by pinned `wasm-tools 1.263.0`. Sink-error is a host trap plus Store
+disposal and is not a normal Component cleanup result. This closes only the
+private bounded compiler route; it does not open generic filesystem async,
+real OS file mutation claims, external write rollback, or public ownership syntax.
 
 **D2 bounded `descriptor.stat` early-drop boundary (2026-08-10):** the latest
 `wasm-tools 1.255.0` ABI gate, exact opt-in Do compiler gate, and the
@@ -1070,7 +1089,7 @@ host/WIT 继续 fail-closed；扩展这些形状须独立设计和验收，不�
 | ID | 项 | 说明 |
 | --- | --- | --- |
 | D1 | 完整 ownership IR | 跨函数唯一性 / escape / 基于分析的区域推断 / 激进 loop move。这里的区域推断是可选编译器优化分析，不决定 GC-first 对象生命周期 |
-| D2 | 完整 WASI/Component 运行时 | 已增加真实本地 filesystem preopen/open-at/sync、read-directory stream、CLI stdin pipe，以及 socket create/bind/drop 的 compiler-generated Component/Rust/Wasmtime smoke；私有 `descriptor.get-type`、`descriptor.sync`、`descriptor.get-flags`、`descriptor.stat`、`descriptor.sync-data`、`descriptor.metadata-hash`、`descriptor.metadata-hash-at`、`descriptor.stat-at` 与 `descriptor.open-at` 各自通过 pinned ABI、compiler/runtime gates；仍缺通用 filesystem async lowering 与 external-network HTTP，故 D2 总项保持 in progress |
+| D2 | 完整 WASI/Component 运行时 | 已增加真实本地 filesystem preopen/open-at/sync、read-directory stream、CLI stdin pipe，以及 socket create/bind/drop 的 compiler-generated Component/Rust/Wasmtime smoke；私有 `descriptor.get-type`、`descriptor.sync`、`descriptor.get-flags`、`descriptor.stat`、`descriptor.sync-data`、`descriptor.metadata-hash`、`descriptor.metadata-hash-at`、`descriptor.stat-at`、`descriptor.open-at`、`descriptor.advise` 与 `descriptor.write-via-stream` 各自通过 pinned ABI、compiler/runtime gates；仍缺通用 filesystem async lowering 与 external-network HTTP，故 D2 总项保持 in progress |
 | D3 | JSON 自动序列化扩展 | error/enum/union/复杂 storage; 当前仅已验证 struct 字段子集 |
 | D4 | LSP 增强 | rename / references / import-aware 跨模块 / 增量 index |
 | D5 | fmt 增强 | 多文件批量、range/on-type、完整语法感知 |

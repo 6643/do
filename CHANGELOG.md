@@ -1,5 +1,17 @@
 # Changelog
 
+# 2026-11-22 D2 `descriptor.write-via-stream` bounded promotion:
+  pinned the filesystem WIT hash and `(i32,i32,i64,i32)->i32` async method ABI,
+  added fail-closed manifest/source admission, and assembled the bounded compiler
+  Core/WIT route. The Rust/Wasmtime lifecycle gate passes ready, pending,
+  method-error, sink-error, cancel-before-completion, cancel-after-close,
+  Store-disposal early-drop, and repeat. Normal completion releases writer,
+  method-completion, and descriptor state exactly once; the host observes offset
+  `1234` and byte `[65]`. The route omits `stream.forward` because the installed
+  `wasm-tools 1.263.0` rejects the standard operation. Sink-error is a host trap
+  followed by Store disposal. This closes only the private bounded route and does
+  not claim real OS file mutation, external rollback, or generic filesystem async.
+
 # 2026-11-21 G6.2 producer lifecycle foundation:
   routed the private direct `stream<resource-entry>` producer and the
   resource-free `stream<list<u32>>` producer through validated shared

@@ -129,7 +129,7 @@ pub fn check_p3_async_host_imports(allocator: std.mem.Allocator, tokens: []const
         if (shape == null and !is_pinned_http_client_send_descriptor(descriptor) and
             !std.mem.eql(u8, descriptor.effect, "async")) return mark_error_at(tokens, idx, error.UnknownP3AsyncHostDescriptor);
         const is_stream_effect = if (shape) |resolved_shape| switch (resolved_shape) {
-            .http_request_constructor, .http_stream_reader, .stream_reader_acquire, .filesystem_byte_stream_reader, .stream_writer, .record_stream_reader, .record_resource_list_stream_reader, .owned_record_stream_producer, .record_resource_mixed_stream_producer, .record_resource_pair_stream_producer, .record_resource_nested_stream_producer, .record_resource_triple_stream_producer, .record_resource_pair_parameterized_stream_producer, .record_resource_list_owned_record_stream_producer, .record_resource_two_list_owned_record_stream_producer, .record_resource_list_stream_producer, .record_resource_list_stream_dynamic_producer, .record_resource_list_stream_batched_producer, .scalar_list_stream_producer, .variant_resource_stream_reader => true,
+            .http_request_constructor, .http_stream_reader, .stream_reader_acquire, .filesystem_byte_stream_reader, .filesystem_byte_stream_writer, .stream_writer, .record_stream_reader, .record_resource_list_stream_reader, .owned_record_stream_producer, .record_resource_mixed_stream_producer, .record_resource_pair_stream_producer, .record_resource_nested_stream_producer, .record_resource_triple_stream_producer, .record_resource_pair_parameterized_stream_producer, .record_resource_list_owned_record_stream_producer, .record_resource_two_list_owned_record_stream_producer, .record_resource_list_stream_producer, .record_resource_list_stream_dynamic_producer, .record_resource_list_stream_batched_producer, .scalar_list_stream_producer, .variant_resource_stream_reader => true,
             else => false,
         } else false;
         if (!is_stream_effect and !std.mem.eql(u8, descriptor.effect, "async") and
@@ -178,6 +178,7 @@ fn descriptor_is_async_invocation(descriptor: p3_async_manifest.Descriptor) bool
         std.mem.eql(u8, descriptor.effect, "record-resource-list-stream-dynamic-producer") or
         std.mem.eql(u8, descriptor.effect, "record-resource-list-stream-batched-producer") or
         std.mem.eql(u8, descriptor.effect, "scalar-list-stream-producer") or
+        std.mem.eql(u8, descriptor.effect, "filesystem-byte-stream-writer") or
         std.mem.eql(u8, descriptor.effect, "stream-writer");
 }
 
@@ -194,6 +195,7 @@ fn p3_async_signature_matches(tokens: []const lexer.Token, start_idx: usize, end
             .http_stream_reader => return http_stream_reader_signature_matches(tokens, start_idx, close_idx, end_idx),
             .stream_reader_acquire => return stream_reader_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_byte_stream_reader => return filesystem_byte_stream_reader_signature_matches(tokens, start_idx, close_idx, end_idx),
+            .filesystem_byte_stream_writer => return filesystem_byte_stream_writer_signature_matches(tokens, start_idx, close_idx, end_idx),
             .record_stream_reader => return record_stream_reader_signature_matches(tokens, start_idx, close_idx, end_idx, descriptor),
             .record_resource_list_stream_reader => return record_resource_list_stream_reader_signature_matches(tokens, start_idx, close_idx, end_idx, descriptor),
             .owned_record_stream_producer => return owned_record_stream_producer_signature_matches(tokens, close_idx, end_idx, descriptor),
@@ -546,6 +548,33 @@ fn filesystem_byte_stream_reader_signature_matches(
         tok_eq(tokens[result_start + 14], ">") and
         tok_eq(tokens[result_start + 15], ">") and
         tok_eq(tokens[result_start + 16], ">");
+}
+
+fn filesystem_byte_stream_writer_signature_matches(
+    tokens: []const lexer.Token,
+    params_start_idx: usize,
+    params_close_idx: usize,
+    end_idx: usize,
+) bool {
+    if (params_close_idx != params_start_idx + 9 or
+        tokens[params_start_idx + 1].kind != .ident or
+        !std.mem.eql(u8, tokens[params_start_idx + 1].lexeme, "File") or
+        !tok_eq(tokens[params_start_idx + 2], ",") or
+        !tok_eq(tokens[params_start_idx + 3], "StreamWriter") or
+        !tok_eq(tokens[params_start_idx + 4], "<") or
+        !tok_eq(tokens[params_start_idx + 5], "u8") or
+        !tok_eq(tokens[params_start_idx + 6], ">") or
+        !tok_eq(tokens[params_start_idx + 7], ",") or
+        !tok_eq(tokens[params_start_idx + 8], "u64")) return false;
+
+    const result_start = params_close_idx + 3;
+    return result_start + 6 == end_idx and
+        tok_eq(tokens[result_start], "Result") and
+        tok_eq(tokens[result_start + 1], "<") and
+        tok_eq(tokens[result_start + 2], "nil") and
+        tok_eq(tokens[result_start + 3], ",") and
+        tokens[result_start + 4].kind == .ident and
+        tok_eq(tokens[result_start + 5], ">");
 }
 
 fn record_stream_reader_signature_matches(
@@ -2848,6 +2877,30 @@ test "pinned stream writer host_async_func imports accept the affine writer sign
     defer std.testing.allocator.free(tokens);
 
     try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "pinned filesystem write-via-stream host_async_func imports accept the descriptor writer signature" {
+    const source =
+        \\write_via_stream = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.write-via-stream", (File, StreamWriter<u8>, u64) -> Result<nil, FileError>)
+        \\FileError error = Io
+    ;
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try check_p3_async_host_imports(std.testing.allocator, tokens);
+}
+
+test "pinned filesystem write-via-stream host_async_func imports reject a drifted writer signature" {
+    const sources = [_][]const u8{
+        \\write_via_stream = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.write-via-stream", (File, StreamWriter<u32>, u64) -> Result<nil, FileError>),
+        \\write_via_stream = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.write-via-stream", (File, StreamWriter<u8>, u32) -> Result<nil, FileError>),
+        \\write_via_stream = @host_async_func("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.write-via-stream", (File, StreamWriter<u8>, u64) -> Result<u32, FileError>),
+    };
+    for (sources) |source| {
+        const tokens = try lexer.tokenize(std.testing.allocator, source);
+        defer std.testing.allocator.free(tokens);
+        try std.testing.expectError(error.P3AsyncHostSignatureMismatch, check_p3_async_host_imports(std.testing.allocator, tokens));
+    }
 }
 
 test "pinned HTTP client send host_async_func imports defer shape validation to the service plan" {
