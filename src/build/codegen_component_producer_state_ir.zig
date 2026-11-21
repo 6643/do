@@ -509,8 +509,28 @@ fn validate_fact_contract_correspondence(route: facts.RouteFrameFacts, contract:
 
     switch (contract.payload) {
         .record => |layout| try validate_record_fact_topology(route, contract, layout),
+        .list => |layout| try validate_list_fact_topology(route, layout),
         else => {},
     }
+}
+
+fn validate_list_fact_topology(route: facts.RouteFrameFacts, layout: producer_contract.ListLayout) MapError!void {
+    if (route.bindings.len != 2) return error.BindingTopologyMismatch;
+    const pointer = find_binding(route.bindings, "list-pointer") orelse return error.BindingTopologyMismatch;
+    const length = find_binding(route.bindings, "list-length") orelse return error.BindingTopologyMismatch;
+    if (pointer.canonical_offset != 0 or pointer.payload_size != 8 or pointer.width != 4 or
+        length.canonical_offset != 4 or length.payload_size != 8 or length.width != 4)
+        return error.BindingTopologyMismatch;
+
+    var pointer_frame = false;
+    var length_frame = false;
+    var element_area = false;
+    for (route.frames) |frame| {
+        if (frame.role == .list_pointer and frame.offset == pointer.frame_offset and frame.width >= pointer.width) pointer_frame = true;
+        if (frame.role == .list_length and frame.offset == length.frame_offset and frame.width >= length.width) length_frame = true;
+        if (frame.role == .list_element_area and frame.width >= layout.element_stride) element_area = true;
+    }
+    if (!pointer_frame or !length_frame or !element_area) return error.BindingTopologyMismatch;
 }
 
 fn validate_record_fact_topology(

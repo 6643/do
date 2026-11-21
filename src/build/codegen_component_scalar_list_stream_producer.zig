@@ -3,6 +3,9 @@ const generated_text = @import("codegen_text.zig");
 const lexer = @import("lexer.zig");
 const p3_async_manifest = @import("p3_async_manifest.zig");
 const producer_contract = @import("codegen_component_producer_contract.zig");
+const producer_facts = @import("codegen_component_producer_facts.zig");
+const producer_state_ir = @import("codegen_component_producer_state_ir.zig");
+const producer_lifecycle = @import("codegen_component_producer_lifecycle.zig");
 const wit_abi_layout = @import("wit_abi_layout.zig");
 const wit_abi_types = @import("wit_abi_types.zig");
 
@@ -75,11 +78,90 @@ const SinkBinding = struct {
 };
 
 pub fn emit_component_wat(allocator: std.mem.Allocator, plan: ScalarListStreamProducerPlan) ![]u8 {
+    _ = try build_scalar_list_lifecycle_ir(allocator, plan);
     try validate_internal_plans(allocator, plan);
     if (plan.layout.result_pointer_offset != 64 or plan.layout.result_length_offset != 68 or
         plan.layout.element_stride != 4 or plan.layout.max_items != 3 or
         plan.producer.stream_capacity != 1) return error.UnsupportedP3ScalarListProducer;
     return generated_text.alloc_block(allocator, 0, canonical_core_wat);
+}
+
+const scalar_list_frames = [_]producer_facts.FrameFact{
+    .{ .name = "result-tag", .offset = 0, .width = 4, .alignment = 4, .role = .result_tag },
+    .{ .name = "result-payload", .offset = 4, .width = 4, .alignment = 4, .role = .result_payload },
+    .{ .name = "waitable-set", .offset = 8, .width = 4, .alignment = 4, .role = .waitable },
+    .{ .name = "readable", .offset = 12, .width = 4, .alignment = 4, .role = .readable },
+    .{ .name = "writable", .offset = 16, .width = 4, .alignment = 4, .role = .writable },
+    .{ .name = "ownership-state", .offset = 20, .width = 4, .alignment = 4, .role = .ownership_state },
+    .{ .name = "list-pointer", .offset = 24, .width = 4, .alignment = 4, .role = .list_pointer },
+    .{ .name = "list-length", .offset = 28, .width = 4, .alignment = 4, .role = .list_length },
+    .{ .name = "sink-subtask", .offset = 32, .width = 4, .alignment = 4, .role = .subtask },
+    .{ .name = "pending-write", .offset = 36, .width = 4, .alignment = 4, .role = .pending_write },
+    .{ .name = "mode", .offset = 40, .width = 4, .alignment = 4, .role = .mode },
+    .{ .name = "list-element-area", .offset = 44, .width = 4, .alignment = 4, .role = .list_element_area },
+};
+
+const scalar_list_bindings = [_]producer_facts.CanonicalBinding{
+    .{ .name = "list-pointer", .canonical_offset = 0, .payload_size = 8, .frame_offset = 24, .width = 4 },
+    .{ .name = "list-length", .canonical_offset = 4, .payload_size = 8, .frame_offset = 28, .width = 4 },
+};
+
+const scalar_list_lifecycle = [_]producer_facts.LifecycleAnchor{
+    .{
+        .name = "scalar-list-lifecycle",
+        .required_text = &.{
+            "[producer-list-release-exactly-once]",
+            "[producer-list-transfer]",
+            "(func $release-guest-list",
+            "(func $transfer-list",
+            "(func $cleanup",
+        },
+        .ordered_anchors = &.{
+            "(func $release-guest-list",
+            "[producer-list-release-exactly-once]",
+            "(func $transfer-list",
+            "[producer-list-transfer]",
+            "(func $cleanup",
+        },
+    },
+};
+
+const scalar_list_markers = [_]producer_facts.MarkerBinding{
+    .{ .name = "producer-list-pointer" },
+    .{ .name = "producer-list-length" },
+    .{ .name = "producer-list-element-stride" },
+    .{ .name = "producer-list-capacity" },
+    .{ .name = "producer-stream-item-slot" },
+    .{ .name = "producer-list-release-exactly-once" },
+    .{ .name = "producer-list-transfer" },
+};
+
+fn scalar_list_route_facts() producer_facts.RouteFrameFacts {
+    return .{
+        .route_id = "scalar-list",
+        .descriptor_id = "do:g6-2-scalar-list-producer@0.1.0",
+        .template_name = "cmin_scalar_list_stream_producer_template.wat",
+        .frame_size = 128,
+        .frames = &scalar_list_frames,
+        .ownership = &.{},
+        .bindings = &scalar_list_bindings,
+        .lifecycle = &scalar_list_lifecycle,
+        .markers = &scalar_list_markers,
+    };
+}
+
+fn build_scalar_list_lifecycle_ir(
+    allocator: std.mem.Allocator,
+    plan: ScalarListStreamProducerPlan,
+) ProducerError!producer_state_ir.LifecycleStateIR {
+    try validate_internal_plans(allocator, plan);
+    const map = producer_state_ir.build_frame_map(.{
+        .route_id = "scalar-list",
+        .descriptor_id = plan.contract.descriptor_id,
+        .contract = plan.contract,
+        .frame_facts = scalar_list_route_facts(),
+    }) catch return error.UnsupportedP3ScalarListProducer;
+    return producer_state_ir.build_lifecycle_ir(plan.contract, map) catch return error.UnsupportedP3ScalarListProducer;
 }
 
 pub fn emit_component_wat_for_tokens(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]u8 {
@@ -332,6 +414,29 @@ test "scalar list producer plan accepts the pinned source and emits scalar list 
     try std.testing.expect(std.mem.indexOf(u8, wit, "package do:g6-2-scalar-list-producer@0.1.0;") != null);
     try std.testing.expect(std.mem.indexOf(u8, wit, "world scalar-list-producer") != null);
     try std.testing.expect(std.mem.indexOf(u8, wit, "stream<list<u32>>") != null);
+}
+
+test "scalar list emission builds a resource-free lifecycle IR" {
+    const source =
+        \\consume = @host_async_func("do:g6-2-scalar-list-producer@0.1.0", "consume-via-stream", (StreamWriter<[u32]>) -> Result<nil, ProducerError>)
+        \\ProducerError error = Io | Pipe | InvalidMode
+        \\produce(count u32) -> Result<nil, ProducerError> { return Ok() }
+        \\start() {}
+    ;
+    var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    const plan = try ScalarListStreamProducerPlan.analyze(tokens, registry);
+
+    const ir = try build_scalar_list_lifecycle_ir(std.testing.allocator, plan);
+    try std.testing.expectEqual(@as(usize, 0), plan.contract.ownership.leaves.len);
+    try std.testing.expectEqual(@as(u32, 1), ir.asset_count);
+    try std.testing.expectEqual(producer_state_ir.AssetKind.list_backing, ir.assets[0].kind);
+    try std.testing.expectEqual(producer_state_ir.AssetDisposition.release_after_copy, ir.assets[0].disposition);
+    try std.testing.expectEqual(producer_lifecycle.State.dropped, ir.normal_path.final_state);
+    try std.testing.expectEqual(producer_lifecycle.State.dropped, ir.cancel_path.final_state);
+    try std.testing.expectEqual(producer_lifecycle.State.dropped, ir.early_drop_path.final_state);
 }
 
 test "scalar list producer plan rejects a different stream element" {

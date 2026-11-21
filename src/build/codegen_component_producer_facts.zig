@@ -153,7 +153,11 @@ pub fn validate_route_facts(facts: RouteFrameFacts) FactError!void {
 
 pub fn validate(facts: RouteFrameFacts) FactError!FactReport {
     if (facts.route_id.len == 0 or facts.descriptor_id.len == 0) return error.InvalidIdentity;
-    if (facts.frame_size == 0 or facts.frames.len == 0 or facts.ownership.len == 0 or facts.bindings.len == 0 or facts.lifecycle.len == 0) return error.InvalidFrameSize;
+    // A resource-free producer can still own a list backing allocation. Its
+    // frame has no resource ownership facts, so an empty ownership table is
+    // valid when the remaining frame, binding, and lifecycle facts are
+    // present.
+    if (facts.frame_size == 0 or facts.frames.len == 0 or facts.bindings.len == 0 or facts.lifecycle.len == 0) return error.InvalidFrameSize;
     for (facts.frames, 0..) |field, index| {
         if (field.name.len == 0 or field.width == 0 or field.alignment == 0) return error.InvalidFrame;
         if (field.offset % field.alignment != 0) return error.FrameMisaligned;
