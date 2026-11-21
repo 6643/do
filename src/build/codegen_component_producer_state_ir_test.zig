@@ -15,6 +15,17 @@ const bindings = [_]facts.CanonicalBinding{.{ .name = "payload", .canonical_offs
 const lifecycle = [_]facts.LifecycleAnchor{.{ .name = "life", .required_text = &.{ "acquire", "transfer" }, .ordered_anchors = &.{ "acquire", "transfer" } }};
 const markers = [_]facts.MarkerBinding{.{ .name = "descriptor", .expected_value = "test-descriptor" }};
 const list_values_path = [_][]const u8{"values"};
+const list_fields = [_]facts.FrameFact{
+    .{ .name = "tag", .offset = 0, .width = 4, .alignment = 4, .role = .result_tag },
+    .{ .name = "state", .offset = 4, .width = 4, .alignment = 4, .role = .ownership_state },
+    .{ .name = "list-pointer", .offset = 8, .width = 4, .alignment = 4, .role = .list_pointer },
+    .{ .name = "list-length", .offset = 12, .width = 4, .alignment = 4, .role = .list_length },
+    .{ .name = "list-element-area", .offset = 16, .width = 4, .alignment = 4, .role = .list_element_area },
+};
+const list_bindings = [_]facts.CanonicalBinding{
+    .{ .name = "list-pointer", .canonical_offset = 0, .payload_size = 8, .frame_offset = 8, .width = 4 },
+    .{ .name = "list-length", .canonical_offset = 4, .payload_size = 8, .frame_offset = 12, .width = 4 },
+};
 const record_fields = [_]p3_async_manifest.RecordField{.{ .name = "ticket", .core_type = "i32", .offset = 0 }};
 const record_source_fields = [_]p3_async_manifest.RecordSourceField{.{
     .name = "ticket",
@@ -81,7 +92,15 @@ fn list_contract() producer_contract.ProducerContract {
 }
 
 fn list_map() state_ir.CanonicalFrameMap {
-    return lifecycle_map();
+    return state_ir.build_frame_map(list_input()) catch unreachable;
+}
+
+fn list_input() state_ir.FrameMapInput {
+    var value = input();
+    value.contract = list_contract();
+    value.frame_facts.frames = &list_fields;
+    value.frame_facts.bindings = &list_bindings;
+    return value;
 }
 
 fn build_ir(value: producer_contract.ProducerContract, map: state_ir.CanonicalFrameMap) state_ir.LifecycleStateIR {
@@ -128,6 +147,14 @@ test "producer canonical frame map rejects record ownership topology drift" {
     var value = record_input();
     value.contract.ownership.leaves = &.{};
     try std.testing.expectError(error.OwnershipTopologyMismatch, state_ir.build_frame_map(value));
+}
+
+test "producer canonical frame map rejects list binding topology drift" {
+    var value = list_input();
+    var changed = list_bindings;
+    changed[0].name = "payload";
+    value.frame_facts.bindings = &changed;
+    try std.testing.expectError(error.BindingTopologyMismatch, state_ir.build_frame_map(value));
 }
 
 test "producer canonical frame map rejects frame overlap" {
@@ -278,7 +305,7 @@ test "producer lifecycle state IR accepts list backing topology" {
 test "producer lifecycle state IR models list-only payload without a resource" {
     var value = list_contract();
     value.ownership = .{ .leaves = &.{}, .parents = &.{} };
-    const ir = build_ir(value, lifecycle_map());
+    const ir = build_ir(value, list_map());
     try std.testing.expectEqual(@as(u32, 1), ir.asset_count);
     try std.testing.expectEqual(state_ir.AssetKind.list_backing, ir.assets[0].kind);
 }
