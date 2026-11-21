@@ -1,0 +1,73 @@
+package wasi:filesystem@0.3.0-rc-2025-09-16;
+
+interface types {
+  type filesize = u64;
+  enum advice {
+    normal,
+    sequential,
+    random,
+    will-need,
+    dont-need,
+    no-reuse,
+  }
+  enum error-code {
+    access,
+    already,
+    bad-descriptor,
+    busy,
+    deadlock,
+    quota,
+    exist,
+    file-too-large,
+    illegal-byte-sequence,
+    in-progress,
+    interrupted,
+    invalid,
+    io,
+    is-directory,
+    loop,
+    too-many-links,
+    message-size,
+    name-too-long,
+    no-device,
+    no-entry,
+    no-lock,
+    insufficient-memory,
+    insufficient-space,
+    not-directory,
+    not-empty,
+    not-recoverable,
+    unsupported,
+    no-tty,
+    no-such-device,
+    overflow,
+    not-permitted,
+    pipe,
+    read-only,
+    invalid-seek,
+    text-file-busy,
+    cross-device,
+  }
+  resource descriptor {
+    advise: async func(
+      offset: filesize,
+      length: filesize,
+      advice: advice,
+    ) -> result<_, error-code>;
+  }
+}
+
+interface probe {
+  use types.{descriptor, error-code, filesize, advice};
+  run: async func(
+    file: own<descriptor>,
+    offset: filesize,
+    length: filesize,
+    advice: advice,
+  ) -> result<_, error-code>;
+}
+
+world advise-probe {
+  import types;
+  export probe;
+}

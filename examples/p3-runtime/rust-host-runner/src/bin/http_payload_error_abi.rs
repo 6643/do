@@ -82,9 +82,22 @@ struct HostWake {
 #[derive(Clone, Copy)]
 enum ProbeCase {
     DnsTimeout,
+    DnsError,
+    TlsAlertReceived,
+    HttpRequestBodySize,
+    HttpRequestHeaderSectionSize,
+    HttpRequestHeaderSize,
+    HttpRequestTrailerSectionSize,
+    HttpRequestTrailerSize,
+    HttpResponseHeaderSectionSize,
+    HttpResponseHeaderSize,
+    HttpResponseBodySize,
+    HttpResponseTrailerSectionSize,
+    HttpResponseTrailerSize,
+    HttpResponseTransferCoding,
+    HttpResponseContentCoding,
     InternalErrorNone,
     InternalErrorSome,
-    DnsError,
 }
 
 #[derive(Clone, Copy)]
@@ -114,11 +127,204 @@ impl ProbeCase {
     fn parse(name: &str) -> Result<Self> {
         match name {
             "dns-timeout" => Ok(Self::DnsTimeout),
+            "dns-error" => Ok(Self::DnsError),
+            "tls-alert-received" => Ok(Self::TlsAlertReceived),
+            "http-request-body-size" => Ok(Self::HttpRequestBodySize),
+            "http-request-header-section-size" => Ok(Self::HttpRequestHeaderSectionSize),
+            "http-request-header-size" => Ok(Self::HttpRequestHeaderSize),
+            "http-request-trailer-section-size" => Ok(Self::HttpRequestTrailerSectionSize),
+            "http-request-trailer-size" => Ok(Self::HttpRequestTrailerSize),
+            "http-response-header-section-size" => Ok(Self::HttpResponseHeaderSectionSize),
+            "http-response-header-size" => Ok(Self::HttpResponseHeaderSize),
+            "http-response-body-size" => Ok(Self::HttpResponseBodySize),
+            "http-response-trailer-section-size" => Ok(Self::HttpResponseTrailerSectionSize),
+            "http-response-trailer-size" => Ok(Self::HttpResponseTrailerSize),
+            "http-response-transfer-coding" => Ok(Self::HttpResponseTransferCoding),
+            "http-response-content-coding" => Ok(Self::HttpResponseContentCoding),
             "internal-error-none" => Ok(Self::InternalErrorNone),
             "internal-error-some" => Ok(Self::InternalErrorSome),
-            "dns-error" => Ok(Self::DnsError),
             other => bail!("unknown payload probe case `{other}`"),
         }
+    }
+}
+
+fn make_error(case: ProbeCase) -> wasi::http::types::ErrorCode {
+    use wasi::http::types::{ErrorCode, FieldSizePayload, TlsAlertReceivedPayload};
+
+    match case {
+        ProbeCase::DnsTimeout => ErrorCode::DnsTimeout,
+        ProbeCase::DnsError => ErrorCode::DnsError(wasi::http::types::DnsErrorPayload {
+            rcode: Some("EAI".to_owned()),
+            info_code: Some(7),
+        }),
+        ProbeCase::TlsAlertReceived => ErrorCode::TlsAlertReceived(TlsAlertReceivedPayload {
+            alert_id: Some(42),
+            alert_message: Some("alert".to_owned()),
+        }),
+        ProbeCase::HttpRequestBodySize => ErrorCode::HttpRequestBodySize(Some(1234)),
+        ProbeCase::HttpRequestHeaderSectionSize => {
+            ErrorCode::HttpRequestHeaderSectionSize(Some(123))
+        }
+        ProbeCase::HttpRequestHeaderSize => {
+            ErrorCode::HttpRequestHeaderSize(Some(FieldSizePayload {
+                field_name: Some("content-type".to_owned()),
+                field_size: Some(42),
+            }))
+        }
+        ProbeCase::HttpRequestTrailerSectionSize => {
+            ErrorCode::HttpRequestTrailerSectionSize(Some(123))
+        }
+        ProbeCase::HttpRequestTrailerSize => ErrorCode::HttpRequestTrailerSize(FieldSizePayload {
+            field_name: Some("content-type".to_owned()),
+            field_size: Some(42),
+        }),
+        ProbeCase::HttpResponseHeaderSectionSize => {
+            ErrorCode::HttpResponseHeaderSectionSize(Some(123))
+        }
+        ProbeCase::HttpResponseHeaderSize => ErrorCode::HttpResponseHeaderSize(FieldSizePayload {
+            field_name: Some("content-type".to_owned()),
+            field_size: Some(42),
+        }),
+        ProbeCase::HttpResponseBodySize => ErrorCode::HttpResponseBodySize(Some(1234)),
+        ProbeCase::HttpResponseTrailerSectionSize => {
+            ErrorCode::HttpResponseTrailerSectionSize(Some(123))
+        }
+        ProbeCase::HttpResponseTrailerSize => {
+            ErrorCode::HttpResponseTrailerSize(FieldSizePayload {
+                field_name: Some("content-type".to_owned()),
+                field_size: Some(42),
+            })
+        }
+        ProbeCase::HttpResponseTransferCoding => {
+            ErrorCode::HttpResponseTransferCoding(Some("chunked".to_owned()))
+        }
+        ProbeCase::HttpResponseContentCoding => {
+            ErrorCode::HttpResponseContentCoding(Some("gzip".to_owned()))
+        }
+        ProbeCase::InternalErrorNone => ErrorCode::InternalError(None),
+        ProbeCase::InternalErrorSome => ErrorCode::InternalError(Some("x".to_owned())),
+    }
+}
+
+fn observe_error(case: ProbeCase, error: wasi::http::types::ErrorCode) -> (&'static str, String) {
+    use wasi::http::types::ErrorCode;
+
+    match (case, error) {
+        (ProbeCase::DnsTimeout, ErrorCode::DnsTimeout) => ("green", "DNS-timeout".to_owned()),
+        (ProbeCase::DnsError, ErrorCode::DnsError(payload))
+            if payload.rcode.as_deref() == Some("EAI") && payload.info_code == Some(7) =>
+        {
+            (
+                "green",
+                "DnsError(rcode=Some(\"EAI\"),info-code=Some(7))".to_owned(),
+            )
+        }
+        (ProbeCase::TlsAlertReceived, ErrorCode::TlsAlertReceived(payload))
+            if payload.alert_id == Some(42)
+                && payload.alert_message.as_deref() == Some("alert") =>
+        {
+            (
+                "green",
+                "TlsAlertReceived(alert-id=Some(42),alert-message=Some(\"alert\"))".to_owned(),
+            )
+        }
+        (ProbeCase::HttpRequestBodySize, ErrorCode::HttpRequestBodySize(Some(1234))) => {
+            ("green", "HTTP-request-body-size(Some(1234))".to_owned())
+        }
+        (
+            ProbeCase::HttpRequestHeaderSectionSize,
+            ErrorCode::HttpRequestHeaderSectionSize(Some(123)),
+        ) => (
+            "green",
+            "HTTP-request-header-section-size(Some(123))".to_owned(),
+        ),
+        (ProbeCase::HttpRequestHeaderSize, ErrorCode::HttpRequestHeaderSize(payload))
+            if payload.as_ref().is_some_and(|payload| {
+                payload.field_name.as_deref() == Some("content-type")
+                    && payload.field_size == Some(42)
+            }) =>
+        {
+            (
+                "green",
+                "HTTP-request-header-size(field-name=Some(\"content-type\"),field-size=Some(42))"
+                    .to_owned(),
+            )
+        }
+        (
+            ProbeCase::HttpRequestTrailerSectionSize,
+            ErrorCode::HttpRequestTrailerSectionSize(Some(123)),
+        ) => (
+            "green",
+            "HTTP-request-trailer-section-size(Some(123))".to_owned(),
+        ),
+        (ProbeCase::HttpRequestTrailerSize, ErrorCode::HttpRequestTrailerSize(payload))
+            if payload.field_name.as_deref() == Some("content-type")
+                && payload.field_size == Some(42) =>
+        {
+            (
+                "green",
+                "HTTP-request-trailer-size(field-name=Some(\"content-type\"),field-size=Some(42))"
+                    .to_owned(),
+            )
+        }
+        (
+            ProbeCase::HttpResponseHeaderSectionSize,
+            ErrorCode::HttpResponseHeaderSectionSize(Some(123)),
+        ) => (
+            "green",
+            "HTTP-response-header-section-size(Some(123))".to_owned(),
+        ),
+        (ProbeCase::HttpResponseHeaderSize, ErrorCode::HttpResponseHeaderSize(payload))
+            if payload.field_name.as_deref() == Some("content-type")
+                && payload.field_size == Some(42) =>
+        {
+            (
+                "green",
+                "HTTP-response-header-size(field-name=Some(\"content-type\"),field-size=Some(42))"
+                    .to_owned(),
+            )
+        }
+        (ProbeCase::HttpResponseBodySize, ErrorCode::HttpResponseBodySize(Some(1234))) => {
+            ("green", "HTTP-response-body-size(Some(1234))".to_owned())
+        }
+        (
+            ProbeCase::HttpResponseTrailerSectionSize,
+            ErrorCode::HttpResponseTrailerSectionSize(Some(123)),
+        ) => (
+            "green",
+            "HTTP-response-trailer-section-size(Some(123))".to_owned(),
+        ),
+        (ProbeCase::HttpResponseTrailerSize, ErrorCode::HttpResponseTrailerSize(payload))
+            if payload.field_name.as_deref() == Some("content-type")
+                && payload.field_size == Some(42) =>
+        {
+            (
+                "green",
+                "HTTP-response-trailer-size(field-name=Some(\"content-type\"),field-size=Some(42))"
+                    .to_owned(),
+            )
+        }
+        (
+            ProbeCase::HttpResponseTransferCoding,
+            ErrorCode::HttpResponseTransferCoding(Some(value)),
+        ) if value == "chunked" => (
+            "green",
+            "HTTP-response-transfer-coding(Some(\"chunked\"))".to_owned(),
+        ),
+        (
+            ProbeCase::HttpResponseContentCoding,
+            ErrorCode::HttpResponseContentCoding(Some(value)),
+        ) if value == "gzip" => (
+            "green",
+            "HTTP-response-content-coding(Some(\"gzip\"))".to_owned(),
+        ),
+        (ProbeCase::InternalErrorNone, ErrorCode::InternalError(None)) => {
+            ("green", "InternalError(None)".to_owned())
+        }
+        (ProbeCase::InternalErrorSome, ErrorCode::InternalError(Some(value))) if value == "x" => {
+            ("green", "InternalError(Some(\"x\"))".to_owned())
+        }
+        (_, error) => ("blocked", format!("{error:?}")),
     }
 }
 
@@ -294,21 +500,7 @@ async fn run(
                     host_event?;
                     PendingCompletion { completion }.await?;
                 }
-                let error = match case {
-                    ProbeCase::DnsTimeout => wasi::http::types::ErrorCode::DnsTimeout,
-                    ProbeCase::InternalErrorNone => {
-                        wasi::http::types::ErrorCode::InternalError(None)
-                    }
-                    ProbeCase::InternalErrorSome => {
-                        wasi::http::types::ErrorCode::InternalError(Some("x".to_owned()))
-                    }
-                    ProbeCase::DnsError => {
-                        wasi::http::types::ErrorCode::DnsError(wasi::http::types::DnsErrorPayload {
-                            rcode: Some("EAI".to_owned()),
-                            info_code: Some(7),
-                        })
-                    }
-                };
+                let error = make_error(case);
                 Ok::<
                     (std::result::Result<Resource<Response>, wasi::http::types::ErrorCode>,),
                     wasmtime::Error,
@@ -365,36 +557,13 @@ async fn run(
         }
     };
 
-    let (status, observation) = match (case, result.0) {
-        (ProbeCase::DnsTimeout, Err(wasi::http::types::ErrorCode::DnsTimeout)) => {
-            ("green", "DNS-timeout".to_owned())
+    let (status, observation) = match result.0 {
+        Err(error) => observe_error(case, error),
+        Ok(response) => {
+            let _ = store.data_mut().table.delete(response)?;
+            store.data_mut().stats.response_dropped += 1;
+            ("blocked", format!("unexpected response for {case_name}"))
         }
-        (ProbeCase::InternalErrorNone, Err(wasi::http::types::ErrorCode::InternalError(None))) => {
-            ("green", "InternalError(None)".to_owned())
-        }
-        (
-            ProbeCase::InternalErrorSome,
-            Err(wasi::http::types::ErrorCode::InternalError(Some(value))),
-        ) if value == "x" => ("green", "InternalError(Some(\"x\"))".to_owned()),
-        (ProbeCase::DnsError, Err(wasi::http::types::ErrorCode::DnsError(payload)))
-            if payload.rcode.as_deref() == Some("EAI") && payload.info_code == Some(7) =>
-        {
-            (
-                "green",
-                "DnsError(rcode=Some(\"EAI\"),info-code=Some(7))".to_owned(),
-            )
-        }
-        (_, Err(wasi::http::types::ErrorCode::InternalError(value))) => {
-            ("blocked", format!("InternalError({value:?})"))
-        }
-        (_, Err(wasi::http::types::ErrorCode::DnsError(payload))) => (
-            "blocked",
-            format!(
-                "DnsError(rcode={:?},info-code={:?})",
-                payload.rcode, payload.info_code
-            ),
-        ),
-        (_, other) => ("blocked", format!("{other:?}")),
     };
     println!(
         "payload-gate={status} candidate={candidate} case={case_name} observation={observation}"
@@ -427,24 +596,12 @@ async fn run_compiler_service(
         .run_concurrent(async |accessor| handle.call_concurrent(accessor, (request,)).await)
         .await;
     let result = map_wasmtime(map_wasmtime(outer)?)?;
-    let observation = match (case, result.0) {
-        (ProbeCase::InternalErrorNone, Err(wasi::http::types::ErrorCode::InternalError(None))) => {
-            "InternalError(None)".to_owned()
-        }
-        (
-            ProbeCase::InternalErrorSome,
-            Err(wasi::http::types::ErrorCode::InternalError(Some(value))),
-        ) if value == "x" => "InternalError(Some(\"x\"))".to_owned(),
-        (ProbeCase::DnsError, Err(wasi::http::types::ErrorCode::DnsError(payload)))
-            if payload.rcode.as_deref() == Some("EAI") && payload.info_code == Some(7) =>
-        {
-            "DnsError(rcode=Some(\"EAI\"),info-code=Some(7))".to_owned()
-        }
-        (_, Err(error)) => bail!("compiler service returned unexpected {error:?} for {case_name}"),
-        (_, Ok(response)) => {
+    let (status, observation) = match result.0 {
+        Err(error) => observe_error(case, error),
+        Ok(response) => {
             let _ = store.data_mut().table.delete(response)?;
             store.data_mut().stats.response_dropped += 1;
-            bail!("compiler service unexpectedly returned a response for {case_name}")
+            ("blocked", format!("unexpected response for {case_name}"))
         }
     };
 
@@ -463,7 +620,7 @@ async fn run_compiler_service(
         );
     }
     println!(
-        "compiler-gate=green delivery={} case={} observation={}",
+        "compiler-gate={status} delivery={} case={} observation={}",
         delivery.name(),
         case_name,
         observation
@@ -496,27 +653,12 @@ async fn run_service_probe(
         .run_concurrent(async |accessor| handle.call_concurrent(accessor, (request,)).await)
         .await;
     let result = map_wasmtime(map_wasmtime(outer)?)?;
-    let observation = match (case, result.0) {
-        (ProbeCase::DnsTimeout, Err(wasi::http::types::ErrorCode::DnsTimeout)) => {
-            "DNS-timeout".to_owned()
-        }
-        (ProbeCase::InternalErrorNone, Err(wasi::http::types::ErrorCode::InternalError(None))) => {
-            "InternalError(None)".to_owned()
-        }
-        (
-            ProbeCase::InternalErrorSome,
-            Err(wasi::http::types::ErrorCode::InternalError(Some(value))),
-        ) if value == "x" => "InternalError(Some(\"x\"))".to_owned(),
-        (ProbeCase::DnsError, Err(wasi::http::types::ErrorCode::DnsError(payload)))
-            if payload.rcode.as_deref() == Some("EAI") && payload.info_code == Some(7) =>
-        {
-            "DnsError(rcode=Some(\"EAI\"),info-code=Some(7))".to_owned()
-        }
-        (_, Err(error)) => bail!("service probe returned unexpected {error:?} for {case_name}"),
-        (_, Ok(response)) => {
+    let (status, observation) = match result.0 {
+        Err(error) => observe_error(case, error),
+        Ok(response) => {
             let _ = store.data_mut().table.delete(response)?;
             store.data_mut().stats.response_dropped += 1;
-            bail!("service probe unexpectedly returned a response for {case_name}");
+            ("blocked", format!("unexpected response for {case_name}"))
         }
     };
 
@@ -533,7 +675,7 @@ async fn run_service_probe(
         );
     }
     println!(
-        "service-probe-gate=green delivery={} case={} observation={}",
+        "service-probe-gate={status} delivery={} case={} observation={}",
         delivery.name(),
         case_name,
         observation

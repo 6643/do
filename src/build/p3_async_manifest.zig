@@ -27,6 +27,7 @@ pub const LoweringShape = union(enum) {
     filesystem_sync: FilesystemSyncShape,
     filesystem_set_size: FilesystemSetSizeShape,
     filesystem_sync_data: FilesystemSyncDataShape,
+    filesystem_advise: FilesystemAdviseShape,
     filesystem_metadata_hash: FilesystemMetadataHashShape,
     filesystem_metadata_hash_at: FilesystemMetadataHashAtShape,
     filesystem_open_at: FilesystemOpenAtShape,
@@ -429,6 +430,20 @@ pub const FilesystemSyncDataShape = struct {
     resource_drop_import: []const u8,
 };
 
+/// The pinned `descriptor.advise` slice carries two `u64` range arguments
+/// and an advice enum through the measured direct async-lower ABI.
+pub const FilesystemAdviseShape = struct {
+    receiver: []const u8,
+    offset: []const u8,
+    length: []const u8,
+    advice: []const u8,
+    source_result: []const u8,
+    tag: []const u8,
+    ok: []const []const u8,
+    err: []const []const u8,
+    resource_drop_import: []const u8,
+};
+
 /// The private `descriptor.metadata-hash` slice returns a two-word record.
 /// Keep its exact record and task-return layout separate from `stat` because
 /// the result-area tag and payload offsets are method-specific.
@@ -774,6 +789,10 @@ pub fn lowering_shape(descriptor: Descriptor) ?LoweringShape {
         return .{ .filesystem_sync_data = shape };
     }
 
+    if (valid_filesystem_advise_descriptor(descriptor)) |shape| {
+        return .{ .filesystem_advise = shape };
+    }
+
     if (valid_filesystem_metadata_hash_descriptor(descriptor)) |shape| {
         return .{ .filesystem_metadata_hash = shape };
     }
@@ -1072,6 +1091,49 @@ fn valid_filesystem_sync_data_descriptor(descriptor: Descriptor) ?FilesystemSync
 
     return .{
         .receiver = descriptor.params[0],
+        .source_result = descriptor.result,
+        .tag = payload.tag,
+        .ok = payload.ok,
+        .err = payload.err,
+        .resource_drop_import = "[resource-drop]descriptor",
+    };
+}
+
+fn valid_filesystem_advise_descriptor(descriptor: Descriptor) ?FilesystemAdviseShape {
+    if (!std.mem.eql(u8, descriptor.locator, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.member, "descriptor.advise") or
+        !std.mem.eql(u8, descriptor.effect, "async") or
+        descriptor.params.len != 4 or
+        !std.mem.eql(u8, descriptor.params[0], "descriptor") or
+        !std.mem.eql(u8, descriptor.params[1], "filesize") or
+        !std.mem.eql(u8, descriptor.params[2], "filesize") or
+        !std.mem.eql(u8, descriptor.params[3], "advice") or
+        descriptor.resource != null or
+        !std.mem.eql(u8, descriptor.result, "Result<nil,error-code>") or
+        descriptor.wit_sha256 == null or
+        !std.mem.eql(u8, descriptor.wit_sha256.?, "8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f") or
+        !std.mem.eql(u8, descriptor.canonical.completion, "task-return") or
+        !equal_core_types(descriptor.canonical.core_params, &.{ "i32", "i64", "i64", "i32", "i32" }) or
+        !equal_core_types(descriptor.canonical.core_results, &.{"i32"}) or
+        !equal_core_types(descriptor.canonical.completion_params, &.{ "i32", "i32" }) or
+        !std.mem.eql(u8, descriptor.canonical.async_import_module, "wasi:filesystem/types@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.canonical.async_import_name, "[async-lower][method]descriptor.advise") or
+        !std.mem.eql(u8, descriptor.wit.package, "wasi:filesystem@0.3.0-rc-2025-09-16") or
+        !std.mem.eql(u8, descriptor.wit.interface, "types") or
+        !std.mem.eql(u8, descriptor.wit.operation, "descriptor.advise") or
+        !std.mem.eql(u8, descriptor.wit.world, "imports") or
+        descriptor.wit.parameter.len != 0) return null;
+
+    const payload = descriptor.canonical.result_payload orelse return null;
+    if (!std.mem.eql(u8, payload.tag, "i32") or
+        payload.ok.len != 0 or
+        !equal_core_types(payload.err, &.{"i32"})) return null;
+
+    return .{
+        .receiver = descriptor.params[0],
+        .offset = descriptor.params[1],
+        .length = descriptor.params[2],
+        .advice = descriptor.params[3],
         .source_result = descriptor.result,
         .tag = payload.tag,
         .ok = payload.ok,
@@ -1457,7 +1519,12 @@ pub const ResultAreaPayload = struct {
 
 pub const ErrorVariantFieldKind = enum {
     optional_string,
+    optional_u8,
     optional_u16,
+    optional_u32,
+    optional_u64,
+    field_size_payload,
+    optional_field_size_payload,
 };
 
 pub const ErrorVariantField = struct {
@@ -3785,7 +3852,8 @@ fn parse_error_variants(
         errdefer _ = variants.pop();
     }
 
-    if (completion_params.len != 2 + max_flat_words + 1) return error.InvalidP3AsyncManifest;
+    const payload_words = completion_params.len - 2;
+    if (max_flat_words != payload_words and max_flat_words + 1 != payload_words) return error.InvalidP3AsyncManifest;
     for (completion_params[2 .. completion_params.len - 1]) |word| {
         if (!std.mem.eql(u8, word, "i32") and !std.mem.eql(u8, word, "i64")) return error.InvalidP3AsyncManifest;
     }
@@ -3796,21 +3864,34 @@ fn parse_error_variants(
 fn parse_error_variant_field_kind(value: ?std.json.Value) !ErrorVariantFieldKind {
     const text = string_value(value) orelse return error.InvalidP3AsyncManifest;
     if (std.mem.eql(u8, text, "optional_string")) return .optional_string;
+    if (std.mem.eql(u8, text, "optional_u8")) return .optional_u8;
     if (std.mem.eql(u8, text, "optional_u16")) return .optional_u16;
+    if (std.mem.eql(u8, text, "optional_u32")) return .optional_u32;
+    if (std.mem.eql(u8, text, "optional_u64")) return .optional_u64;
+    if (std.mem.eql(u8, text, "field_size_payload")) return .field_size_payload;
+    if (std.mem.eql(u8, text, "optional_field_size_payload")) return .optional_field_size_payload;
     return error.InvalidP3AsyncManifest;
 }
 
 fn error_variant_core_words_match(kind: ErrorVariantFieldKind, words: []const []const u8) bool {
     return switch (kind) {
         .optional_string => equal_core_types(words, &.{ "i32", "i64", "i32" }),
-        .optional_u16 => equal_core_types(words, &.{ "i32", "i32" }),
+        .optional_u8, .optional_u16, .optional_u32 =>
+            equal_core_types(words, &.{ "i32", "i32" }) or equal_core_types(words, &.{ "i32", "i64" }),
+        .optional_u64 => equal_core_types(words, &.{ "i32", "i64" }),
+        .field_size_payload => equal_core_types(words, &.{ "i32", "i64", "i32", "i32", "i32" }),
+        .optional_field_size_payload => equal_core_types(words, &.{ "i32", "i64", "i32", "i32", "i32", "i32" }),
     };
 }
 
 fn error_variant_field_byte_size(kind: ErrorVariantFieldKind) u64 {
     return switch (kind) {
         .optional_string => 12,
-        .optional_u16 => 4,
+        .optional_u8, .optional_u16 => 4,
+        .optional_u32 => 8,
+        .optional_u64 => 16,
+        .field_size_payload => 20,
+        .optional_field_size_payload => 24,
     };
 }
 
@@ -4870,11 +4951,25 @@ test "checked-in HTTP send exposes the proven payload variant metadata" {
     var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(std.testing.allocator);
     const descriptor = registry.find("wasi:http/client@0.3.0-rc-2025-09-16", "send") orelse return error.TestUnexpectedResult;
-    try std.testing.expectEqual(@as(usize, 2), descriptor.canonical.error_variants.len);
+    try std.testing.expectEqual(@as(usize, 15), descriptor.canonical.error_variants.len);
     try std.testing.expectEqualStrings("internal-error", descriptor.canonical.error_variants[0].variant);
     try std.testing.expectEqual(@as(u32, 38), descriptor.canonical.error_variants[0].discriminant);
     try std.testing.expectEqualStrings("DNS-error", descriptor.canonical.error_variants[1].variant);
     try std.testing.expectEqual(@as(u32, 1), descriptor.canonical.error_variants[1].discriminant);
+    try std.testing.expectEqualStrings("TLS-alert-received", descriptor.canonical.error_variants[2].variant);
+    try std.testing.expectEqual(@as(u32, 14), descriptor.canonical.error_variants[2].discriminant);
+    try std.testing.expectEqualStrings("HTTP-response-content-coding", descriptor.canonical.error_variants[14].variant);
+    try std.testing.expectEqual(@as(u32, 32), descriptor.canonical.error_variants[14].discriminant);
+    for ([_][]const u8{
+        "HTTP-request-trailer-size",
+        "HTTP-response-header-size",
+        "HTTP-response-trailer-size",
+    }) |name| {
+        const variant = for (descriptor.canonical.error_variants) |candidate| {
+            if (std.mem.eql(u8, candidate.variant, name)) break candidate;
+        } else return error.TestUnexpectedResult;
+        try std.testing.expectEqual(ErrorVariantFieldKind.field_size_payload, variant.fields[0].kind);
+    }
 }
 
 test "checked-in registry exposes the pinned HTTP response body stream ABI" {
@@ -6246,6 +6341,26 @@ test "registry parses exact HTTP payload variant descriptors" {
     try std.testing.expectEqual(@as(u32, 28), dns.fields[1].offset);
 }
 
+test "registry parses the official HTTP scalar and record payload field kinds" {
+    const json =
+        \\{"schema":1,"wit_sha256":"abc","descriptors":[
+        \\  {"locator":"wasi:http/client@0.3.0-rc-2025-09-16","member":"send","effect":"async","params":["HttpRequest"],"result":"Result<HttpResponse,HttpError>","resource":"request","canonical":{"core_params":["i32","i32"],"core_results":["i32"],"completion_params":["i32","i32","i32","i64","i32","i32","i32","i32"],"completion":"task-return","error_variants":[
+        \\    {"variant":"HTTP-request-body-size","discriminant":17,"byte_size":32,"fields":[{"name":"size","kind":"optional_u64","core_words":["i32","i64"],"offset":16}]},
+        \\    {"variant":"HTTP-request-header-section-size","discriminant":21,"byte_size":32,"fields":[{"name":"size","kind":"optional_u32","core_words":["i32","i32"],"offset":16}]},
+        \\    {"variant":"TLS-alert-received","discriminant":14,"byte_size":32,"fields":[{"name":"alert-id","kind":"optional_u8","core_words":["i32","i32"],"offset":16},{"name":"alert-message","kind":"optional_string","core_words":["i32","i64","i32"],"offset":20}]}
+        \\  ],"async_import_module":"wasi:http/client@0.3.0-rc-2025-09-16","async_import_name":"[async-lower]send"},"wit":{"package":"wasi:http@0.3.0-rc-2025-09-16","interface":"client","operation":"send","world":"service","parameter":"request"}}
+        \\]}
+    ;
+
+    var registry = try Registry.load(std.testing.allocator, json);
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:http/client@0.3.0-rc-2025-09-16", "send").?;
+    try std.testing.expectEqual(@as(usize, 3), descriptor.canonical.error_variants.len);
+    try std.testing.expectEqual(ErrorVariantFieldKind.optional_u64, descriptor.canonical.error_variants[0].fields[0].kind);
+    try std.testing.expectEqual(ErrorVariantFieldKind.optional_u32, descriptor.canonical.error_variants[1].fields[0].kind);
+    try std.testing.expectEqual(ErrorVariantFieldKind.optional_u8, descriptor.canonical.error_variants[2].fields[0].kind);
+}
+
 test "registry rejects malformed HTTP payload variant layout" {
     const json =
         \\{"schema":1,"wit_sha256":"abc","descriptors":[
@@ -6466,6 +6581,148 @@ test "filesystem descriptor set-size lowering rejects ABI drift" {
     canonical.result_payload = payload;
     drifted = descriptor;
     drifted.canonical = canonical;
+    try std.testing.expect(lowering_shape(drifted) == null);
+}
+
+test "checked-in registry admits the pinned filesystem descriptor advise ABI" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.advise") orelse return error.TestUnexpectedResult;
+    const lowering = lowering_shape(descriptor) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("filesystem_advise", @tagName(lowering));
+    const shape = switch (lowering) {
+        .filesystem_advise => |value| value,
+        else => return error.TestUnexpectedResult,
+    };
+    try std.testing.expectEqualStrings("async", descriptor.effect);
+    try std.testing.expectEqualStrings("descriptor", shape.receiver);
+    try std.testing.expectEqualStrings("filesize", shape.offset);
+    try std.testing.expectEqualStrings("filesize", shape.length);
+    try std.testing.expectEqualStrings("advice", shape.advice);
+    try std.testing.expectEqualStrings("Result<nil,error-code>", descriptor.result);
+    try std.testing.expectEqualStrings("task-return", descriptor.canonical.completion);
+    try std.testing.expectEqual(@as(usize, 5), descriptor.canonical.core_params.len);
+    try std.testing.expectEqualStrings("i32", descriptor.canonical.core_params[0]);
+    try std.testing.expectEqualStrings("i64", descriptor.canonical.core_params[1]);
+    try std.testing.expectEqualStrings("i64", descriptor.canonical.core_params[2]);
+    try std.testing.expectEqualStrings("i32", descriptor.canonical.core_params[3]);
+    try std.testing.expectEqualStrings("i32", descriptor.canonical.core_params[4]);
+    try std.testing.expectEqual(@as(usize, 1), descriptor.canonical.core_results.len);
+    try std.testing.expectEqualStrings("i32", descriptor.canonical.core_results[0]);
+    try std.testing.expectEqual(@as(usize, 2), descriptor.canonical.completion_params.len);
+    try std.testing.expectEqualStrings("i32", descriptor.canonical.completion_params[0]);
+    try std.testing.expectEqualStrings("i32", descriptor.canonical.completion_params[1]);
+    const payload = descriptor.canonical.result_payload orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("i32", payload.tag);
+    try std.testing.expectEqual(@as(usize, 0), payload.ok.len);
+    try std.testing.expectEqual(@as(usize, 1), payload.err.len);
+    try std.testing.expectEqualStrings("i32", payload.err[0]);
+    try std.testing.expectEqualStrings("i32", shape.tag);
+    try std.testing.expectEqual(@as(usize, 0), shape.ok.len);
+    try std.testing.expectEqual(@as(usize, 1), shape.err.len);
+    try std.testing.expectEqualStrings("i32", shape.err[0]);
+    try std.testing.expectEqualStrings("wasi:filesystem@0.3.0-rc-2025-09-16", descriptor.wit.package);
+    try std.testing.expectEqualStrings("types", descriptor.wit.interface);
+    try std.testing.expectEqualStrings("descriptor.advise", descriptor.wit.operation);
+    try std.testing.expectEqualStrings("[async-lower][method]descriptor.advise", descriptor.canonical.async_import_name);
+    try std.testing.expectEqualStrings("[resource-drop]descriptor", shape.resource_drop_import);
+}
+
+test "filesystem descriptor advise lowering rejects ABI and WIT drift" {
+    var registry = try Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find("wasi:filesystem/types@0.3.0-rc-2025-09-16", "descriptor.advise") orelse return error.TestUnexpectedResult;
+
+    var drifted = descriptor;
+    drifted.canonical.core_params = &.{ "i32", "i64", "i32", "i32", "i32" };
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.canonical.core_results = &.{};
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.canonical.completion_params = &.{"i32"};
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.canonical.async_import_name = "[async-lower][method]descriptor.advise-drift";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.wit_sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.wit.package = "wasi:filesystem-drift@0.3.0-rc-2025-09-16";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.wit.interface = "drift";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.wit.operation = "descriptor.sync";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.locator = "wasi:filesystem/types@0.3.0";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.member = "descriptor.sync";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.effect = "sync";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.params = &.{ "descriptor", "filesize", "advice", "filesize" };
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.params = &.{ "descriptor", "u64", "filesize", "advice" };
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.resource = "descriptor";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.result = "Result<nil,filesystem-error>";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.canonical.completion = "callback";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.canonical.async_import_module = "wasi:filesystem/types@0.3.0";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    var payload = descriptor.canonical.result_payload.?;
+    payload.tag = "i64";
+    var canonical = descriptor.canonical;
+    canonical.result_payload = payload;
+    drifted = descriptor;
+    drifted.canonical = canonical;
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    payload = descriptor.canonical.result_payload.?;
+    payload.err = &.{};
+    canonical = descriptor.canonical;
+    canonical.result_payload = payload;
+    drifted = descriptor;
+    drifted.canonical = canonical;
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.wit.world = "probe";
+    try std.testing.expect(lowering_shape(drifted) == null);
+
+    drifted = descriptor;
+    drifted.wit.parameter = "descriptor";
     try std.testing.expect(lowering_shape(drifted) == null);
 }
 

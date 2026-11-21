@@ -75,6 +75,19 @@ if [[ "$delivery_mode" == pending || "$delivery_mode" == all ]]; then
 fi
 
 if [[ "$delivery_mode" == ready || "$delivery_mode" == all ]]; then
+  output=$(cd "$runner_dir" && \
+    CC="$PWD/zig-cc.sh" \
+    CXX="$PWD/zig-cc.sh" \
+    CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$PWD/zig-cc.sh" \
+    timeout 30s cargo run --quiet --bin do-p3-http-payload-error-abi-host-runner -- \
+      "$component" compiler-service dns-error ready)
+  rg -Fq 'compiler-gate=green delivery=ready case=dns-error observation=DnsError(rcode=Some("EAI"),info-code=Some(7))' <<<"$output"
+  rg -Fq 'request-consumed=1' <<<"$output"
+  rg -Fq 'response-created=0' <<<"$output"
+  rg -Fq 'table-empty=true' <<<"$output"
+fi
+
+if [[ "$delivery_mode" == ready || "$delivery_mode" == all ]]; then
   delivery=ready
   for case_name in internal-error-none internal-error-some; do
     output=$(cd "$runner_dir" && \
@@ -91,6 +104,77 @@ if [[ "$delivery_mode" == ready || "$delivery_mode" == all ]]; then
     rg -Fq 'request-consumed=1' <<<"$output"
     rg -Fq 'response-created=0' <<<"$output"
     rg -Fq 'table-empty=true' <<<"$output"
+  done
+fi
+
+if [[ "$delivery_mode" == all ]]; then
+  for delivery in pending ready; do
+    for case_name in \
+      tls-alert-received \
+      http-request-body-size \
+      http-request-header-section-size \
+      http-request-header-size \
+      http-request-trailer-section-size \
+      http-request-trailer-size \
+      http-response-header-section-size \
+      http-response-header-size \
+      http-response-body-size \
+      http-response-trailer-section-size \
+      http-response-trailer-size \
+      http-response-transfer-coding \
+      http-response-content-coding; do
+      case "$case_name" in
+        tls-alert-received)
+          expected='TlsAlertReceived(alert-id=Some(42),alert-message=Some("alert"))'
+          ;;
+        http-request-body-size)
+          expected='HTTP-request-body-size(Some(1234))'
+          ;;
+        http-request-header-section-size)
+          expected='HTTP-request-header-section-size(Some(123))'
+          ;;
+        http-request-header-size)
+          expected='HTTP-request-header-size(field-name=Some("content-type"),field-size=Some(42))'
+          ;;
+        http-request-trailer-section-size)
+          expected='HTTP-request-trailer-section-size(Some(123))'
+          ;;
+        http-request-trailer-size)
+          expected='HTTP-request-trailer-size(field-name=Some("content-type"),field-size=Some(42))'
+          ;;
+        http-response-header-section-size)
+          expected='HTTP-response-header-section-size(Some(123))'
+          ;;
+        http-response-header-size)
+          expected='HTTP-response-header-size(field-name=Some("content-type"),field-size=Some(42))'
+          ;;
+        http-response-body-size)
+          expected='HTTP-response-body-size(Some(1234))'
+          ;;
+        http-response-trailer-section-size)
+          expected='HTTP-response-trailer-section-size(Some(123))'
+          ;;
+        http-response-trailer-size)
+          expected='HTTP-response-trailer-size(field-name=Some("content-type"),field-size=Some(42))'
+          ;;
+        http-response-transfer-coding)
+          expected='HTTP-response-transfer-coding(Some("chunked"))'
+          ;;
+        http-response-content-coding)
+          expected='HTTP-response-content-coding(Some("gzip"))'
+          ;;
+      esac
+      output=$(cd "$runner_dir" && \
+        CC="$PWD/zig-cc.sh" \
+        CXX="$PWD/zig-cc.sh" \
+        CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$PWD/zig-cc.sh" \
+        timeout 30s cargo run --quiet --bin do-p3-http-payload-error-abi-host-runner -- \
+          "$component" compiler-service "$case_name" "$delivery")
+      rg -Fq "compiler-gate=green delivery=$delivery case=$case_name observation=$expected" <<<"$output"
+      rg -Fq 'request-consumed=1' <<<"$output"
+      rg -Fq 'response-created=0' <<<"$output"
+      rg -Fq 'table-empty=true' <<<"$output"
+    done
   done
 fi
 

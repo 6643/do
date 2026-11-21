@@ -48,6 +48,7 @@ enum Mode {
     ReadyInternalError,
     ReadyDnsErrorNone,
     ReadyInternalErrorNone,
+    ReadyRequestHeaderSize,
 }
 
 impl Mode {
@@ -61,8 +62,9 @@ impl Mode {
             "ready-internal-error" => Ok(Self::ReadyInternalError),
             "ready-dns-error-none" => Ok(Self::ReadyDnsErrorNone),
             "ready-internal-error-none" => Ok(Self::ReadyInternalErrorNone),
+            "ready-request-header-size" => Ok(Self::ReadyRequestHeaderSize),
             _ => bail!(
-                "unknown HTTP payload cancellation mode {value:?}; expected pending, ready-ok, ready-dns-timeout, ready-dns-error, ready-dns-error-long, ready-internal-error, ready-dns-error-none, or ready-internal-error-none"
+                "unknown HTTP payload cancellation mode {value:?}; expected pending, ready-ok, ready-dns-timeout, ready-dns-error, ready-dns-error-long, ready-internal-error, ready-dns-error-none, ready-internal-error-none, or ready-request-header-size"
             ),
         }
     }
@@ -77,6 +79,7 @@ impl Mode {
             Self::ReadyInternalError => "ready-internal-error",
             Self::ReadyDnsErrorNone => "ready-dns-error-none",
             Self::ReadyInternalErrorNone => "ready-internal-error-none",
+            Self::ReadyRequestHeaderSize => "ready-request-header-size",
         }
     }
 }
@@ -152,7 +155,7 @@ fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let component_path = args
         .next()
-        .context("usage: do-p3-http-payload-cancel-host-runner <component.wasm> <pending|ready-ok|ready-dns-timeout|ready-dns-error|ready-dns-error-long|ready-internal-error|ready-dns-error-none|ready-internal-error-none> [--expect-dns-error-discard|--expect-internal-error-discard] [--twice]")?;
+        .context("usage: do-p3-http-payload-cancel-host-runner <component.wasm> <pending|ready-ok|ready-dns-timeout|ready-dns-error|ready-dns-error-long|ready-internal-error|ready-dns-error-none|ready-internal-error-none|ready-request-header-size> [--expect-dns-error-discard|--expect-internal-error-discard|--expect-request-header-size-discard] [--twice]")?;
     let mode_name = args
         .next()
         .context("missing HTTP payload cancellation mode")?;
@@ -160,7 +163,9 @@ fn main() -> Result<()> {
     let mut invocation_count = 1;
     for argument in args {
         match argument.as_str() {
-            "--expect-dns-error-discard" | "--expect-internal-error-discard" => {
+            "--expect-dns-error-discard"
+            | "--expect-internal-error-discard"
+            | "--expect-request-header-size-discard" => {
                 if expectation.replace(argument).is_some() {
                     bail!("expected at most one HTTP payload cancellation expectation");
                 }
@@ -176,7 +181,11 @@ fn main() -> Result<()> {
     }
     let expect_payload_error_discard = matches!(
         expectation.as_deref(),
-        Some("--expect-dns-error-discard" | "--expect-internal-error-discard")
+        Some(
+            "--expect-dns-error-discard"
+                | "--expect-internal-error-discard"
+                | "--expect-request-header-size-discard"
+        )
     );
     let mode = Mode::parse(&mode_name)?;
     match expectation.as_deref() {
@@ -195,6 +204,9 @@ fn main() -> Result<()> {
             ) =>
         {
             bail!("--expect-internal-error-discard requires ready-internal-error mode");
+        }
+        Some("--expect-request-header-size-discard") if mode != Mode::ReadyRequestHeaderSize => {
+            bail!("--expect-request-header-size-discard requires ready-request-header-size mode");
         }
         _ => {}
     }
@@ -297,6 +309,14 @@ async fn run(
                     Mode::ReadyInternalErrorNone => {
                         Ok(Some(Err(wasi::http::types::ErrorCode::InternalError(None))))
                     }
+                    Mode::ReadyRequestHeaderSize => Ok(Some(Err(
+                        wasi::http::types::ErrorCode::HttpRequestHeaderSize(Some(
+                            wasi::http::types::FieldSizePayload {
+                                field_name: Some("content-type".to_owned()),
+                                field_size: Some(42),
+                            },
+                        )),
+                    ))),
                 }
             });
             match result {
@@ -330,6 +350,7 @@ async fn run(
             | Mode::ReadyInternalError
             | Mode::ReadyDnsErrorNone
             | Mode::ReadyInternalErrorNone
+            | Mode::ReadyRequestHeaderSize
     ) && !expect_payload_error_discard;
     for _ in 0..invocation_count {
         let request = store.data_mut().table.push(Request)?;
@@ -366,6 +387,7 @@ async fn run(
         | Mode::ReadyDnsErrorLong
         | Mode::ReadyInternalError
         | Mode::ReadyDnsErrorNone
+        | Mode::ReadyRequestHeaderSize
         | Mode::ReadyInternalErrorNone => {
             host_stats.pending_polls == 0 && host_stats.pending_drops == 0
         }
@@ -378,6 +400,7 @@ async fn run(
         | Mode::ReadyDnsErrorLong
         | Mode::ReadyInternalError
         | Mode::ReadyDnsErrorNone
+        | Mode::ReadyRequestHeaderSize
         | Mode::ReadyInternalErrorNone => {
             host_stats.ready_polls == invocation_count && host_stats.ready_drops == invocation_count
         }
@@ -389,6 +412,7 @@ async fn run(
         | Mode::ReadyDnsErrorLong
         | Mode::ReadyInternalError
         | Mode::ReadyDnsErrorNone
+        | Mode::ReadyRequestHeaderSize
         | Mode::ReadyInternalErrorNone => {
             stats.response_created == 0 && stats.response_dropped == 0
         }

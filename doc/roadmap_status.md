@@ -1,12 +1,85 @@
 # Roadmap 执行状态
 
-更新时间: 2026-11-20
+更新时间: 2026-11-21
 
 **本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
 G5b async/resource coverage ledger: `doc/g5b_async_resource_coverage.md`。
 
-## 2026-09-16 当前最终验收
+## 2026-11-21 D2 private `descriptor.advise` bounded promotion
+
+The pinned `descriptor.advise` method now has exact private source admission,
+generated direct Core/WIT lowering, regular/cancel ABI snapshots, and a
+Rust/Wasmtime lifecycle gate. The measured direct import is
+`(i32,i64,i64,i32,i32)->i32` for descriptor, two `u64` values, the advice enum
+word, and result-area pointer. The six advice variants retain the pinned WIT
+order. The ABI gate uses the installed `wasm-tools 1.263.0` binary with SHA-256
+`c8b33fa4abc6b2cc85a68a10779c1968f1a98725e5d462ffbc5a71a4a8c8fb87`, checked
+by the probe script because the repository toolchain lock has empty version and
+hash fields. The runtime gate covers generated and canonical ready, pending,
+error, all six advice values, repeat, explicit cancellation, Store-disposal
+early drop, and raw discriminant `6` rejection before the host callback. The
+Wasmtime 50 cancellation path uses task abort plus Store disposal because a
+subtask already in a waitable set cannot be synchronously cancelled through the
+standalone export. This is a private bounded method slice; generic filesystem
+async and other WIT methods remain blocked. Verification:
+`bash examples/p3-runtime/test_d2_wasi_filesystem_advise_abi.sh` and
+`bash examples/p3-runtime/test_rust_wasi_filesystem_advise.sh`.
+
+## 2026-11-21 G6.2 pinned HTTP error payload closeout
+
+`wasi:http/client.send` now preserves all 15 payload-bearing `error-code`
+variants from the pinned `wasi:http@0.3.0-rc-2025-09-16` package. The registry
+records the measured scalar, string, `field-size-payload`, and nested optional
+layouts; the emitter validates option tags before reading payload storage and
+traps on unknown discriminants or invalid tags. The handler's outer option
+conditions remain `i32`, including nested records whose task-return value is
+promoted to `i64`.
+
+The compiler boundary gate and the Rust/Wasmtime compiler-service gate pass for
+all 15 variants through typed test-host ABI cases. In the Do-generated
+pending/ready matrix, all 15 variants run in both modes. Each exercised case
+returns the expected payload, consumes one request, creates no response, and
+leaves the `ResourceTable` empty. This proves the pinned ABI round-trip against
+a synthetic Rust/Wasmtime host, not that a production HTTP provider emits these
+errors under real network conditions.
+The independent hand-authored canonical WAT comparison covers representative
+`DNS-error` and `internal-error` cases, not all variants. See
+`doc/wit/wasi_http_error_payload_evidence.md` for the per-variant evidence table.
+This closes the compiler ABI scope only; it does not add generic WIT error
+lowering or extend the separate cancellation world to every payload variant.
+Verification: `bash examples/p3-runtime/test_do_http_payload_error_lowering.sh all`
+passed after adding the ready `DNS-error` case.
+
+## 2026-11-21 G6.2 HTTP payload cancellation field-size probe
+
+An independent hand-authored canonical WAT probe covers immediate
+`HTTP-request-header-size(Some(field-size-payload))` for the pinned package. It
+checks error tag `22`, `field-name=Some("content-type")`, `field-size=Some(42)`,
+and one exact 12-byte string allocation/release; the Rust/Wasmtime gate observes
+one ready poll/drop, no response, and an empty `ResourceTable`. This is ABI
+evidence only: generated cancellation lowering still rejects the variant, and
+the synthetic host does not establish production provider behavior. Verification:
+`bash examples/p3-runtime/test_rust_http_payload_cancellation_request_header_size_probe.sh`.
+
+## 2026-11-21 G6.2 HTTP producer failure probe
+
+新增的 private `http-request-body-producer-write-error` route 已完成精确源码
+matcher、负例 admission、WAT/WIT lowering、Component validate 和
+Rust/Wasmtime lifecycle gate。固定 probe 在 `StreamWriter<u8>` 的第二次写入
+失败后取消 pending HTTP send、关闭 writer 一次并返回 private `ProducerError`。
+Wasmtime `Dropped` 映射为 `StreamClosed`，`Cancelled` 仅按 Do 层粗粒度映射为
+`StreamWriteFailed`，未知非零状态 trap；不声称保留 WIT error payload。
+
+failure gate 观察到 body `[65]`、send cancellation `1`、response `0`、
+Future/stream cleanup 各 `1` 和 `table-empty=true`；原成功 producer gate
+仍观察到两个完整 `[65,66]` body。该 probe 仍是 private fixed shape，不扩大
+通用 producer/resource lowering、通用错误映射或 public ownership syntax。
+验证：failure emitter tests `3/3`、failure lowering/runtime gates、success
+producer runtime gate 和完整 `./src/build/test/run_tests.sh`（`14/14 steps
+succeeded`、退出码 `0`）通过。
+
+## 2026-09-16 G5c migration closure (历史验收记录)
 
 G5c 15-row migration inventory 已全部闭环：
 `bash src/build/test/check_gc_migration_inventory.sh` 返回
@@ -657,7 +730,7 @@ fail-closed/pending。
 | v1 子集 | 发布候选已收口 |
 | GC-first runtime cutover | Task 6 已闭环；普通编译入口只走 `codegen_runtime_api.zig` 的 Wasm GC route，ARC 仅保留在显式 test-only equivalence oracle；当前 ARC inventory post-cutover `rows=55 matches=492 unclassified=0 normal_route_matches=0`，生产依赖闭包 `modules=164 forbidden=0` |
 | GC-first memory contract | 2026-11-19 决定普通 Do 对象生命周期正式采用 Wasm GC 可达性回收；词法块退出不释放普通对象，函数参数默认只读借用，普通赋值和 `@set` 保持逻辑值语义并允许 COW；外部 resource 显式 close/drop，Future 显式 await/cancel。Region allocator、词法区域释放和公开 `own<T>`/`borrow<T>`/`ref<T>` 不属于 v1 |
-| 当前验证基线 | 最近 `RUN_GC_CORE=1` 为 `14/14 steps`；GC core focused tests: `codegen_pipeline.zig` `1060/1060`、`codegen_gc_sync.zig` `295/295`、`gc_sync_probe.zig` `63/63`；GC default gate `87 fixtures`、semantic-equivalence `26 rows; 0 pending` |
+| 当前验证基线 | 最近 `RUN_GC_CORE=1` 为 `14/14 steps`；GC core focused tests: `codegen_pipeline.zig` `1060/1060`、`codegen_gc_sync.zig` `295/295`、`gc_sync_probe.zig` `63/63`；GC default gate `87 fixtures`、semantic-equivalence `26 rows; 0 pending`；2026-11-20 ReleaseSmall build 与 release smoke 通过 |
 | capability inventory | G5c 15-row inventory 已闭环为 `complete_rows=15 pending_rows=0`、exit `0`；通用 async/map/producer/resource lowering 与 public `own<T>`/`borrow<T>`/`ref<T>` syntax 继续 pending |
 | GC-first memory implementation evidence | G5a/G5b/G5c gates, admitted GC lowering, 26-row equivalence matrix and Component probes are evidence for the current Wasm GC implementation and the selected v1 GC-first source contract. |
 | GC-first scalar-leaf default route | `examples/gc-p3-runtime/scalar-leaf.do` 的纯同步 scalar identity/arithmetic 已走默认 typed GC route；递归、loop、defer、host/WIT、managed、async/resource 形状保持 fallback/fail-closed。独立 gate、默认 83-fixture build/parse gate 和 focused negative tests 已锁定；这不是 migration row closure 或 full G5c cutover。 |
@@ -2191,7 +2264,8 @@ TMPDIR="$PWD/.tmp/do-tmp" bash examples/p3-runtime/test_do_http_payload_cancella
 discriminant and does not read or free pointer/length fields. A second sequential
 nonempty DNS error in the same component instance reuses the slot after its
 first exact release. Empty strings and all other immediate payload errors remain
-compiler traps.
+compiler traps for this cancellation world; the separate pinned `client.send`
+service route now covers all 15 payload-bearing variants.
 
 bash examples/p3-runtime/test_do_wasi_filesystem_read_directory_abi.sh
   → WASI G6.2 read-directory ABI probe passed; fixed lowering/runtime slice is verified

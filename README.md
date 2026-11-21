@@ -1,12 +1,11 @@
 # do 语言
 
-最新 G6.2 增量（2026-09-11）：private
-`TwoListEntry { first: list<u32>, second: list<u32>, ticket: own<Ticket> }`
-producer 已通过 canonical ABI、Component、Rust/Wasmtime 十模式 lifecycle 和
-canonical/generated parity；record `20/4`、list `stride/capacity=4/3`，WIT
-hash 为 `14ba67e070346a127e75c7dfd73c71d6082ad7d9385c7d803834319dabc6404a`。
-这是固定形状内部证据，不开放 public `own<T>`/`borrow<T>`/`ref<T>` 或 generic
-producer lowering。
+最新实现增量（2026-11-21）：G6.2 新增了固定形状 HTTP request-body producer
+write-error probe，并完成 Component lowering/validation 与 Rust/Wasmtime lifecycle
+验证；该 probe 不开放通用 producer 错误映射。GC 默认 route 同时补充了受限标量 core parity、标量数组
+多值 `@put`、`[i32]` spread `@put`；GC nested field path emitter 改为动态路径存储，
+并通过 12 层合成 WAT/Wasmtime oracle。oracle 不扩大普通 Do 源码 route 的 struct
+producer 准入，也不新增 ARC/GC equivalence row。具体边界见 `doc/start_here.md`。
 
 > 当前仓库状态: v1 子集发布候选已收口; 后续默认只处理发布阻断回归、文档漂移或已确认的 G6 / 运行时决策项。
 
@@ -65,13 +64,13 @@ src/lsp/        do lsp diagnostics + formatting + semantic tokens + hover + comp
 - 标准库: 已验证 JSON struct stringify/from_json、bytes/text/utf8/utf16、hex/base64/url、math/binary/mem/atomic/range/slice/path/fp/list/set/hash_map/hash、md5/sha1/sha256 等基础库; time/random/file/dir/io.stream 只承诺已登记 WASI wrapper lowering; net/tcp/udp/http.client 只承诺当前 shape/check smoke, 真实 host I/O 后置。
 - 后端与 WASI: 公开输出仍以 WAT 为主; 当前 build/test 子集已覆盖标量、结构体 flatten、typed GC/root managed values、多返回、基础 `@get/@set/@put`、WASI result-area/resource-drop lowering、component plan/core imports/core shims/component input 和真实 component wasm validate gate；固定 `descriptor.read-directory` 一至三条目 slice、私有 bounded `descriptor.read-via-stream` byte reader（同步 `(File,u64)` method、至多三次 byte read 与 completion await）、注册的 scalar/string generic consumer、多个直接及一层/两层/三层/四层/五层/六层及两个顶层 nested `own` resource-field consumer、bounded scalar producer、受限 helper-mediated lease、固定/参数化 `u64` countdown producer、参数化 helper（含六跳 forwarding 与三种 typed 参数受限重排）producer、branch-selected `close/abort` terminal、private C-min/dynamic/batched list-resource producer、private direct/two-field/parameterized two-field/triple/mixed scalar-owned record producer、精确同步 manifest-backed `map<u32,u32>` lower/lift route、精确 private async `map<u32,u32>` compiler route 已完成 ABI、lowering 与 Rust/Wasmtime 验证，general producer/borrowed/list/variant/第七跳 forwarding/第七层 nested 或更一般 resource 扩展仍受边界约束。
 - 工具链: `do build`、`do test`、`do test --compiled`、`do check`、`do run`、`do fmt` 和 `do lsp` 第一版均已落地; LSP 当前覆盖 diagnostics、formatting、semantic tokens、hover、completion、definition 和最小 workspace index。
-- 验证入口: 当前默认完整回归由 `./src/build/test/run_tests.sh` 薄入口执行 `cd src && zig build test --summary all`，最近结果为 `14/14 steps; 56/56 tests`；`RUN_WASM=1` 与 `RUN_GC_CORE=1` 也已通过同一结果。项目专用 Zig cache 下 `zig test main.zig` 最近结果为 `1743/1743`，精确同步 manifest-backed `map<u32,u32>` lower/lift Component gate、private async `map<u32,u32>` compiler/lifecycle gate 与 G6.2 single-/two-list owned-record producer gates 已通过；发布前 smoke 入口是 `./src/build/test/run_release_smoke.sh`。
+- 验证入口: 当前默认完整回归由 `./src/build/test/run_tests.sh` 薄入口执行 `cd src && zig build test --summary all`。最近 `RUN_GC_CORE=1` 为 `14/14 steps`；GC focused tests 为 `codegen_pipeline.zig` `1060/1060`、`codegen_gc_sync.zig` `295/295`、`gc_sync_probe.zig` `63/63`。2026-11-20 ReleaseSmall 构建和 `./src/build/test/run_release_smoke.sh` 通过；2026-11-21 G6.2 HTTP producer failure probe 的 focused emitter/lowering/runtime gates 及原 success producer gate 通过；该 smoke 覆盖 build/test/check/fmt/run/lsp 与指定 residual gate wiring。
 
 ## v1 非目标
 
 - 不提供完整 ownership IR、跨函数唯一性证明、escape analysis、基于分析的区域推断或激进 loop/path move; 当前继续使用已验证的 `OwnershipFacts` 子集和保守回退。普通对象生命周期不依赖这些优化分析。
 - 不引入 direct wasm binary emitter; `do build` 和 `do test --compiled` 继续输出 WAT, 执行链路继续通过 `wasm-tools parse`。
-- 不承诺完整 WASI / Component Model 运行时; preopens (G6.1 A 已 lower: `[Tuple<Dir,text>]` 公开 API) 的真 host smoke、一般 producer lease、borrowed/list/variant/第七跳 forwarding/第七层或更一般 nested resource-valued record、sockets resource + variant、HTTP async resource 和真实 host runtime 继续后置。固定 read-directory 一至三条目 slice、bounded `descriptor.read-via-stream` byte reader、scalar/string consumer、multi-owned-resource consumer、多个顶层 nested-owned-resource consumer、一层/两层/三层/四层/五层/六层 nested-owned-resource consumer、bounded scalar producer、受限 helper-mediated producer lease、固定/参数化 `u64` countdown producer、参数化 helper（含六跳 forwarding 与三种 typed 参数受限重排）及 branch-selected terminal 已验证，异步语言与 ABI 设计以 `doc/async-design.md` 为准。
+- 不承诺完整 WASI / Component Model 运行时。G6.1 preopen/read-directory、本地 file/dir/CLI smoke、G6.3 socket create/bind/drop 和已登记的 bounded descriptor gates 已验证；通用 filesystem async、external HTTP、一般 producer lease、borrowed/list/variant payload、第七跳 forwarding、第七层或更一般 nested resource-valued record 与通用 resource cancellation 仍受独立 gate 限制。固定 scalar/string consumer、nested-owned-resource consumer、bounded producer、受限 helper-mediated lease、`u64` countdown 与 branch-selected terminal 等形状已验证；异步语言与 ABI 设计以 `doc/async-design.md` 为准。
 - 不提供完整自动序列化; JSON 当前只承诺已验证的 struct 字段 stringify/from_json 子集, error/enum/union/复杂 storage 自动支持继续后置。
 - 不重开 get / pkg / push 包管理线。
 - 不把 `do fmt` 扩展成多文件批量、stdin/stdout 自动模式、range/on-type 或完整语法感知 formatter。
@@ -83,8 +82,8 @@ src/lsp/        do lsp diagnostics + formatting + semantic tokens + hover + comp
 默认推进顺序与接手细则见 `doc/start_here.md` 与 `doc/master_plan.md` §4。摘要:
 
 1. **发布候选维护**: `./src/build/test/run_tests.sh`、`./src/build/test/run_release_smoke.sh`、必要时 `RUN_WASM=1 ./src/build/test/run_tests.sh`; 只修阻断发布的回归或文档漂移。
-2. **G5c residual review → WASI / Component Model (G6)**: G5c 当前 15-row matrix 已完成，唯一 exact candidate 已通过专用与全局门禁；先完成 release-candidate maintenance，再重新筛选单一同步 descriptor。若无新 candidate，则优先为 G6.2 的一个新 producer/resource shape 单独建立 design、pinned probe 和 runtime gate。G6.1 preopens、G6.3 sockets、G6.2 固定 read-directory slice、private bounded `descriptor.read-via-stream` byte reader、generic consumer、multi-owned-resource、多个顶层 nested-owned-resource 与一层/两层/三层/四层/五层/六层 nested-owned-resource consumer、bounded scalar producer、固定/参数化 `u64` countdown producer、参数化 helper（含五跳 forwarding 与三种 typed 参数受限重排）producer、受限 helper-mediated producer lease、branch-selected terminal、descriptor-bounded StreamMirror runtime 和私有 resource Result 显式 `@cancel(completion)` lowering 已落地；新 shape 仍须独立 gate。
-3. **Host runtime smoke**: G6 决策后补真实 file/dir/stream/socket/http host smoke, 再逐步收回 `16/96/118` 相关后置 skip。
+2. **G6.2 producer/resource 扩展**: 现有 bounded gates 已闭环；当前没有已选定的下一个 exact shape。只有明确具体用例和 producer/resource shape 后，才为它单独建立 design、pinned probe、正反例、Component parity 和 Rust/Wasmtime lifecycle gate。
+3. **D2 通用 host runtime**: 本地 file/dir/CLI/socket smoke 和已登记私有 descriptor gates 已完成；通用 filesystem async 与 external HTTP 各自需要明确 target/design 后再推进。相关 skip 按各自 host 前置条件处理。
 4. **JSON / 序列化扩展**: 以字段反射与已验证 struct JSON 为基础, 再定 error/enum/union/storage 自动序列化边界。
 5. **Ownership 深化**: runtime 边界稳定后再重开完整 ownership IR、跨函数唯一性证明、escape analysis、基于分析的区域推断与更激进 move/reuse。该项是可选编译器优化分析，不改变 GC-first 生命周期契约；当前状态见 `doc/memory.md`。
 6. **编辑器与格式化增强**: LSP rename/references、import-aware definition、range/on-type formatting、语法感知 formatter — v1 后单独推进。

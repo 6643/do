@@ -214,6 +214,7 @@ fn p3_async_signature_matches(tokens: []const lexer.Token, start_idx: usize, end
             .filesystem_get_type => return filesystem_get_type_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_sync => return filesystem_sync_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_set_size => return filesystem_set_size_signature_matches(tokens, start_idx, close_idx, end_idx),
+            .filesystem_advise => return filesystem_advise_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_sync_data => return filesystem_sync_data_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_metadata_hash => return filesystem_metadata_hash_signature_matches(tokens, start_idx, close_idx, end_idx),
             .filesystem_metadata_hash_at => return filesystem_metadata_hash_at_signature_matches(tokens, start_idx, close_idx, end_idx),
@@ -332,6 +333,27 @@ fn filesystem_set_size_signature_matches(
         tokens[params_start_idx + 3].kind != .ident or
         !std.mem.eql(u8, tokens[params_start_idx + 3].lexeme, "u64")) return false;
     return compact_token_range_equals(tokens, params_close_idx + 3, end_idx, "nil|SetSizeError");
+}
+
+fn filesystem_advise_signature_matches(
+    tokens: []const lexer.Token,
+    params_start_idx: usize,
+    params_close_idx: usize,
+    end_idx: usize,
+) bool {
+    if (params_close_idx != params_start_idx + 8 or
+        tokens[params_start_idx + 1].kind != .ident or
+        !std.mem.eql(u8, tokens[params_start_idx + 1].lexeme, "File") or
+        !tok_eq(tokens[params_start_idx + 2], ",") or
+        tokens[params_start_idx + 3].kind != .ident or
+        !std.mem.eql(u8, tokens[params_start_idx + 3].lexeme, "u64") or
+        !tok_eq(tokens[params_start_idx + 4], ",") or
+        tokens[params_start_idx + 5].kind != .ident or
+        !std.mem.eql(u8, tokens[params_start_idx + 5].lexeme, "u64") or
+        !tok_eq(tokens[params_start_idx + 6], ",") or
+        tokens[params_start_idx + 7].kind != .ident or
+        !std.mem.eql(u8, tokens[params_start_idx + 7].lexeme, "Advice")) return false;
+    return compact_token_range_equals(tokens, params_close_idx + 3, end_idx, "nil|AdviseError");
 }
 
 fn filesystem_sync_data_signature_matches(

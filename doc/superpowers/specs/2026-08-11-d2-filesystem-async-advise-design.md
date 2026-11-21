@@ -1,8 +1,9 @@
 # D2 `descriptor.advise` Async Filesystem Design
 
-**Status:** approved bounded direction; design and probe only. This document
-does not add compiler admission, generic filesystem lowering, or public
-ownership syntax.
+**Status:** private bounded compiler/runtime slice closed on 2026-11-21.
+The exact `descriptor.advise` route is admitted only through
+`--p3-async-component`; this document does not add generic filesystem
+lowering or public ownership syntax.
 
 ## Goal
 
@@ -91,37 +92,60 @@ The source of truth is:
 - `src/build/p3_wit/wasi-http-0.3.0-rc-2025-09-16/deps/filesystem/types.wit`
 - upstream `types.wit` SHA-256
   `8421d2ac1b15d121ccce9e3596ee342a641043a8b4558f7a4f2893a3eee6359f`
-- `wasm-tools 1.255.0 (76e20611d 2026-07-30)`
-- tool SHA-256
-  `6e431ad26863c697cc30733aae69cbd9248f83811d9e63e4eb01061fc2ece013`
-- Rust `1.97.1`, Wasmtime `47.0.2`, and Zig `0.16.0`
+- probe tool: `wasm-tools 1.263.0`, SHA-256
+  `c8b33fa4abc6b2cc85a68a10779c1968f1a98725e5d462ffbc5a71a4a8c8fb87`
+- regular/cancel probe WIT SHA-256 values:
+  `b896feb4867d49dcfb57951e09ebb6a3feeaf16fbffb8b56cd27f7bee281e132` /
+  `0e2dc022d1985ce0de7ac8a412348c835995f390597e1bd40e98b4f1c22dc9a1`
+- The probe environment observed Rust `1.100.0` and Zig `0.17.1`; the Rust host
+  runner's `Cargo.lock` pins Wasmtime `50.0.0`. These are local execution facts,
+  not repository-wide toolchain-lock pins.
 
-The probe mirrors must contain only `filesize`, the complete `advice` and
+The probe resolved `wasm-tools` from `PATH`. The repository toolchain lock has
+empty version and hash fields, so the probe script pins this binary locally
+before invoking `bin/do-toolchain`. This records probe provenance and does not
+change the repository-wide toolchain pin.
+
+The probe mirrors contain only `filesize`, the complete `advice` and
 `error-code` definitions, the descriptor resource, and the regular/cancel
-probe worlds. Their hashes are produced by the probe task and become part of
-the admission record; compiler registration is forbidden before those hashes
-and the measured Core layout are recorded.
+probe worlds. Their hashes and the measured Core layout are now recorded above;
+future mirror changes must update the local hash checks and repeat the ABI gate
+before admission.
 
 ## ABI Probe
 
-The ABI task must run the current-only `wasm-tools 1.255.0` component embed,
-Core parse, Component assembly, and validation path. It must assert:
+The ABI probe runs `bin/do-toolchain` component-template generation, Core
+parse, Component assembly, and validation. Its script pins the observed
+wasm-tools binary and both probe WIT mirrors. It asserts:
 
 - exactly one `[async-lower][method]descriptor.advise` import;
 - the complete `advice` discriminant order and the `unit | error-code` result;
-- the exact flat or indirect Core import signature;
-- every indirect parameter-block offset and alignment, if the tool selects an
-  indirect call because the receiver, two `u64` values, enum, and result area
-  exceed the flat limit;
+- the exact Core import signature and direct argument order;
 - the task-return words, result-area tag/payload, async callback, subtask
   cancellation, and descriptor-drop imports;
 - no neighboring filesystem method is emitted.
 
-The expected shape is an indirect scalar call because the receiver, two
-`filesize` values, enum, and result area exceed the already measured
-`descriptor.set-size` direct shape. This is an expectation only: the probe's
-current output is authoritative, and any different signature stops admission
-until this design is revised.
+Measured with the probe's `wasm-tools 1.263.0`, the method import is a direct
+`(i32, i64, i64, i32, i32) -> i32` call. The parameters are descriptor handle,
+offset, length, advice discriminant, and result-area pointer, respectively.
+The cancel world retains the same method ABI and adds task-return and
+subtask-cancel imports. This disproves the earlier indirect-call expectation;
+compiler admission must use this measured direct shape. No indirect argument
+block or fallback ABI is part of this design.
+
+The ABI gate is
+`bash examples/p3-runtime/test_d2_wasi_filesystem_advise_abi.sh`. It parses the
+generated template, assembles both regular and cancel probe worlds, validates
+the Components, and checks the resulting WIT enum order and signatures. The
+template's exported task stubs are unreachable: this gate does not execute a
+host call or establish runtime cleanup. The executable runtime gate uses the
+checked-in direct Core template and the separately authored cancel Core because
+the canonical `embed-component-template` snapshots intentionally contain
+unreachable ABI stubs. It runs
+`bash examples/p3-runtime/test_rust_wasi_filesystem_advise.sh`, covering
+generated and canonical ready/pending/error/repeat paths, all six advice arms,
+explicit cancellation, Store-disposal early drop, and the invalid raw
+discriminant `6` probe.
 
 ## Compiler Boundary
 
@@ -139,10 +163,10 @@ and Core template. The analyzer must reject:
 - borrowed or resource result payloads;
 - a second await, branch, loop, defer, extra host binding, or async root.
 
-The emitter copies both `u64` values and the enum word into the measured frame
-or indirect argument block before the host call, retains the descriptor until
-unified termination, decodes the unit/error result, and releases the future,
-subtask, descriptor, and frame exactly once.
+The emitter passes both `u64` values and the enum word in the measured direct
+Core call order, retains the descriptor until unified termination, decodes the
+unit/error result, and releases the future, subtask, descriptor, and frame
+exactly once.
 
 ## Runtime And Cancellation Contract
 
@@ -155,6 +179,10 @@ advice value, host calls, polls, wakes, completions, future drops, pending
 future drops, descriptor drops, and `ResourceTable` state. The host callback
 must reject an invalid advice discriminant instead of coercing it to another
 arm.
+Wasmtime 50 does not support directly synchronously cancelling a subtask
+already in a waitable set; the cancel row therefore uses `JoinHandle::abort`,
+waits for task disposal, removes the residual host descriptor, and drops the
+Store. This proves cleanup and does not claim rollback of an advisory call.
 
 ## Verification Matrix
 
@@ -179,7 +207,7 @@ must not be counted as a successful WIT invocation.
 Stop before compiler registration if the pinned tool:
 
 - changes the enum discriminant order or rejects the `advice` shape;
-- emits a Core signature or indirect layout different from the measured probe;
+- emits a Core signature or argument order different from the measured probe;
 - cannot preserve both `u64` arguments across a pending wake;
 - permits an invalid enum discriminant to reach the host as a valid arm; or
 - produces duplicate/missing completion, future, subtask, descriptor, or frame
@@ -223,7 +251,7 @@ high-risk design and remains pending after this scalar/enum slice.
 
 The design is accepted only when the ABI probe records the current tool hash,
 upstream WIT hash, mirror hashes, exact Core signature/layout, and the full
-`@host_enum` mapping. After user review of this file, the implementation plan
-may define the probe, compiler, fixture, Rust/Wasmtime, and documentation
-tasks. Until then, the existing `descriptor.set-size` slice and unrelated
-uncommitted worktree changes remain unchanged.
+`@host_enum` mapping. The implementation and documentation gates are now closed
+for this private method slice. The accepted boundary remains exact source
+admission, direct Core ABI, and the listed lifecycle probes; unrelated
+filesystem methods and uncommitted worktree changes remain outside this slice.

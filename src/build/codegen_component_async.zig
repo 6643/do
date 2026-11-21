@@ -13,6 +13,7 @@ const codegen_component_wasi_filesystem_get_type = @import("codegen_component_wa
 const codegen_component_wasi_filesystem_get_flags = @import("codegen_component_wasi_filesystem_get_flags.zig");
 const codegen_component_wasi_filesystem_sync = @import("codegen_component_wasi_filesystem_sync.zig");
 const codegen_component_wasi_filesystem_set_size = @import("codegen_component_wasi_filesystem_set_size.zig");
+const codegen_component_wasi_filesystem_advise = @import("codegen_component_wasi_filesystem_advise.zig");
 const codegen_component_wasi_filesystem_sync_data = @import("codegen_component_wasi_filesystem_sync_data.zig");
 const codegen_component_wasi_filesystem_metadata_hash = @import("codegen_component_wasi_filesystem_metadata_hash.zig");
 const codegen_component_wasi_filesystem_metadata_hash_at = @import("codegen_component_wasi_filesystem_metadata_hash_at.zig");
@@ -56,6 +57,7 @@ pub const Target = enum {
     http_request_constructor,
     http_request_body,
     http_request_body_producer,
+    http_request_body_producer_write_error,
     stream_reader,
     record_stream,
     record_resource_list_stream,
@@ -80,6 +82,7 @@ pub const Target = enum {
     wasi_filesystem_get_flags,
     wasi_filesystem_sync,
     wasi_filesystem_set_size,
+    wasi_filesystem_advise,
     wasi_filesystem_sync_data,
     wasi_filesystem_metadata_hash,
     wasi_filesystem_metadata_hash_at,
@@ -117,6 +120,12 @@ pub fn emit_component_wat(
         });
     }
     if (try codegen_component_wasi_http.has_http_request_body_plan(allocator, tokens)) {
+        return finalize_component_wat(allocator, codegen_component_wasi_http.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
+            error.UnsupportedP3AsyncHttpService => error.UnsupportedP3AsyncComponent,
+            else => err,
+        });
+    }
+    if (try codegen_component_wasi_http.has_http_request_body_producer_write_error_plan(allocator, tokens)) {
         return finalize_component_wat(allocator, codegen_component_wasi_http.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
             error.UnsupportedP3AsyncHttpService => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -179,6 +188,10 @@ pub fn emit_component_wat(
             else => err,
         }),
         .http_request_body_producer => finalize_component_wat(allocator, codegen_component_wasi_http.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
+            error.UnsupportedP3AsyncHttpService => error.UnsupportedP3AsyncComponent,
+            else => err,
+        }),
+        .http_request_body_producer_write_error => finalize_component_wat(allocator, codegen_component_wasi_http.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
             error.UnsupportedP3AsyncHttpService => error.UnsupportedP3AsyncComponent,
             else => err,
         }),
@@ -275,6 +288,10 @@ pub fn emit_component_wat(
         },
         .wasi_filesystem_set_size => codegen_component_wasi_filesystem_set_size.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
             error.UnsupportedP3WasiFilesystemSetSizeComponent => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
+        .wasi_filesystem_advise => codegen_component_wasi_filesystem_advise.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
+            error.UnsupportedP3WasiFilesystemAdviseComponent => error.UnsupportedP3AsyncComponent,
             else => err,
         },
         .wasi_filesystem_sync_data => codegen_component_wasi_filesystem_sync_data.emit_component_wat(allocator, program, tokens, module_graph) catch |err| switch (err) {
@@ -930,6 +947,12 @@ pub fn emit_component_wit_with_graph(
             else => err,
         };
     }
+    if (try codegen_component_wasi_http.has_http_request_body_producer_write_error_plan(allocator, tokens)) {
+        return codegen_component_wasi_http.emit_component_wit(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3AsyncHttpService => error.UnsupportedP3AsyncComponent,
+            else => err,
+        };
+    }
     if (try codegen_component_wasi_http.has_http_request_body_producer_plan(allocator, tokens)) {
         return codegen_component_wasi_http.emit_component_wit(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3AsyncHttpService => error.UnsupportedP3AsyncComponent,
@@ -984,6 +1007,10 @@ pub fn emit_component_wit_with_graph(
             else => err,
         },
         .http_request_body_producer => codegen_component_wasi_http.emit_component_wit(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3AsyncHttpService => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
+        .http_request_body_producer_write_error => codegen_component_wasi_http.emit_component_wit(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3AsyncHttpService => error.UnsupportedP3AsyncComponent,
             else => err,
         },
@@ -1080,6 +1107,10 @@ pub fn emit_component_wit_with_graph(
             error.UnsupportedP3WasiFilesystemSetSizeComponent => error.UnsupportedP3AsyncComponent,
             else => err,
         },
+        .wasi_filesystem_advise => codegen_component_wasi_filesystem_advise.emit_component_wit(allocator, tokens) catch |err| switch (err) {
+            error.UnsupportedP3WasiFilesystemAdviseComponent => error.UnsupportedP3AsyncComponent,
+            else => err,
+        },
         .wasi_filesystem_sync_data => codegen_component_wasi_filesystem_sync_data.emit_component_wit(allocator, tokens) catch |err| switch (err) {
             error.UnsupportedP3WasiFilesystemSyncDataComponent => error.UnsupportedP3AsyncComponent,
             else => err,
@@ -1116,6 +1147,9 @@ pub fn target_for_tokens_with_graph(
     tokens: []const lexer.Token,
     module_graph: ?*const imports.ModuleGraph,
 ) !Target {
+    if (try codegen_component_wasi_http.has_http_request_body_producer_write_error_plan(allocator, tokens)) {
+        return .http_request_body_producer_write_error;
+    }
     if (try codegen_component_wasi_http.has_http_request_body_producer_plan(allocator, tokens)) {
         return .http_request_body_producer;
     }
@@ -1336,6 +1370,11 @@ pub fn target_for_tokens_with_graph(
                     return error.UnsupportedP3AsyncComponent;
                 break :blk .wasi_filesystem_set_size;
             } else return error.UnsupportedP3AsyncComponent,
+            .filesystem_advise => if (binding.kind == .host_async_func) blk: {
+                _ = codegen_component_wasi_filesystem_advise.FilesystemAdvisePlan.analyze(tokens, registry) catch
+                    return error.UnsupportedP3AsyncComponent;
+                break :blk .wasi_filesystem_advise;
+            } else return error.UnsupportedP3AsyncComponent,
             .filesystem_sync_data => if (binding.kind == .host_async_func) blk: {
                 _ = codegen_component_wasi_filesystem_sync_data.SyncDataPlan.analyze(tokens, registry) catch
                     return error.UnsupportedP3AsyncComponent;
@@ -1397,6 +1436,7 @@ pub fn requires_http_wit_package(allocator: std.mem.Allocator, tokens: []const l
         (try codegen_component_wasi_http.HttpRequestSendPlan.analyze(tokens, registry)) != null or
         (try codegen_component_wasi_http.HttpRequestConstructorPlan.analyze(tokens, registry)) != null or
         (try codegen_component_wasi_http.HttpRequestBodyPlan.analyze(tokens, registry)) != null or
+        (try codegen_component_wasi_http.HttpRequestBodyProducerWriteErrorPlan.analyze(tokens, registry)) != null or
         (try codegen_component_wasi_http.HttpRequestBodyProducerPlan.analyze(tokens, registry)) != null or
         (try codegen_component_wasi_http.HttpResponseBodyPlan.analyze(tokens, registry)) != null;
 }
@@ -1417,6 +1457,7 @@ fn target_for_descriptor(descriptor: p3_async_manifest.Descriptor) !Target {
         .filesystem_get_flags => .wasi_filesystem_get_flags,
         .filesystem_sync => .wasi_filesystem_sync,
         .filesystem_set_size => .wasi_filesystem_set_size,
+        .filesystem_advise => .wasi_filesystem_advise,
         .filesystem_sync_data => .wasi_filesystem_sync_data,
         .filesystem_metadata_hash => .wasi_filesystem_metadata_hash,
         .filesystem_metadata_hash_at => .wasi_filesystem_metadata_hash_at,
@@ -1768,6 +1809,47 @@ test "generic Component async target classifies pinned filesystem descriptor set
     defer std.testing.allocator.free(wit);
     try std.testing.expect(std.mem.indexOf(u8, wit, "set-size: async func(size: filesize) -> result<_, error-code>") != null);
     try std.testing.expect(std.mem.indexOf(u8, wit, "run: async func(file: own<descriptor>, size: filesize)") != null);
+}
+
+test "filesystem descriptor advise source shape admits the bounded direct await" {
+    const source = @embedFile("test/compile_ok/806_wasi_filesystem_advise_component.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+
+    try std.testing.expectEqual(Target.wasi_filesystem_advise, try target_for_tokens(std.testing.allocator, tokens));
+    var program = try parser.parse_program(std.testing.allocator, tokens, source.len);
+    defer program.deinit(std.testing.allocator);
+    const wat = try emit_component_wat(std.testing.allocator, program, tokens, null);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $async-run (func (param i32 i64 i64 i32) (result i32)))") != null);
+    const wit = try emit_component_wit(std.testing.allocator, tokens);
+    defer std.testing.allocator.free(wit);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "advise: async func(offset: filesize, length: filesize, advice: advice) -> result<_, error-code>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wit, "run: async func(file: own<descriptor>, offset: filesize, length: filesize, advice: advice)") != null);
+}
+
+test "filesystem descriptor advise target rejects its topology and ABI negatives" {
+    const cases = [_][]const u8{
+        @embedFile("test/compile_err/807_wasi_filesystem_advise_unregistered.do"),
+        @embedFile("test/compile_err/808_wasi_filesystem_advise_wrong_version.do"),
+        @embedFile("test/compile_err/809_wasi_filesystem_advise_wrong_receiver.do"),
+        @embedFile("test/compile_err/810_wasi_filesystem_advise_wrong_offset.do"),
+        @embedFile("test/compile_err/811_wasi_filesystem_advise_wrong_length.do"),
+        @embedFile("test/compile_err/812_wasi_filesystem_advise_wrong_result.do"),
+        @embedFile("test/compile_err/813_wasi_filesystem_advise_missing_arm.do"),
+        @embedFile("test/compile_err/814_wasi_filesystem_advise_reordered_arm.do"),
+        @embedFile("test/compile_err/815_wasi_filesystem_advise_duplicate_arm.do"),
+        @embedFile("test/compile_err/816_wasi_filesystem_advise_second_await.do"),
+        @embedFile("test/compile_err/817_wasi_filesystem_advise_branch.do"),
+        @embedFile("test/compile_err/818_wasi_filesystem_advise_loop.do"),
+        @embedFile("test/compile_err/819_wasi_filesystem_advise_extra_host.do"),
+        @embedFile("test/compile_err/820_wasi_filesystem_advise_async_root.do"),
+    };
+    for (cases) |source| {
+        const tokens = try lexer.tokenize(std.testing.allocator, source);
+        defer std.testing.allocator.free(tokens);
+        try std.testing.expectError(error.UnsupportedP3AsyncComponent, target_for_tokens(std.testing.allocator, tokens));
+    }
 }
 
 test "generic Component async target classifies pinned filesystem descriptor sync-data" {

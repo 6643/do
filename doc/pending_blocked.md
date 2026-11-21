@@ -1,17 +1,32 @@
 # 待处理与阻断清单
 
-更新时间: 2026-09-16
+更新时间: 2026-11-21
 基线: 默认回归由 `./src/build/test/run_tests.sh` 薄入口转发到 Zig harness
 关系: 总规划 `doc/master_plan.md`; 接手 `doc/start_here.md`; 执行状态 `doc/roadmap_status.md`
 约定: **只记未关闭项**; 完成后从本文件删除或移入「已关闭摘要」, 并同步入口文档与 `CHANGELOG.md`。
 
-当前状态（2026-09-16）：G5c 15-row migration inventory 已全部闭环，
+当前状态（2026-11-21）：G5c 15-row migration inventory 已全部闭环，
 `check_gc_migration_inventory.sh` 为 `complete_rows=15 pending_rows=0`、退出码
 `0`；全量回归、ReleaseSmall/release smoke、GC default、ARC post-cutover、
 semantic-equivalence 和 evidence checker 均通过。本文带日期的旧增量保留当时
 快照；其中出现的 `complete_rows=15 pending_rows=15` 只表示历史状态，不是当前
 阻断。当前未关闭项包括通用 async/resource、通用 producer/borrowed shape 和其他单独
 列出的 deferred 设计。公开 `own<T>`/`borrow<T>`/`ref<T>` 不属于当前 GC-first v1 模型。
+
+2026-11-21 G6.2 pinned HTTP error payload closeout：pinned
+`wasi:http/client.send` 的 15 个 payload-bearing `error-code` variants 已完成
+registry、emitter、Component validate 和 Rust/Wasmtime pending/ready gate。
+其它 descriptor、未来 WIT 版本、通用 WIT error lowering 和 cancellation world
+的泛化仍未开放。当前 Wasmtime case 由测试 host 合成错误, 不构成真实 HTTP
+provider 行为证据。独立手写 canonical WAT 对照也只覆盖代表性错误。证据层级和逐项
+矩阵见 `doc/wit/wasi_http_error_payload_evidence.md`。这些是明确记录的验证边界,
+不阻塞当前 pinned ABI compiler closeout。
+
+2026-11-20 GC 同步实现增量：标量 core parity、受限标量数组多值 `@put`、`[i32]`
+spread `@put` 和动态 nested field path emitter 已落地。nested path 的 6/12 层
+emitter 测试及 12 层合成 WAT/Wasmtime oracle 只证明后端实现，不扩大普通 Do
+源码 route 的 struct producer 准入，也不新增 ARC/GC equivalence row。最近完整
+`RUN_GC_CORE=1` harness 为 `14/14 steps`；ReleaseSmall 构建和 release smoke 通过。
 
 2026-11-19 内存模型决策更新：v1 正式采用 GC-first。普通对象按 Wasm GC 可达性回收，
 词法块退出不释放普通对象；函数参数只读借用，普通赋值与 `@set` 保持逻辑值语义并允许
@@ -612,6 +627,22 @@ Recovery requires a new method-specific design, WIT hash, canonical WAT,
 positive/negative fixtures, Component validation, and Rust/Wasmtime cleanup
 matrix; do not infer a generic lowering from a neighboring bounded method.
 
+**D2 `descriptor.advise` private bounded promotion (已关闭, 2026-11-21):** the
+pinned WIT signature and enum order pass regular and cancel-world template
+generation, Core parsing, Component assembly, and validation. The exact private
+compiler route uses direct `(i32,i64,i64,i32,i32)->i32`: descriptor, offset
+`u64`, length `u64`, advice discriminant, and result-area pointer. The generated
+Component and executable direct Core are covered by ready/pending/error,
+all-six-advice, repeat, explicit cancel, Store-disposal early-drop, and invalid
+raw discriminant `6` rejection rows. The probe pins
+`wasm-tools 1.263.0` and its SHA locally because the repository toolchain lock
+has empty version/hash fields; the documented repository baseline is not
+changed. Run the ABI and runtime gates:
+`bash examples/p3-runtime/test_d2_wasi_filesystem_advise_abi.sh` and
+`bash examples/p3-runtime/test_rust_wasi_filesystem_advise.sh`. Generic
+filesystem async, other unmeasured methods, and public ownership syntax remain
+blocked.
+
 **D2 bounded `descriptor.stat` early-drop boundary (2026-08-10):** the latest
 `wasm-tools 1.255.0` ABI gate, exact opt-in Do compiler gate, and the
 Rust/Wasmtime ready, pending, error, explicit-cancel, Store-disposal
@@ -927,16 +958,20 @@ values, root hard-cancel, general filesystem/HTTP async, and public
 
 **规则**: 固定一至三条目 read-directory slice、generic consumer slice、multi-owned、多个顶层 nested-owned resource path 以及一层/两层/三层/四层/五层/六层 nested-owned resource consumer slice、注册的单读 `stream<list<resource-entry>>` private slice、bounded scalar producer slice、受限（最多六跳 forwarding）helper-mediated producer-lease slice、固定/参数化 `u64` countdown producer slice、参数化 helper producer slice及其六跳 forwarding、三种 typed 参数受限重排形状与 branch-selected terminal slice 均已可用；无对应 producer-lease/resource gate 时，不绕过上述边界扩 WASI async/stream codegen。
 
-**G6.2 HTTP payload-error checkpoint (registered slice green; broader support pending):**
-注册的 `internal-error(option<string>)` 与
-`DNS-error(option<string>, option<u16>)` 已通过 compiler-generated
-Component 的 pending/ready 精确值与 cleanup gate；`InternalError(None)`、
-`InternalError(Some("x"))`、`DnsError(rcode=Some("EAI"),info-code=Some(7))`
-均保持 payload 且 `table-empty=true`。ready immediate-return 路径按
-`Status::Returned` 不携带 waitable 的协议处理，不再把 `0` 当作 handle；
-`examples/p3-runtime/test_do_http_payload_error_lowering.sh all` 是组合入口。
-未登记 payload tag 仍必须 trap，不能把这个注册 slice 扩写成完整 HTTP
-payload/runtime 支持。
+**G6.2 pinned HTTP payload-error closeout (compiler ABI slice green; provider behavior unproven):**
+固定 `wasi:http@0.3.0-rc-2025-09-16` 的 `client.send` 已覆盖全部 15 个
+payload-bearing `error-code` variants。typed Rust/Wasmtime synthetic-host ABI cases
+以及 Do-generated pending/ready matrix 均通过，返回值保持 payload，request
+恰好消费一次，且 `ResourceTable` 为空；组合入口为
+`examples/p3-runtime/test_do_http_payload_error_lowering.sh all`。该证据证明 pinned
+Component ABI 往返，不证明生产 HTTP provider 会产生各类错误；手写 canonical WAT
+只覆盖代表性的 `DNS-error` 与 `internal-error`。variant 级证据见
+`doc/wit/wasi_http_error_payload_evidence.md`。这不开放 generic WIT error
+lowering，未登记形状仍 fail-closed。
+
+生成式 `http-payload-cancel.do` cancellation path 仍只支持已登记的
+`DNS-error` 与 `internal-error` string payload 子集；不得将上面的 15-variant
+compiler ABI 证据外推为 cancellation 或生产 provider 行为已覆盖。
 
 **G6.2 HTTP payload-cancellation checkpoint (registered slice green; broader
 support pending):** `http-payload-cancel.do` 的显式
@@ -957,6 +992,17 @@ discriminant，不读取或释放 payload；
 `Some("EAI"), Some(7)`、`Some("dns-error-long"), None` 和
 `None, None`，均为 ready poll/drop `1/1`、零 response、`table-empty=true`；同一实例连续两次
 `Some("EAI")` 也验证两次 poll/drop、零 response 与空表。
+2026-11-21 新增的手写 canonical WAT probe 针对
+`HTTP-request-header-size(Some(field-size-payload))`，独立验证 error tag `22`、
+`field-name=Some("content-type")`、`field-size=Some(42)`，以及 12-byte string 的
+`cabi_realloc` 分配/精确释放各一次；Rust/Wasmtime 观察 ready poll/drop `1/1`、
+零 response 和空表。入口为
+`examples/p3-runtime/test_rust_http_payload_cancellation_request_header_size_probe.sh`。
+这只是手写 ABI probe；生成式 cancellation emitter 仍拒绝该 tag，不扩展 compiler
+admission 或 generic payload cleanup。独立 design 见
+`docs/superpowers/specs/2026-11-21-g6-2-http-cancel-request-header-size-probe-design.md`。
+2026-11-21 决策：该形状保持 probe-only，不进入生成式 cancellation emitter；只有
+出现独立需求并完成 optional 字段组合与 fail-closed 测试矩阵后才重新评估。
 同一 string ABI 也已覆盖 `InternalError(Some("no"))` 与 `InternalError(None)` 的正常
 discard；空字符串、含 resource/record 的 payload、cancel-after-terminal、double
 cancellation、隐式 scope-drop、未登记 HTTP 形状和通用 resource cancellation 仍保持
@@ -980,11 +1026,12 @@ borrowed/list/variant resource field 或更宽 runtime 形状。
 
 ### P2. GC nested aggregate depth and producer boundary
 
-当前 typed-GC synchronous admission 已覆盖 direct-local 的一层、两层、三层、
-四层和五层 managed-struct field path，并有 compiled/Wasmtime/ARC-GC
-equivalence evidence。第六个 managed segment、更深路径、任意 producer
-expression、async/resource 和 host/WIT 仍保持 fail-closed；不得把这条 bounded
-slice 解释为 G5c 或 full GC cutover。
+当前默认源码 route 已准入的一至五层 direct-local managed-struct field path 有
+compiled/Wasmtime/ARC-GC equivalence evidence。2026-11-20 的动态路径实现另有
+6/12 层 emitter 测试及 12 层合成 WAT/Wasmtime oracle；oracle 在 WAT 中构造输入图，
+不代表普通 Do 源码 route 已准入第六层或更深路径，也不增加 ARC/GC equivalence row。
+默认源码 route 的准入边界仍保持不变。任意 producer expression、async/resource 和
+host/WIT 继续 fail-closed；扩展这些形状须独立设计和验收，不代表 G5c 或 full GC cutover。
 
 ### P2. 泛型递归: 仅靠左侧目标类型反推
 
@@ -1076,6 +1123,17 @@ slice 解释为 G5c 或 full GC cutover。
   `ResourceTable`; fixtures `483`-`489` reject descriptor/element/count/sink/body/
   payload/result drift before WAT. Generic `list<T>`, arbitrary producer
   expressions, borrowed async payloads, and public ownership remain pending.
+- **G6.2 HTTP producer write-error probe (2026-11-21)**: private fixed
+  `request.new` + `client.send` + capacity-one `StreamWriter<u8>` route now
+  admits the consumer-close failure after byte `65`. It cancels the pending
+  send, closes the writer once, and returns private `ProducerError`; Wasmtime
+  `Dropped` maps to `StreamClosed`, `Cancelled` maps coarsely to
+  `StreamWriteFailed`, and unknown nonzero statuses trap. Component lowering,
+  exact source matching, negative admission, and Rust/Wasmtime lifecycle gates
+  pass with `[65]`, one cancellation, no response, exactly-once cleanup, and
+  `table-empty=true`; the existing success producer remains `[65,66]`. This is
+  closed private evidence and does not open general producer error mapping,
+  generic producer/resource lowering, or public ownership syntax.
 - **G6.2 parameterized six-hop forwarding**: the existing
   `StreamWriter<u8>` descriptor now admits exactly six static helper transfers.
   The analyzer, generated Component, seventh-hop negative, and Rust/Wasmtime
@@ -1207,10 +1265,13 @@ slice 解释为 G5c 或 full GC cutover。
 
 ## 6. 推进顺序建议
 
-1. 发布候选维护 (回归红灯 / 文档漂移)
-2. G6.2 capability matrix、ownership invariants、正向 Rust/Wasmtime gates 与 pinned negative gates 已收口；下一步只能为新的 producer/resource shape 建立独立 design、pinned probe、负向 fixture 与 runtime gate。
-3. D2 当前只推进已授权的本地 file/dir/CLI smoke 与已关闭的私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash` slices；socket/general filesystem async/external HTTP 的扩展须另立 target/design，其他 deferred 项仍需单独授权
-4. **P2** 默认不改; 除非产品明确要左侧反推
+1. 发布候选维护: 处理新回归、发布阻断和文档漂移。
+2. G6.2 已关闭当前 capability matrix、ownership invariants、正向 Rust/Wasmtime
+   gates 与 pinned negative gates；目前没有已选定的下一个 exact producer/resource
+   shape。新增形状须先有独立 design、pinned probe、负向 fixture 与 runtime gate。
+3. D2 已授权的本地 file/dir/CLI/socket smoke 和列明的私有 descriptor gates 已完成；
+   通用 filesystem async 与 external HTTP 须各自另立 target/design。
+4. **P2** 泛型左侧反推默认不改；除非产品明确提出并单独规格化。
 
 ## 7. Generic async Component runtime slices (2026-08-06)
 

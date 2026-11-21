@@ -159,7 +159,7 @@ run_static_case() {
 # Some -> None mapping. The compiler-generated runtime candidates below are a
 # separate gate and must not inherit that rejected fixture label.
 run_static_case canonical internal-error-some green 'InternalError(Some("x"))'
-run_static_case host-lowered internal-error-some blocked 'InternalError(None)'
+run_static_case host-lowered internal-error-some blocked 'ErrorCode::InternalError(None)'
 
 run_case control dns-timeout green DNS-timeout
 run_case control internal-error-none green 'InternalError(None)'

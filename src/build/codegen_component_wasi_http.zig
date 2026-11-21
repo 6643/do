@@ -321,6 +321,119 @@ pub const HttpRequestBodyProducerPlan = struct {
     }
 };
 
+pub const HttpRequestBodyProducerWriteErrorPlan = struct {
+    request_descriptor: p3_async_manifest.Descriptor,
+    send_descriptor: p3_async_manifest.Descriptor,
+    stream_descriptor: p3_async_manifest.Descriptor,
+    request_host_name: []const u8,
+    send_host_name: []const u8,
+    stream_reader_name: []const u8,
+    stream_writer_name: []const u8,
+    request_handles_name: []const u8,
+    request_name: []const u8,
+    transmission_future_name: []const u8,
+    write_count: usize,
+
+    pub fn analyze(tokens: []const lexer.Token, registry: p3_async_manifest.Registry) !?HttpRequestBodyProducerWriteErrorPlan {
+        try p3_http_wit_manifest.validate_resource_graph();
+        const request_descriptor = registry.find(http_types_locator, "request.new") orelse return error.InvalidP3AsyncManifest;
+        const send_descriptor = registry.find(http_locator, "send") orelse return error.InvalidP3AsyncManifest;
+        const stream_descriptor = registry.find(cli_stdout_locator, cli_stdout_write_member) orelse return error.InvalidP3AsyncManifest;
+        if (!is_http_request_body_producer_write_error_descriptors(request_descriptor, send_descriptor, stream_descriptor)) return null;
+
+        const request_host_name = find_http_request_new_body_host(tokens) orelse return null;
+        const send_host_name = find_http_send_host(tokens) orelse return null;
+        const function = find_http_request_body_producer_write_error_function(tokens) orelse return null;
+        if (!has_http_resource_graph(tokens)) return null;
+        const stream = component_async_plan.analyze_guest_stream_prefix(tokens, function.body_start, function.body_end) orelse return null;
+        if (stream.capacity != 1) return null;
+        const request_binding = parse_http_request_body_constructor(tokens, stream.next_idx, function.body_end, request_host_name, stream.reader_name) orelse return null;
+        const send_binding = parse_http_request_body_send_start(tokens, request_binding.next_idx, function.body_end, send_host_name, request_binding.request_name) orelse return null;
+        const body = tokens[send_binding.next_idx..function.body_end];
+        if (!token_sequence_equals(body, &.{
+            "first",          "u8",              "=",                 "65",
+            "write_pending",  "Future",          "<",                 "Result",
+            "<",              "nil",             ",",                 "StreamError",
+            ">",              ">",               "=",                 "writer",
+            "(",              "first",           ")",                 "write_result",
+            "Result",         "<",               "nil",               ",",
+            "StreamError",    ">",               "=",                 "@",
+            "await",          "(",               "write_pending",     ")",
+            "_",              "=",               "write_result",      "second",
+            "u8",             "=",               "66",                "write_pending_2",
+            "Future",         "<",               "Result",            "<",
+            "nil",            ",",               "StreamError",       ">",
+            ">",              "=",               "writer",            "(",
+            "second",         ")",               "write_result_2",    "Result",
+            "<",              "nil",             ",",                 "StreamError",
+            ">",              "=",               "@",                 "await",
+            "(",              "write_pending_2", ")",                 "@",
+            "cancel",         "(",               "pending",           ")",
+            "close",          "(",               "writer",            ")",
+            "if",             "@",               "is",                "(",
+            "write_result_2", ",",               "StreamError",       ")",
+            "{",              "write_error",     "StreamError",       "=",
+            "@",              "get",             "(",                 "write_result_2",
+            ",",              "1",               ")",                 "if",
+            "@",              "eq",              "(",                 "write_error",
+            ",",              "StreamClosed",    ")",                 "return",
+            "StreamClosed",   "return",          "StreamWriteFailed", "}",
+            "return",         "nil",
+        })) return null;
+
+        return .{
+            .request_descriptor = request_descriptor,
+            .send_descriptor = send_descriptor,
+            .stream_descriptor = stream_descriptor,
+            .request_host_name = request_host_name,
+            .send_host_name = send_host_name,
+            .stream_reader_name = stream.reader_name,
+            .stream_writer_name = stream.writer_name,
+            .request_handles_name = request_binding.handles_name,
+            .request_name = request_binding.request_name,
+            .transmission_future_name = send_binding.future_name,
+            .write_count = 2,
+        };
+    }
+};
+
+fn is_http_request_body_producer_write_error_descriptors(
+    request_descriptor: p3_async_manifest.Descriptor,
+    send_descriptor: p3_async_manifest.Descriptor,
+    stream_descriptor: p3_async_manifest.Descriptor,
+) bool {
+    return switch (p3_async_manifest.lowering_shape(request_descriptor) orelse return false) {
+        .http_request_constructor => switch (p3_async_manifest.lowering_shape(send_descriptor) orelse return false) {
+            .http_resource_result => is_http_send_descriptor(send_descriptor) and is_pinned_cli_stdout_stream_descriptor(stream_descriptor),
+            else => false,
+        },
+        else => false,
+    };
+}
+
+fn has_token_sequence(tokens: []const lexer.Token, sequence: []const []const u8) bool {
+    if (sequence.len == 0 or sequence.len > tokens.len) return false;
+    for (0..tokens.len - sequence.len + 1) |start| {
+        var matches = true;
+        for (sequence, 0..) |part, offset| {
+            if (!tok_eq(tokens[start + offset], part)) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) return true;
+    }
+    return false;
+}
+
+fn token_sequence_equals(tokens: []const lexer.Token, sequence: []const []const u8) bool {
+    if (tokens.len != sequence.len) return false;
+    for (sequence, 0..) |part, idx| {
+        if (!tok_eq(tokens[idx], part)) return false;
+    }
+    return true;
+}
+
 fn is_pinned_cli_stdin_stream_descriptor(descriptor: p3_async_manifest.Descriptor) bool {
     if (!std.mem.eql(u8, descriptor.locator, cli_stdin_locator) or
         !std.mem.eql(u8, descriptor.member, cli_stdin_read_member) or
@@ -443,6 +556,12 @@ pub fn has_http_request_body_producer_plan(allocator: std.mem.Allocator, tokens:
     return (try HttpRequestBodyProducerPlan.analyze(tokens, registry)) != null;
 }
 
+pub fn has_http_request_body_producer_write_error_plan(allocator: std.mem.Allocator, tokens: []const lexer.Token) !bool {
+    var registry = try p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(allocator);
+    return (try HttpRequestBodyProducerWriteErrorPlan.analyze(tokens, registry)) != null;
+}
+
 pub fn has_http_response_status_plan(tokens: []const lexer.Token) !bool {
     return (try HttpResponseStatusPlan.analyze(tokens)) != null;
 }
@@ -458,8 +577,11 @@ pub fn emit_component_wat(
     var registry = try p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(allocator);
     const wat = blk: {
+        if (try HttpRequestBodyProducerWriteErrorPlan.analyze(tokens, registry)) |plan| {
+            break :blk try emit_http_request_body_producer_write_error_wat(allocator, plan);
+        }
         if (try HttpRequestBodyProducerPlan.analyze(tokens, registry)) |plan| {
-            break :blk try emit_http_request_body_producer_wat(allocator, plan);
+            break :blk try emit_http_request_body_producer_wat(allocator, plan, false);
         }
         if (try HttpRequestBodyPlan.analyze(tokens, registry)) |plan| {
             break :blk try emit_http_request_body_wat(allocator, plan);
@@ -492,6 +614,9 @@ pub fn emit_component_wat(
 pub fn emit_component_wit(allocator: std.mem.Allocator, tokens: []const lexer.Token) ![]u8 {
     var registry = try p3_async_manifest.Registry.load(allocator, @embedFile("p3_async_registry.json"));
     defer registry.deinit(allocator);
+    if ((try HttpRequestBodyProducerWriteErrorPlan.analyze(tokens, registry)) != null) {
+        return generated_text.alloc_block(allocator, 0, http_request_body_producer_write_error_component_wit);
+    }
     if ((try HttpRequestBodyProducerPlan.analyze(tokens, registry)) != null) {
         return generated_text.alloc_block(allocator, 0, http_request_body_producer_component_wit);
     }
@@ -730,6 +855,20 @@ fn find_http_request_body_function(tokens: []const lexer.Token) ?HttpRequestBody
         const header = find_function_header(tokens, idx, "run") orelse continue;
         if (header.close_params != header.open_params + 1) continue;
         if (!type_tokens_equal(tokens, header.return_start, header.body_open, "Result<HttpResponse,HttpError>")) continue;
+        const body_end = find_matching(tokens, header.body_open, "{", "}") orelse continue;
+        if (found != null) return null;
+        found = .{ .body_start = header.body_open + 1, .body_end = body_end };
+    }
+    return found;
+}
+
+fn find_http_request_body_producer_write_error_function(tokens: []const lexer.Token) ?HttpRequestBodyFunction {
+    var found: ?HttpRequestBodyFunction = null;
+    var idx: usize = 0;
+    while (idx < tokens.len) : (idx += 1) {
+        const header = find_function_header(tokens, idx, "run") orelse continue;
+        if (header.close_params != header.open_params + 1 or
+            !type_tokens_equal(tokens, header.return_start, header.body_open, "Result<nil,ProducerError>")) continue;
         const body_end = find_matching(tokens, header.body_open, "{", "}") orelse continue;
         if (found != null) return null;
         found = .{ .body_start = header.body_open + 1, .body_end = body_end };
@@ -1359,7 +1498,7 @@ fn emit_http_request_constructor_wat(allocator: std.mem.Allocator, plan: HttpReq
     return wat;
 }
 
-fn emit_http_request_body_producer_wat(allocator: std.mem.Allocator, plan: HttpRequestBodyProducerPlan) ![]u8 {
+fn emit_http_request_body_producer_wat(allocator: std.mem.Allocator, plan: HttpRequestBodyProducerPlan, write_error_probe: bool) ![]u8 {
     const request_shape = switch (p3_async_manifest.lowering_shape(plan.request_descriptor) orelse return error.UnsupportedP3AsyncHttpService) {
         .http_request_constructor => |value| value,
         else => return error.UnsupportedP3AsyncHttpService,
@@ -1386,7 +1525,7 @@ fn emit_http_request_body_producer_wat(allocator: std.mem.Allocator, plan: HttpR
     try gc_async_frame.emit_frame_table_layout(allocator, &gc_frame_runtime, layout);
     try gc_async_frame.emit_frame_table_allocator_with_bytes(allocator, &gc_frame_runtime, layout.size);
 
-    const task_return_params = try render_core_param_list(allocator, send_descriptor.canonical.completion_params);
+    const task_return_params = if (write_error_probe) try allocator.dupe(u8, "i32 i32") else try render_core_param_list(allocator, send_descriptor.canonical.completion_params);
     defer allocator.free(task_return_params);
     const task_return_zero_tail = try render_zero_tail(allocator, send_descriptor.canonical.completion_params);
     defer allocator.free(task_return_zero_tail);
@@ -1412,14 +1551,21 @@ fn emit_http_request_body_producer_wat(allocator: std.mem.Allocator, plan: HttpR
     const write_count = try generated_text.alloc_fmt(allocator, "{[count]d}", .{ .count = plan.write_count });
     defer allocator.free(write_count);
     helpers = try replace_and_free(allocator, helpers, "[producer-count]", write_count);
+    if (write_error_probe) helpers = try replace_http_body_producer_write_error_helpers(allocator, helpers);
 
     var wat = try generated_text.alloc_block(allocator, 0, http_service_core_wat);
     errdefer allocator.free(wat);
     wat = try replace_and_free(allocator, wat, "[gc-frame-runtime]", gc_frame_runtime.items);
     wat = try replace_and_free(allocator, wat, "[task-return-params]", task_return_params);
-    const task_return_error_lowering = try render_http_error_variant_lowering(allocator, send_descriptor, task_return_zero_tail);
+    const task_return_error_lowering = if (write_error_probe)
+        try allocator.dupe(u8, "i32.const 1\n        i32.const 0\n        call $task-return")
+    else
+        try render_http_error_variant_lowering(allocator, send_descriptor, task_return_zero_tail);
     defer allocator.free(task_return_error_lowering);
-    const task_return_ok_lowering = try render_http_ok_result_lowering(allocator, send_descriptor.canonical.completion_params, task_return_zero_tail);
+    const task_return_ok_lowering = if (write_error_probe)
+        try allocator.dupe(u8, "local.get $frame-ref\n        struct.get $async-frame $slot-result-ptr\n        i32.const 8\n        i32.add\n        i32.load\n        call $drop-response\n        i32.const 0\n        i32.const 0\n        call $task-return")
+    else
+        try render_http_ok_result_lowering(allocator, send_descriptor.canonical.completion_params, task_return_zero_tail);
     defer allocator.free(task_return_ok_lowering);
     wat = try replace_and_free(allocator, wat, "[task-return-zero-tail]", task_return_zero_tail);
     wat = try replace_and_free(allocator, wat, "[task-return-error-lowering]", task_return_error_lowering);
@@ -1435,18 +1581,15 @@ fn emit_http_request_body_producer_wat(allocator: std.mem.Allocator, plan: HttpR
     );
     defer allocator.free(send_imports);
     wat = try replace_and_free(allocator, wat, send_import_anchor, send_imports);
-    wat = try replace_and_free_block(allocator, wat, "[body-future-event-handler]", 6, http_request_body_producer_event_handler);
+    const body_event_handler = if (write_error_probe) http_request_body_producer_write_error_event_handler else http_request_body_producer_event_handler;
+    wat = try replace_and_free_block(allocator, wat, "[body-future-event-handler]", 6, body_event_handler);
     wat = try replace_and_free(allocator, wat, "[async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle", "[async-lift]wasi:http/probe@0.3.0-rc-2025-09-16#run");
     wat = try replace_and_free(allocator, wat, "[callback][async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle", "[callback][async-lift]wasi:http/probe@0.3.0-rc-2025-09-16#run");
     wat = try replace_and_free(allocator, wat, "[export]wasi:http/handler@0.3.0-rc-2025-09-16", "[export]wasi:http/probe@0.3.0-rc-2025-09-16");
     wat = try replace_and_free(allocator, wat, "[task-return]handle", "[task-return]run");
     wat = try replace_and_free(allocator, wat, "(type $async-handler (func (param i32) (result i32)))", "(type $async-handler (func (result i32)))");
     wat = try replace_and_free(allocator, wat, "(param $request i32) (result i32)", "(result i32)");
-    wat = try replace_and_free_block(
-        allocator,
-        wat,
-        "(memory (export \"memory\") 1)",
-        0,
+    wat = try replace_and_free_block(allocator, wat, "(memory (export \"memory\") 1)", 0,
         \\(memory (export "memory") 1)
         \\(data (i32.const 512) "[producer-data]")
     );
@@ -1497,7 +1640,7 @@ fn emit_http_request_body_producer_wat(allocator: std.mem.Allocator, plan: HttpR
         \\local.get $frame-ref
         \\call $drop-producer-reader
         \\call $canonical-buffer-release
-    ,
+        ,
     );
     return wat;
 }
@@ -1585,11 +1728,7 @@ fn emit_http_core_wat(
     wat = try replace_and_free(allocator, wat, "(import \"[export]wasi:http/handler@0.3.0-rc-2025-09-16\" \"[task-return]handle\"", task_return_import);
     wat = try replace_and_free(allocator, wat, "[async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle", async_lift_export);
     wat = try replace_and_free(allocator, wat, "[callback][async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle", async_callback_export);
-    wat = try replace_and_free_block(
-        allocator,
-        wat,
-        "[body-future-event-handler]",
-        8,
+    wat = try replace_and_free_block(allocator, wat, "[body-future-event-handler]", 8,
         \\local.get $frame-ref
         \\struct.get $async-frame $waitable-set
         \\i32.const 4
@@ -1750,13 +1889,10 @@ fn emit_http_request_send_wat(allocator: std.mem.Allocator, plan: HttpRequestSen
     wat = try replace_and_free(allocator, wat, send_import_anchor, send_imports);
     wat = try replace_and_free(allocator, wat, "(type $async-handler (func (param i32) (result i32)))", "(type $async-handler (func (result i32)))");
     wat = try replace_and_free(allocator, wat, "(param $request i32) (result i32)", "(result i32)");
-    wat = try replace_and_free_block(
-        allocator,
-        wat,
+    wat = try replace_and_free_block(allocator, wat,
         \\local.get $request
         \\    local.get $frame-ref
-    ,
-        0,
+    , 0,
         \\call $construct-request
         \\    local.get $frame-ref
     );
@@ -1764,11 +1900,7 @@ fn emit_http_request_send_wat(allocator: std.mem.Allocator, plan: HttpRequestSen
     wat = try replace_and_free(allocator, wat, "[async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle", async_lift_export);
     wat = try replace_and_free(allocator, wat, "[callback][async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle", async_callback_export);
     wat = try replace_and_free(allocator, wat, "(import \"[export]wasi:http/handler@0.3.0-rc-2025-09-16\" \"[task-return]handle\"", task_return_import);
-    wat = try replace_and_free_block(
-        allocator,
-        wat,
-        "[body-future-event-handler]",
-        8,
+    wat = try replace_and_free_block(allocator, wat, "[body-future-event-handler]", 8,
         \\local.get $frame-ref
         \\struct.get $async-frame $waitable-set
         \\i32.const 4
@@ -1777,6 +1909,150 @@ fn emit_http_request_send_wat(allocator: std.mem.Allocator, plan: HttpRequestSen
         \\i32.or
     );
     return wat;
+}
+
+fn emit_http_request_body_producer_write_error_wat(
+    allocator: std.mem.Allocator,
+    plan: HttpRequestBodyProducerWriteErrorPlan,
+) ![]u8 {
+    var write_values: [component_async_plan.max_guest_producer_writes]u8 = @splat(0);
+    write_values[0] = 65;
+    write_values[1] = 66;
+    const success_shape = HttpRequestBodyProducerPlan{
+        .request_descriptor = plan.request_descriptor,
+        .send_descriptor = plan.send_descriptor,
+        .stream_descriptor = plan.stream_descriptor,
+        .request_host_name = plan.request_host_name,
+        .send_host_name = plan.send_host_name,
+        .stream_reader_name = plan.stream_reader_name,
+        .stream_writer_name = plan.stream_writer_name,
+        .write_future_name = "write_pending_2",
+        .write_values = write_values,
+        .write_count = plan.write_count,
+        .request_handles_name = plan.request_handles_name,
+        .request_name = plan.request_name,
+        .transmission_future_name = plan.transmission_future_name,
+    };
+    return emit_http_request_body_producer_wat(allocator, success_shape, true);
+}
+
+fn replace_http_body_producer_write_error_helpers(allocator: std.mem.Allocator, helpers: []u8) ![]u8 {
+    var result = helpers;
+    const start_failure =
+        \\        else
+        \\          unreachable
+        \\        end
+        \\      end
+        \\    end
+        \\  )
+        \\  (func $start-producer
+    ;
+    result = try replace_and_free_block(allocator, result, start_failure, 4,
+        \\        else
+        \\          local.get $frame-ref
+        \\          local.get $status
+        \\          call $accept-producer-write
+        \\        end
+        \\      end
+        \\    end
+        \\  )
+        \\  (func $start-producer
+    );
+    const accept =
+        \\(func $accept-producer-write (param $frame-ref (ref $async-frame)) (param $code i32) (result i32)
+        \\    local.get $code
+        \\    i32.const 15
+        \\    i32.and
+        \\    i32.eqz
+        \\    if (result i32)
+        \\      local.get $frame-ref
+        \\      local.get $frame-ref
+        \\      struct.get $async-frame $slot-producer-index
+        \\      i32.const 1
+        \\      i32.add
+        \\      struct.set $async-frame $slot-producer-index
+        \\      local.get $frame-ref
+        \\      call $start-producer-write
+        \\    else
+        \\      unreachable
+        \\    end
+        \\  )
+    ;
+    return replace_and_free_block(allocator, result, accept, 4,
+        \\(func $accept-producer-write (param $frame-ref (ref $async-frame)) (param $code i32) (result i32) (local $frame i32) (local $cancel-status i32)
+        \\    local.get $code
+        \\    i32.const 15
+        \\    i32.and
+        \\    i32.eqz
+        \\    if (result i32)
+        \\      local.get $frame-ref
+        \\      local.get $frame-ref
+        \\      struct.get $async-frame $slot-producer-index
+        \\      i32.const 1
+        \\      i32.add
+        \\      struct.set $async-frame $slot-producer-index
+        \\      local.get $frame-ref
+        \\      call $start-producer-write
+        \\    else
+        \\      local.get $frame-ref
+        \\      struct.get $async-frame $slot-producer-subtask
+        \\      i32.const 4
+        \\      i32.shr_u
+        \\      call $subtask-cancel
+        \\      local.tee $cancel-status
+        \\      i32.const 4
+        \\      i32.ne
+        \\      if unreachable end
+        \\      local.get $frame-ref
+        \\      struct.get $async-frame $slot-producer-subtask
+        \\      i32.const 4
+        \\      i32.shr_u
+        \\      call $subtask-drop
+        \\      local.get $frame-ref
+        \\      i32.const 0
+        \\      struct.set $async-frame $slot-producer-subtask
+        \\      local.get $frame-ref
+        \\      struct.get $async-frame $slot-producer-writer
+        \\      call $producer-stream-drop-writable
+        \\      local.get $frame-ref
+        \\      i32.const 0
+        \\      struct.set $async-frame $slot-producer-writer
+        \\      i32.const 1
+        \\      local.get $code
+        \\      i32.const 15
+        \\      i32.and
+        \\      i32.const 1
+        \\      i32.eq
+        \\      if (result i32)
+        \\        ;; Wasmtime ReturnCode::Dropped: the reader closed the stream.
+        \\        ;; [producer-error:stream-closed]
+        \\        i32.const 1
+        \\      else
+        \\        local.get $code
+        \\        i32.const 15
+        \\        i32.and
+        \\        i32.const 2
+        \\        i32.eq
+        \\        if (result i32)
+        \\          ;; Wasmtime ReturnCode::Cancelled; map to Do's coarse write failure.
+        \\          ;; [producer-error:stream-write-failed]
+        \\          i32.const 2
+        \\        else
+        \\          unreachable
+        \\        end
+        \\      end
+        \\      call $task-return
+        \\      call $canonical-buffer-release
+        \\      call $context-get-0
+        \\      local.set $frame
+        \\      i32.const 0
+        \\      call $context-set-0
+        \\      local.get $frame
+        \\      call $frame-free
+        \\      i32.const 0
+        \\    end
+        \\  )
+    );
 }
 
 fn emit_http_request_body_wat(allocator: std.mem.Allocator, plan: HttpRequestBodyPlan) ![]u8 {
@@ -1980,15 +2256,12 @@ fn emit_http_request_body_wat(allocator: std.mem.Allocator, plan: HttpRequestBod
         \\        i32.or
     ;
     wat = try replace_and_free_block(allocator, wat, "[body-future-event-handler]", 8, body_future_event_handler);
-    wat = try replace_and_free_block(
-        allocator,
-        wat,
+    wat = try replace_and_free_block(allocator, wat,
         \\    i32.const 0
         \\    i32.const 0
         \\    i32.const 0
         \\    struct.new $async-frame
-    ,
-        4,
+    , 4,
         \\    i32.const 0
         \\    i32.const 0
         \\    i32.const 0
@@ -2057,7 +2330,7 @@ fn render_http_ok_result_lowering(
 }
 
 fn render_zero_words(allocator: std.mem.Allocator, params: []const []const u8) ![]u8 {
-    if (params.len == 0) return error.UnsupportedP3AsyncHttpService;
+    if (params.len == 0) return allocator.dupe(u8, "");
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
     for (params, 0..) |param, index| {
@@ -2074,12 +2347,11 @@ const http_error_guard_discriminants = [_]i32{ 1, 14, 17, 21, 22, 23, 24, 26, 27
 fn render_http_error_tag_guards(
     allocator: std.mem.Allocator,
     descriptor: p3_async_manifest.Descriptor,
-    allow_dns_payload: bool,
 ) ![]u8 {
     var out = std.ArrayList(u8).empty;
     errdefer out.deinit(allocator);
     for (http_error_guard_discriminants) |discriminant| {
-        if (allow_dns_payload and discriminant == 1 and descriptor_has_dns_error_variant(descriptor)) continue;
+        if (descriptor_has_error_variant(descriptor, discriminant)) continue;
         const guard = try generated_text.alloc_fmt_block(
             allocator,
             8,
@@ -2097,9 +2369,9 @@ fn render_http_error_tag_guards(
     return out.toOwnedSlice(allocator);
 }
 
-fn descriptor_has_dns_error_variant(descriptor: p3_async_manifest.Descriptor) bool {
+fn descriptor_has_error_variant(descriptor: p3_async_manifest.Descriptor, discriminant: i32) bool {
     for (descriptor.canonical.error_variants) |variant| {
-        if (variant.discriminant == 1 and std.mem.eql(u8, variant.variant, "DNS-error")) return true;
+        if (variant.discriminant == discriminant) return true;
     }
     return false;
 }
@@ -2109,175 +2381,255 @@ fn render_http_error_variant_lowering(
     descriptor: p3_async_manifest.Descriptor,
     fallback_zero_tail: []const u8,
 ) ![]u8 {
-    var internal_payload: ?p3_async_manifest.ErrorVariantPayload = null;
-    for (descriptor.canonical.error_variants) |variant| {
-        if (std.mem.eql(u8, variant.variant, "internal-error")) {
-            internal_payload = variant;
-            break;
+    if (descriptor.canonical.completion_params.len < 3) return error.UnsupportedP3AsyncHttpService;
+    const max_flat_words = descriptor.canonical.completion_params.len - 2;
+    const tag_guards = try render_http_error_tag_guards(allocator, descriptor);
+    defer allocator.free(tag_guards);
+
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+    try out.appendSlice(allocator, tag_guards);
+    var emitted_variants: usize = 0;
+    for (descriptor.canonical.error_variants, 0..) |variant, index| {
+        if (variant.fields.len == 0) return error.UnsupportedP3AsyncHttpService;
+        var flat_words: usize = 0;
+        for (variant.fields) |field| flat_words += field.core_words.len;
+        if (flat_words > max_flat_words) return error.UnsupportedP3AsyncHttpService;
+        if (index != 0) try out.appendSlice(allocator, "        else\n");
+
+        const branch_header = try generated_text.alloc_fmt_block(
+            allocator,
+            0,
+            "        local.get $error-tag\n        i32.const {[discriminant]d}\n        i32.eq\n        if\n          ;; [error-variant:{[variant]s}]\n          i32.const 1\n          local.get $error-tag\n",
+            .{ .discriminant = variant.discriminant, .variant = variant.variant },
+        );
+        defer allocator.free(branch_header);
+        try out.appendSlice(allocator, branch_header);
+
+        var flat_word_index: usize = 0;
+        for (variant.fields) |field| {
+            try append_http_error_field(&out, allocator, field, flat_word_index, descriptor.canonical.completion_params);
+            flat_word_index += field.core_words.len;
         }
+        const residual_zero_tail = try render_zero_words(
+            allocator,
+            descriptor.canonical.completion_params[2 + flat_words ..],
+        );
+        defer allocator.free(residual_zero_tail);
+        try out.appendSlice(allocator, residual_zero_tail);
+        try out.appendSlice(allocator, "\n          call $task-return\n");
+        emitted_variants += 1;
     }
 
-    const payload = internal_payload orelse {
-        const tag_guards = try render_http_error_tag_guards(allocator, descriptor, false);
-        defer allocator.free(tag_guards);
-        return generated_text.alloc_fmt_block(
-            allocator,
-            8,
-            \\{[tag_guards]s}        local.get $error-tag
-            \\        i32.const 38
-            \\        i32.eq
-            \\        if unreachable end
-            \\        i32.const 1
-            \\        local.get $error-tag
-            \\        {[fallback_zero_tail]s}
-            \\        call $task-return
-        ,
-            .{
-                .tag_guards = tag_guards,
-                .fallback_zero_tail = fallback_zero_tail,
-            },
-        );
+    try out.appendSlice(allocator, "        else\n        local.get $error-tag\n        i32.const 38\n        i32.gt_u\n        if unreachable end\n        i32.const 1\n        local.get $error-tag\n");
+    try out.appendSlice(allocator, fallback_zero_tail);
+    try out.appendSlice(allocator, "\n        call $task-return\n");
+    for (0..emitted_variants) |_| try out.appendSlice(allocator, "        end\n");
+    return out.toOwnedSlice(allocator);
+}
+
+fn append_http_error_field(
+    out: *std.ArrayList(u8),
+    allocator: std.mem.Allocator,
+    field: p3_async_manifest.ErrorVariantField,
+    flat_word_index: usize,
+    completion_params: []const []const u8,
+) !void {
+    const tag_param = completion_params[2 + flat_word_index];
+    if (!std.mem.eql(u8, tag_param, "i32")) return error.UnsupportedP3AsyncHttpService;
+    try append_http_option_tag(out, allocator, field.offset);
+    const value = switch (field.kind) {
+        .optional_string => try http_optional_string_values(allocator, field.offset, completion_params[2 + flat_word_index + 1], completion_params[2 + flat_word_index + 2]),
+        .optional_u8 => try http_optional_scalar_value(allocator, field.offset, 1, "i32.load8_u", completion_params[2 + flat_word_index + 1]),
+        .optional_u16 => try http_optional_scalar_value(allocator, field.offset, 2, "i32.load16_u", completion_params[2 + flat_word_index + 1]),
+        .optional_u32 => try http_optional_scalar_value(allocator, field.offset, 4, "i32.load", completion_params[2 + flat_word_index + 1]),
+        .optional_u64 => try http_optional_scalar_value(allocator, field.offset, 8, "i64.load", completion_params[2 + flat_word_index + 1]),
+        .field_size_payload => try http_field_size_payload_values(allocator, field.offset, completion_params, flat_word_index),
+        .optional_field_size_payload => try http_optional_field_size_payload_values(allocator, field.offset, completion_params, flat_word_index),
     };
-    if (payload.fields.len != 1 or payload.fields[0].kind != .optional_string) return error.UnsupportedP3AsyncHttpService;
-    const field = payload.fields[0];
-    if (field.offset != 16 or field.core_words.len != 3) return error.UnsupportedP3AsyncHttpService;
-    const pointer_offset = field.offset + 4;
-    const length_offset = field.offset + 8;
-    if (descriptor.canonical.completion_params.len <= 2 + field.core_words.len) return error.UnsupportedP3AsyncHttpService;
-    const residual_zero_tail = try render_zero_words(allocator, descriptor.canonical.completion_params[2 + field.core_words.len ..]);
-    defer allocator.free(residual_zero_tail);
-    const dns_fallback = try render_http_dns_error_variant_fallback(allocator, descriptor, fallback_zero_tail);
-    defer allocator.free(dns_fallback);
-    const tag_guards = try render_http_error_tag_guards(allocator, descriptor, true);
-    defer allocator.free(tag_guards);
-    return generated_text.alloc_fmt_block(
+    defer allocator.free(value);
+    try out.appendSlice(allocator, value);
+}
+
+fn append_http_option_tag(out: *std.ArrayList(u8), allocator: std.mem.Allocator, offset: u32) !void {
+    const tag = try http_result_load(allocator, offset, "i32.load8_u");
+    defer allocator.free(tag);
+    try out.appendSlice(allocator, tag);
+    const check = try generated_text.alloc_fmt(
         allocator,
-        8,
-        \\{[tag_guards]s}        ;; [error-variant:internal-error]
-        \\        local.get $error-tag
-        \\        i32.const {[discriminant]d}
-        \\        i32.eq
-        \\        if
-        \\          i32.const 1
-        \\          local.get $error-tag
-        \\          local.get $frame-ref
-        \\          struct.get $async-frame $slot-result-ptr
-        \\          i32.const {[field_offset]d}
-        \\          i32.add
-        \\          i32.load
-        \\          local.get $frame-ref
-        \\          struct.get $async-frame $slot-result-ptr
-        \\          i32.const {[pointer_offset]d}
-        \\          i32.add
-        \\          i32.load
-        \\          i64.extend_i32_u
-        \\          local.get $frame-ref
-        \\          struct.get $async-frame $slot-result-ptr
-        \\          i32.const {[length_offset]d}
-        \\          i32.add
-        \\          i32.load
-        \\          {[residual_zero_tail]s}
-        \\          call $task-return
-        \\        else
-        \\{[dns_fallback]s}
-        \\        end
-    ,
+        "          local.get $frame-ref\n          struct.get $async-frame $slot-result-ptr\n          i32.const {[offset]d}\n          i32.add\n          i32.load8_u\n          i32.const 1\n          i32.gt_u\n          if unreachable end\n",
+        .{ .offset = offset },
+    );
+    defer allocator.free(check);
+    try out.appendSlice(allocator, check);
+}
+
+fn http_result_load(allocator: std.mem.Allocator, offset: u32, instruction: []const u8) ![]u8 {
+    return generated_text.alloc_fmt(
+        allocator,
+        "          local.get $frame-ref\n          struct.get $async-frame $slot-result-ptr\n          i32.const {[offset]d}\n          i32.add\n          {[instruction]s}\n",
+        .{ .offset = offset, .instruction = instruction },
+    );
+}
+
+fn http_optional_scalar_value(
+    allocator: std.mem.Allocator,
+    offset: u32,
+    value_offset: u32,
+    instruction: []const u8,
+    expected_type: []const u8,
+) ![]u8 {
+    if (!std.mem.eql(u8, expected_type, "i64") and !std.mem.eql(u8, expected_type, "i32")) return error.UnsupportedP3AsyncHttpService;
+    const promote = std.mem.eql(u8, expected_type, "i64") and !std.mem.eql(u8, instruction, "i64.load");
+    const value = try http_result_load(allocator, offset + value_offset, instruction);
+    defer allocator.free(value);
+    const zero = if (std.mem.eql(u8, expected_type, "i64")) "          i64.const 0\n" else "          i32.const 0\n";
+    return generated_text.alloc_fmt(
+        allocator,
+        "          local.get $frame-ref\n          struct.get $async-frame $slot-result-ptr\n          i32.const {[offset]d}\n          i32.add\n          i32.load8_u\n          if (result {[expected_type]s})\n{[value]s}{[promote]s}          else\n{[zero]s}          end\n",
         .{
-            .tag_guards = tag_guards,
-            .discriminant = payload.discriminant,
-            .field_offset = field.offset,
-            .pointer_offset = pointer_offset,
-            .length_offset = length_offset,
-            .residual_zero_tail = residual_zero_tail,
-            .dns_fallback = dns_fallback,
+            .offset = offset,
+            .expected_type = expected_type,
+            .value = value,
+            .promote = if (promote) "          i64.extend_i32_u\n" else "",
+            .zero = zero,
         },
     );
 }
 
-fn render_http_dns_error_variant_fallback(
+fn http_optional_string_values(
     allocator: std.mem.Allocator,
-    descriptor: p3_async_manifest.Descriptor,
-    fallback_zero_tail: []const u8,
+    offset: u32,
+    pointer_type: []const u8,
+    length_type: []const u8,
 ) ![]u8 {
-    var dns_payload: ?p3_async_manifest.ErrorVariantPayload = null;
-    for (descriptor.canonical.error_variants) |variant| {
-        if (std.mem.eql(u8, variant.variant, "DNS-error")) {
-            dns_payload = variant;
-            break;
-        }
-    }
-    const payload = dns_payload orelse return allocator.dupe(u8, fallback_zero_tail);
-    if (payload.discriminant != 1 or payload.byte_size != 32 or payload.fields.len != 2) return error.UnsupportedP3AsyncHttpService;
-    const rcode = payload.fields[0];
-    const info_code = payload.fields[1];
-    if (!std.mem.eql(u8, rcode.name, "rcode") or rcode.kind != .optional_string or rcode.offset != 16 or
-        rcode.core_words.len != 3 or !std.mem.eql(u8, rcode.core_words[0], "i32") or
-        !std.mem.eql(u8, rcode.core_words[1], "i64") or !std.mem.eql(u8, rcode.core_words[2], "i32") or
-        !std.mem.eql(u8, info_code.name, "info-code") or info_code.kind != .optional_u16 or
-        info_code.offset != 28 or info_code.core_words.len != 2 or
-        !std.mem.eql(u8, info_code.core_words[0], "i32") or !std.mem.eql(u8, info_code.core_words[1], "i32"))
-        return error.UnsupportedP3AsyncHttpService;
-    if (descriptor.canonical.completion_params.len <= 2 + rcode.core_words.len + info_code.core_words.len)
-        return error.UnsupportedP3AsyncHttpService;
-    const residual_zero_tail = try render_zero_words(
+    if (!std.mem.eql(u8, length_type, "i32")) return error.UnsupportedP3AsyncHttpService;
+    if (!std.mem.eql(u8, pointer_type, "i64") and !std.mem.eql(u8, pointer_type, "i32")) return error.UnsupportedP3AsyncHttpService;
+    const pointer = try http_result_load(allocator, offset + 4, "i32.load");
+    defer allocator.free(pointer);
+    const length = try http_result_load(allocator, offset + 8, "i32.load");
+    defer allocator.free(length);
+    const pointer_zero = if (std.mem.eql(u8, pointer_type, "i64")) "          i64.const 0\n" else "          i32.const 0\n";
+    const pointer_promote = if (std.mem.eql(u8, pointer_type, "i64")) "          i64.extend_i32_u\n" else "";
+    return generated_text.alloc_fmt(
         allocator,
-        descriptor.canonical.completion_params[2 + rcode.core_words.len + info_code.core_words.len ..],
-    );
-    defer allocator.free(residual_zero_tail);
-    return generated_text.alloc_fmt_block(
-        allocator,
-        8,
-        \\        local.get $error-tag
-        \\        i32.const {[discriminant]d}
-        \\        i32.eq
-        \\        if
-        \\          ;; [error-variant:DNS-error]
-        \\          i32.const 1
-        \\          local.get $error-tag
-        \\          local.get $frame-ref
-        \\          struct.get $async-frame $slot-result-ptr
-        \\          i32.const {[rcode_offset]d}
-        \\          i32.add
-        \\          i32.load8_u
-        \\          local.get $frame-ref
-        \\          struct.get $async-frame $slot-result-ptr
-        \\          i32.const {[rcode_pointer_offset]d}
-        \\          i32.add
-        \\          i32.load
-        \\          i64.extend_i32_u
-        \\          local.get $frame-ref
-        \\          struct.get $async-frame $slot-result-ptr
-        \\          i32.const {[rcode_length_offset]d}
-        \\          i32.add
-        \\          i32.load
-        \\          local.get $frame-ref
-        \\          struct.get $async-frame $slot-result-ptr
-        \\          i32.const {[info_code_offset]d}
-        \\          i32.add
-        \\          i32.load8_u
-        \\          local.get $frame-ref
-        \\          struct.get $async-frame $slot-result-ptr
-        \\          i32.const {[info_code_u16_offset]d}
-        \\          i32.add
-        \\          i32.load16_u
-        \\          {[residual_zero_tail]s}
-        \\          call $task-return
-        \\        else
-        \\          i32.const 1
-        \\          local.get $error-tag
-        \\          {[fallback_zero_tail]s}
-        \\          call $task-return
-        \\        end
-    ,
+        "          local.get $frame-ref\n          struct.get $async-frame $slot-result-ptr\n          i32.const {[offset]d}\n          i32.add\n          i32.load8_u\n          if (result {[pointer_type]s})\n{[pointer]s}{[pointer_promote]s}          else\n{[pointer_zero]s}          end\n          local.get $frame-ref\n          struct.get $async-frame $slot-result-ptr\n          i32.const {[length_offset]d}\n          i32.add\n          i32.load8_u\n          if (result i32)\n{[length]s}          else\n          i32.const 0\n          end\n",
         .{
-            .discriminant = payload.discriminant,
-            .rcode_offset = rcode.offset,
-            .rcode_pointer_offset = rcode.offset + 4,
-            .rcode_length_offset = rcode.offset + 8,
-            .info_code_offset = info_code.offset,
-            .info_code_u16_offset = info_code.offset + 2,
-            .residual_zero_tail = residual_zero_tail,
-            .fallback_zero_tail = fallback_zero_tail,
+            .offset = offset,
+            .pointer_type = pointer_type,
+            .pointer = pointer,
+            .pointer_promote = pointer_promote,
+            .pointer_zero = pointer_zero,
+            .length_offset = offset,
+            .length = length,
+        },
+    );
+}
+
+fn http_field_size_payload_values(
+    allocator: std.mem.Allocator,
+    offset: u32,
+    completion_params: []const []const u8,
+    flat_word_index: usize,
+) ![]u8 {
+    const name = try http_optional_string_values(allocator, offset, completion_params[2 + flat_word_index + 1], completion_params[2 + flat_word_index + 2]);
+    defer allocator.free(name);
+    const size_tag = try http_result_load(allocator, offset + 12, "i32.load8_u");
+    defer allocator.free(size_tag);
+    const size_check = try generated_text.alloc_fmt(
+        allocator,
+        "          local.get $frame-ref\n          struct.get $async-frame $slot-result-ptr\n          i32.const {[offset]d}\n          i32.add\n          i32.load8_u\n          i32.const 1\n          i32.gt_u\n          if unreachable end\n",
+        .{ .offset = offset + 12 },
+    );
+    defer allocator.free(size_check);
+    const size = try http_optional_scalar_value(allocator, offset + 12, 4, "i32.load", completion_params[2 + flat_word_index + 4]);
+    defer allocator.free(size);
+    return generated_text.alloc_fmt(allocator, "{[name]s}{[size_tag]s}{[size_check]s}{[size]s}", .{
+        .name = name,
+        .size_tag = size_tag,
+        .size_check = size_check,
+        .size = size,
+    });
+}
+
+fn http_optional_field_size_payload_values(
+    allocator: std.mem.Allocator,
+    offset: u32,
+    completion_params: []const []const u8,
+    flat_word_index: usize,
+) ![]u8 {
+    const name_tag = try http_nested_option_tag(allocator, offset, offset + 4, completion_params[2 + flat_word_index + 1]);
+    defer allocator.free(name_tag);
+    const name_ptr = try http_nested_option_value(allocator, offset, offset + 4, 4, completion_params[2 + flat_word_index + 2], "i32.load", false);
+    defer allocator.free(name_ptr);
+    const name_len = try http_nested_option_value(allocator, offset, offset + 4, 8, completion_params[2 + flat_word_index + 3], "i32.load", false);
+    defer allocator.free(name_len);
+    const size_tag = try http_nested_option_tag(allocator, offset, offset + 16, completion_params[2 + flat_word_index + 4]);
+    defer allocator.free(size_tag);
+    const size = try http_nested_option_value(allocator, offset, offset + 16, 4, completion_params[2 + flat_word_index + 5], "i32.load", false);
+    defer allocator.free(size);
+    return generated_text.alloc_fmt(allocator, "{[name_tag]s}{[name_ptr]s}{[name_len]s}{[size_tag]s}{[size]s}", .{
+        .name_tag = name_tag,
+        .name_ptr = name_ptr,
+        .name_len = name_len,
+        .size_tag = size_tag,
+        .size = size,
+    });
+}
+
+fn http_nested_option_tag(allocator: std.mem.Allocator, outer_offset: u32, inner_offset: u32, result_type: []const u8) ![]u8 {
+    if (!std.mem.eql(u8, result_type, "i32") and !std.mem.eql(u8, result_type, "i64")) return error.UnsupportedP3AsyncHttpService;
+    const inner = try http_result_load(allocator, inner_offset, "i32.load8_u");
+    defer allocator.free(inner);
+    const inner_extend = if (std.mem.eql(u8, result_type, "i64")) "          i64.extend_i32_u\n" else "";
+    const zero = if (std.mem.eql(u8, result_type, "i64")) "          i64.const 0\n" else "          i32.const 0\n";
+    return generated_text.alloc_fmt(
+        allocator,
+        "          local.get $frame-ref\n          struct.get $async-frame $slot-result-ptr\n          i32.const {[outer_offset]d}\n          i32.add\n          i32.load8_u\n          if (result {[result_type]s})\n{[inner_check]s}          i32.const 1\n          i32.gt_u\n          if unreachable end\n{[inner_tag]s}{[inner_extend]s}          else\n{[zero]s}          end\n",
+        .{
+            .outer_offset = outer_offset,
+            .result_type = result_type,
+            .inner_check = inner,
+            .inner_tag = inner,
+            .inner_extend = inner_extend,
+            .zero = zero,
+        },
+    );
+}
+
+fn http_nested_option_value(
+    allocator: std.mem.Allocator,
+    outer_offset: u32,
+    inner_offset: u32,
+    value_offset: u32,
+    result_type: []const u8,
+    instruction: []const u8,
+    promote: bool,
+) ![]u8 {
+    if (!std.mem.eql(u8, result_type, "i32") and !std.mem.eql(u8, result_type, "i64")) return error.UnsupportedP3AsyncHttpService;
+    const inner_tag = try http_result_load(allocator, inner_offset, "i32.load8_u");
+    defer allocator.free(inner_tag);
+    const value = try http_result_load(allocator, inner_offset + value_offset, instruction);
+    defer allocator.free(value);
+    const promoted = if (promote) "          i64.extend_i32_u\n" else "";
+    const zero = if (std.mem.eql(u8, result_type, "i64")) "          i64.const 0\n" else "          i32.const 0\n";
+    const inner_check = try generated_text.alloc_fmt(
+        allocator,
+        "{[inner_tag]s}          i32.const 1\n          i32.gt_u\n          if unreachable end\n",
+        .{ .inner_tag = inner_tag },
+    );
+    defer allocator.free(inner_check);
+    return generated_text.alloc_fmt(
+        allocator,
+        "          local.get $frame-ref\n          struct.get $async-frame $slot-result-ptr\n          i32.const {[outer_offset]d}\n          i32.add\n          i32.load8_u\n          if (result {[result_type]s})\n{[inner_check]s}{[inner_tag]s}          if (result {[result_type]s})\n{[value]s}{[promoted]s}          else\n{[zero]s}          end\n          else\n{[zero]s}          end\n",
+        .{
+            .outer_offset = outer_offset,
+            .result_type = result_type,
+            .inner_check = inner_check,
+            .inner_tag = inner_tag,
+            .value = value,
+            .promoted = promoted,
+            .zero = zero,
         },
     );
 }
@@ -3076,7 +3428,7 @@ const http_service_core_wat =
     \\    i64.const 64
     \\    call $async-byte-budget-release
     \\  )
-    \\  (func (export "[async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle") (type $async-handler) (param $request i32) (result i32) (local $frame i32) (local $frame-ref (ref $async-frame)) (local $subtask i32) (local $error-tag i32)
+    \\  (func (export "[async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle") (type $async-handler) (param $request i32) (result i32) (local $frame i32) (local $frame-ref (ref $async-frame)) (local $subtask i32) (local $error-tag i32) (local $optional-tag i32) (local $outer-tag i32)
     \\    i32.const 1
     \\    call $waitable-set-new
     \\    i32.const 0
@@ -3101,7 +3453,7 @@ const http_service_core_wat =
     \\    local.set $subtask
     \\[immediate-completion]
     \\  )
-    \\  (func (export "[callback][async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle") (type $async-handler-callback) (param $event i32) (param $index i32) (param $payload i32) (result i32) (local $frame i32) (local $frame-ref (ref $async-frame)) (local $error-tag i32)
+    \\  (func (export "[callback][async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle") (type $async-handler-callback) (param $event i32) (param $index i32) (param $payload i32) (result i32) (local $frame i32) (local $frame-ref (ref $async-frame)) (local $error-tag i32) (local $optional-tag i32) (local $outer-tag i32)
     \\    call $context-get-0
     \\    local.set $frame
     \\    local.get $frame
@@ -3581,6 +3933,8 @@ const http_request_body_producer_event_handler =
     \\      end
 ;
 
+const http_request_body_producer_write_error_event_handler = http_request_body_producer_event_handler;
+
 fn producer_frame_values(allocator: std.mem.Allocator) ![]u8 {
     return generated_text.alloc_block(allocator, 4,
         \\    i32.const 1
@@ -3795,6 +4149,48 @@ const http_request_body_producer_component_wit =
     \\}
     \\
     \\world http-request-body-producer-probe {
+    \\  import types;
+    \\  import client;
+    \\  import wasi:cli/stdout@0.3.0-rc-2025-09-16;
+    \\  export probe;
+    \\}
+;
+
+const http_request_body_producer_write_error_component_wit =
+    \\package wasi:http@0.3.0-rc-2025-09-16;
+    \\
+    \\interface types {
+    \\  variant error-code { dns-timeout }
+    \\  resource fields { constructor(); }
+    \\  resource request {
+    \\    new: static func(
+    \\      headers: fields,
+    \\      contents: option<stream<u8>>,
+    \\      trailers: future<result<option<fields>, error-code>>,
+    \\      options: option<request-options>
+    \\    ) -> tuple<request, future<result<_, error-code>>>;
+    \\  }
+    \\  request-new-payload: func(
+    \\    headers: fields,
+    \\    contents: option<stream<u8>>,
+    \\    trailers: future<result<option<fields>, error-code>>,
+    \\    options: option<request-options>
+    \\  ) -> tuple<request, future<result<_, error-code>>>;
+    \\  resource request-options {}
+    \\  resource response {}
+    \\}
+    \\
+    \\interface client {
+    \\  use types.{request, response, error-code};
+    \\  send: async func(request: request) -> result<response, error-code>;
+    \\}
+    \\
+    \\interface probe {
+    \\  variant producer-error { http-failure, stream-closed, stream-write-failed }
+    \\  run: async func() -> result<_, producer-error>;
+    \\}
+    \\
+    \\world http-request-body-producer-write-error-probe {
     \\  import types;
     \\  import client;
     \\  import wasi:cli/stdout@0.3.0-rc-2025-09-16;
@@ -4288,6 +4684,63 @@ test "HTTP request body producer plan accepts request send before guest writes" 
     try std.testing.expectEqual(@as(usize, 2), plan.?.write_count);
 }
 
+test "HTTP request body producer write-error plan accepts the bounded failure fixture" {
+    const source = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "../examples/p3-runtime/http-request-body-producer-write-error.do", std.testing.allocator, .limited(1024 * 1024));
+    defer std.testing.allocator.free(source);
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+
+    try std.testing.expect(find_http_request_new_body_host(tokens) != null);
+    try std.testing.expect(find_http_send_host(tokens) != null);
+    try std.testing.expect(find_http_request_body_producer_write_error_function(tokens) != null);
+    try std.testing.expect(has_http_resource_graph(tokens));
+    try std.testing.expect(component_async_plan.analyze_guest_stream_prefix(tokens, find_http_request_body_producer_write_error_function(tokens).?.body_start, find_http_request_body_producer_write_error_function(tokens).?.body_end) != null);
+    const plan = try HttpRequestBodyProducerWriteErrorPlan.analyze(tokens, registry);
+    try std.testing.expect(plan != null);
+    try std.testing.expectEqual(@as(usize, 2), plan.?.write_count);
+    const wat = try emit_http_request_body_producer_write_error_wat(std.testing.allocator, plan.?);
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $task-return (func (param i32 i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $subtask-cancel") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $task-return") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $producer-stream-drop-writable") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; [producer-error:stream-closed]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, ";; [producer-error:stream-write-failed]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 15\n          i32.and\n          i32.const 1\n          i32.eq") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 15\n            i32.and\n            i32.const 2\n            i32.eq") != null);
+}
+
+test "HTTP request body producer write-error plan rejects a different body payload" {
+    var source = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "../examples/p3-runtime/http-request-body-producer-write-error.do", std.testing.allocator, .limited(1024 * 1024));
+    defer std.testing.allocator.free(source);
+    const marker = "second u8 = 66";
+    const start = std.mem.indexOf(u8, source, marker) orelse return error.TestUnexpectedResult;
+    source[start + marker.len - 1] = '7';
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    try std.testing.expect((try HttpRequestBodyProducerWriteErrorPlan.analyze(tokens, registry)) == null);
+}
+
+test "HTTP request body producer write-error plan rejects an unlowered extra statement" {
+    const source = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "../examples/p3-runtime/http-request-body-producer-write-error.do", std.testing.allocator, .limited(1024 * 1024));
+    defer std.testing.allocator.free(source);
+    const marker = "    return nil";
+    const insertion = std.mem.indexOf(u8, source, marker) orelse return error.TestUnexpectedResult;
+    const modified = try std.mem.concat(std.testing.allocator, u8, &.{ source[0..insertion], "    _ = 123\n", source[insertion..] });
+    defer std.testing.allocator.free(modified);
+    const tokens = try lexer.tokenize(std.testing.allocator, modified);
+    defer std.testing.allocator.free(tokens);
+    var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+
+    try std.testing.expect((try HttpRequestBodyProducerWriteErrorPlan.analyze(tokens, registry)) == null);
+}
+
 test "HTTP request body producer plan rejects capacity other than one" {
     var source = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "../examples/p3-runtime/http-request-body-producer-send-first.do", std.testing.allocator, .limited(1024 * 1024));
     defer std.testing.allocator.free(source);
@@ -4407,8 +4860,7 @@ test "HTTP request body plan accepts serialized source completion await" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "[async-lower][future-read-1]read-via-stream") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $start-body-completion") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $start-body-request") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat,
-        "    call $start-body-request\n    local.set $subtask\n    local.get $subtask\n    return") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "    call $start-body-request\n    local.set $subtask\n    local.get $subtask\n    return") != null);
 }
 
 test "HTTP response body emitter creates the input future with the pinned type indexes" {
@@ -4493,7 +4945,7 @@ test "HTTP service emitter forwards the resource Result through the handler comp
     try std.testing.expect(std.mem.indexOf(u8, wat, "[async-lift]wasi:http/handler@0.3.0-rc-2025-09-16#handle") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $task-return (func (param i32 i32 i32 i64 i32 i32 i32 i32)))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(field $slot-result-ptr (mut i32))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 32\n        i32.eq\n        if unreachable end") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 32\n        i32.eq\n        if unreachable end") == null);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; [result:err]\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; [result:ok]\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; [error-variant:internal-error]") != null);
@@ -4616,6 +5068,58 @@ test "HTTP service emitter lowers the proven DNS error payload" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 30\n          i32.add\n          i32.load16_u") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "i32.load16_u") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 1\n        i32.eq\n        if unreachable end") == null);
+}
+
+test "HTTP service emitter lowers all registered official payload families" {
+    var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find(http_locator, "send") orelse return error.TestUnexpectedResult;
+    const wat = try emit_http_service_core_wat(std.testing.allocator, descriptor);
+    defer std.testing.allocator.free(wat);
+
+    for ([_][]const u8{
+        "TLS-alert-received",
+        "HTTP-request-body-size",
+        "HTTP-request-header-section-size",
+        "HTTP-request-header-size",
+        "HTTP-request-trailer-section-size",
+        "HTTP-request-trailer-size",
+        "HTTP-response-header-section-size",
+        "HTTP-response-header-size",
+        "HTTP-response-body-size",
+        "HTTP-response-trailer-section-size",
+        "HTTP-response-trailer-size",
+        "HTTP-response-transfer-coding",
+        "HTTP-response-content-coding",
+    }) |variant| {
+        const marker = try generated_text.alloc_fmt(std.testing.allocator, ";; [error-variant:{[variant]s}]", .{ .variant = variant });
+        defer std.testing.allocator.free(marker);
+        try std.testing.expect(std.mem.indexOf(u8, wat, marker) != null);
+    }
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i64.load") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.load16_u") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 14\n        i32.eq\n        if unreachable end") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 17\n        i32.eq\n        if unreachable end") == null);
+}
+
+test "HTTP service error lowering preserves absent options and nested field-size layout" {
+    var registry = try p3_async_manifest.Registry.load(std.testing.allocator, @embedFile("p3_async_registry.json"));
+    defer registry.deinit(std.testing.allocator);
+    const descriptor = registry.find(http_locator, "send") orelse return error.TestUnexpectedResult;
+    const wat = try emit_http_service_core_wat(std.testing.allocator, descriptor);
+    defer std.testing.allocator.free(wat);
+
+    const header_size = std.mem.indexOf(u8, wat, ";; [error-variant:HTTP-request-header-size]") orelse return error.TestUnexpectedResult;
+    const trailer_size = std.mem.indexOf(u8, wat[header_size + 1 ..], ";; [error-variant:HTTP-request-trailer-section-size]") orelse return error.TestUnexpectedResult;
+    const branch = wat[header_size .. header_size + 1 + trailer_size];
+    try std.testing.expect(std.mem.indexOf(u8, branch, "if (result i64)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, branch, "i32.const 20\n          i32.add\n          i32.load8_u") != null);
+    try std.testing.expect(std.mem.indexOf(u8, branch, "i32.const 32\n          i32.add\n          i32.load") != null);
+    try std.testing.expect(std.mem.indexOf(u8, branch, "i32.load8_u\n          i64.extend_i32_u\n          if (result") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 38\n        i32.gt_u\n        if unreachable end") != null);
+
+    const registry_json = @embedFile("p3_async_registry.json");
+    try std.testing.expect(std.mem.indexOf(u8, registry_json, "\"kind\": \"optional_field_size_payload\"") != null);
 }
 
 test "HTTP service WIT sidecar preserves nominal resource identities" {

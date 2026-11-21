@@ -7,10 +7,10 @@ resource `Result` probe, the fixed `wasi:http/client.send` service, the fixed
 `wasi:filesystem/types.descriptor.read-directory` one-to-three-entry slice, or
 the private fixed `ResourceTriple` and owned-record producer routes. It emits
 Core WAT plus a WIT sidecar for component assembly. Generic Stream, generic
-record streams, arbitrary list/producer shapes, payload-bearing HTTP
-`error-code`, and every unclassified descriptor are rejected rather than
-falling into a probe template. Ordinary `do build` keeps its async-lowering
-guard.
+record streams, arbitrary list/producer shapes, HTTP `error-code` shapes
+outside the fixed `wasi:http/client.send` service route, and every unclassified
+descriptor are rejected rather than falling into a probe template. Ordinary
+`do build` keeps its async-lowering guard.
 
 Component assembly for the verified v1 path is centralized in
 `assemble_async_component.sh`. It uses the current-only `bin/do-toolchain`
@@ -337,12 +337,19 @@ whose body transfers the request to the async host binding `send`, binds the
 returned Future, and
 either directly returns `@await(pending)` or directly returns an identically
 typed binding of that await. The emitter performs the request drop,
-returns either an owned response or a no-payload `error-code`, and emits the
-`wasi:http/handler.handle` task-return ABI. Run
+returns either an owned response or one of the 15 payload-bearing `error-code`
+variants from the pinned package, and emits the `wasi:http/handler.handle`
+task-return ABI. Run
 `bash test_http_service_abi_surface.sh` for compiler lowering, Component
 assembly, and the Rust Wasmtime host regression. It does not admit HTTP body
-streams, trailers, payload-bearing errors, general branching, or multiple
-awaits.
+streams, trailers, future package versions, general branching, or multiple
+awaits. Run `bash test_do_http_payload_error_lowering.sh all` for exact payload
+values through pending and ready completion. The Rust host synthesizes pinned
+WIT `ErrorCode` values, so this is an ABI round-trip gate, not evidence that a
+production HTTP provider emits each error. All 15 variants run in both pending
+and ready modes; independent hand-authored canonical WAT coverage is limited to
+representative cases. See `doc/wit/wasi_http_error_payload_evidence.md` for the
+per-variant coverage and evidence boundaries.
 
 `http-request-empty.do` is the bounded constructor companion. It creates empty
 headers, no body, an immediate `Ok(None)` trailers future, and no request options;
@@ -351,9 +358,8 @@ Run `bash test_do_http_request_empty_lowering.sh` for Core/Component assembly,
 `bash test_rust_http_request_empty.sh` for constructor lifecycle cleanup, and
 `bash test_rust_http_service_empty_request.sh` for successful and no-payload
 error service outcomes. These scripts use the complete pinned WIT package when
-assembling the combined path. Request body producers, dynamic trailers,
-payload-bearing error variants, and general HTTP resource methods remain
-unsupported.
+assembling the combined path. Request body producers, dynamic trailers, and
+general HTTP resource methods remain unsupported.
 
 `http-payload-cancel.do` is the separate bounded cancellation slice. It stores
 the pinned `Future<Result<HttpResponse, HttpError>>` from `send` and explicitly
@@ -365,6 +371,14 @@ second cancellation of the same Future, implicit scope-drop, and unregistered
 HTTP shapes remain rejected; concurrent calls on one instance are not covered by
 this single-scratch gate. Run `bash test_do_http_payload_cancellation.sh`
 and `bash test_rust_http_payload_cancellation.sh`.
+
+`test_rust_http_payload_cancellation_request_header_size_probe.sh` is an
+independent hand-authored canonical ABI probe for immediate
+`HTTP-request-header-size(Some(field-size-payload))`. It checks the pinned
+variant tag, nested optional payload, `field-name="content-type"`,
+`field-size=42`, and exactly one 12-byte string allocation/release. This does
+not change the generated cancellation emitter, which still rejects this
+variant, and does not establish production HTTP provider behavior.
 
 `http-request-body.do` is a deliberately fixed slice. It admits only the
 pinned CLI stdin `Stream<u8>` descriptor, sends that reader as the request body, and then
@@ -388,6 +402,17 @@ write-before-request order as a negative fixture. Run
 `bash test_rust_http_request_body_producer.sh` for ABI, Component, and
 Wasmtime coverage. This remains a fixed probe, not generic producer syntax or
 dynamic body lowering.
+
+`http-request-body-producer-write-error.do` checks the bounded failure path.
+The host accepts byte 65 and closes the body consumer; the second writer
+operation returns `StreamClosed`, the guest cancels the pending send and closes
+the writer, and the exported probe returns that error. The lowering maps
+Wasmtime stream status `Dropped` to `StreamClosed` and `Cancelled` coarsely to
+`StreamWriteFailed`; unknown statuses trap. The runtime gate exercises the
+`Dropped` path. Run
+`bash test_do_http_request_body_producer_write_error_lowering.sh` and
+`bash test_rust_http_request_body_producer_write_error.sh` for Component and
+Wasmtime coverage.
 
 `http-request-body-await-completion.do` is the serialized completion variant.
 It awaits the source completion before constructing the request, then follows
@@ -437,6 +462,18 @@ read-directory Component against a temporary OS directory (`alpha` file and
 `bravo` directory), checking sorted names, pending/ready completion, and exact
 stream/future/resource drops. This is still a pinned record-stream slice, not
 general filesystem async support.
+
+`bash test_d2_wasi_filesystem_advise_abi.sh` measures the pinned
+`descriptor.advise` ABI in regular and cancel probe worlds. It checks the direct
+`(i32,i64,i64,i32,i32)->i32` import, advice enum order, Component assembly, and
+validation. `bash test_rust_wasi_filesystem_advise.sh` then covers the generated
+and canonical executable Components: ready, pending, explicit error, all six
+advice values, repeat, cancellation, Store-disposal early drop, and a test-only
+raw discriminant `6` rejection before the host callback. The route is private
+and exact; generic filesystem async and other unmeasured methods remain
+unsupported. Wasmtime 50 cancellation uses task abort plus Store disposal for a
+subtask already in a waitable set, so the gate proves cleanup without claiming
+rollback of an advisory call.
 
 `bash test_rust_cli_stream_stdin_real.sh` runs the pinned CLI stdin stream
 Component through a Unix local socket-pair pipe, exercising pending/ready

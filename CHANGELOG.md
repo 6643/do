@@ -1,5 +1,56 @@
 # Changelog
 
+# 2026-11-21 D2 private `descriptor.advise` bounded promotion:
+  added exact source admission, direct Core/WIT lowering, regular/cancellation
+  ABI snapshots, and a Rust/Wasmtime lifecycle gate for the pinned filesystem
+  method. The measured import is `(i32,i64,i64,i32,i32)->i32` in descriptor,
+  offset, length, advice, result-area order; all six advice variants retain
+  their pinned order. The gate covers generated/canonical ready, pending,
+  explicit error, all-advice, repeat, Store-disposal early drop, and the
+  invalid raw discriminant `6` rejection before the host callback. Wasmtime 50
+  cancellation uses task abort plus Store disposal after the subtask enters a
+  waitable set; this proves cleanup and makes no rollback claim for an advisory
+  call. Generic filesystem async, unmeasured methods, and public ownership
+  syntax remain outside the private slice.
+
+# 2026-11-21 G6.2 pinned WASI HTTP error payload closeout:
+  completed the measured `wasi:http/client.send` error-code boundary for all
+  15 payload-bearing variants in the pinned
+  `wasi:http@0.3.0-rc-2025-09-16` package. The registry and dedicated emitter
+  now cover optional integers, strings, TLS payloads, field-size records, and
+  nested optional records; option tags are validated before payload reads and
+  unknown discriminants remain fail-closed. Component validation plus the
+  Rust/Wasmtime compiler-service gate passes every variant in pending and ready
+  delivery modes with exact values, no response allocation, and an empty
+  `ResourceTable`. Generic WIT error lowering and cancellation-world expansion
+  remain outside this bounded closeout. The host synthesizes typed errors for
+  ABI testing; this is not production HTTP provider behavior evidence. The
+  hand-authored canonical WAT comparison remains representative rather than
+  per-variant.
+
+# 2026-11-21 G6.2 HTTP cancellation field-size ABI probe:
+  added an independent hand-authored Core WAT and Rust/Wasmtime host probe for
+  immediate `HTTP-request-header-size(Some(field-size-payload))`. It verifies
+  the pinned error tag and nested payload fields, including one exact 12-byte
+  canonical string allocation and matching release, plus ready Future cleanup
+  and an empty `ResourceTable`. The generated cancellation emitter remains
+  fail-closed for this variant; this probe does not promote compiler support or
+  claim production provider behavior.
+
+# 2026-11-21 G6.2 HTTP producer write-error probe:
+  added a private fixed-shape HTTP request-body producer failure route. The
+  probe starts `client.send` before writing, observes the body consumer closing
+  after byte 65, cancels the still-pending send, closes the writer once, and
+  returns a private `ProducerError`. Wasmtime stream `Dropped` maps to
+  `StreamClosed`; `Cancelled` maps coarsely to `StreamWriteFailed`; unknown
+  nonzero statuses trap. Added exact source matching, negative admission for
+  unlowered extra statements, Component lowering/validation, and a
+  Rust/Wasmtime lifecycle gate. The failure gate observes `[65]`, one send
+  cancellation, no response, exactly-once Future/stream cleanup, and an empty
+  `ResourceTable`; the existing success producer gate still observes
+  `[65,66]`. This remains private evidence and does not open general producer
+  error mapping or public ownership syntax.
+
 # 2026-11-20 GC nested field path storage:
   replaced the fixed five-link path buffers with allocator-owned dynamic
   storage. The GC emitter now has 6- and 12-link lowering coverage, including

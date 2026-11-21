@@ -126,6 +126,10 @@ name = "do-p3-http-request-body-producer-host-runner"
 path = "src/bin/http_request_body_producer.rs"
 
 [[bin]]
+name = "do-p3-http-request-body-producer-write-error-host-runner"
+path = "src/bin/http_request_body_producer_write_error.rs"
+
+[[bin]]
 name = "do-p3-cli-stream-stdin-host-runner"
 path = "src/bin/cli_stream_stdin.rs"
 
@@ -516,6 +520,10 @@ path = "src/bin/wasi_filesystem_sync_data.rs"
 [[bin]]
 name = "wasi-filesystem-set-size"
 path = "src/bin/wasi_filesystem_set_size.rs"
+
+[[bin]]
+name = "wasi-filesystem-advise"
+path = "src/bin/wasi_filesystem_advise.rs"
 
 [[bin]]
 name = "do-p3-wasi-filesystem-get-flags-host-runner"

@@ -2,24 +2,38 @@
 
 这是当前主线的接手入口。状态以本文为准; 计划摘要见 `doc/master_plan.md`; 近期变更见 `CHANGELOG.md`。不保留向后兼容旧路径或历史流水账。
 
-当前基线日期: `2026-11-20`。
+当前基线日期: `2026-11-21`。
 
 当前内存模型是 GC-first: 普通 Do 对象由 Wasm GC 按可达性回收，词法块退出不释放普通对象；普通赋值保持逻辑独立值，允许共享不可变存储并对可变动态字段使用 COW；`@set` 按是否接收结果区分新值和语句式修改，函数参数只读；外部 resource 必须显式 close/drop，Future 必须显式 await/cancel。生产编译器和源码契约均以 Wasm GC 为准，详见 `doc/memory.md`。
 
-最新闭环: G5c 15-row migration inventory final gate、G6.2 shared emitter/state-IR
-single-route private pilot 的 Task 6 artifact/default-route parity/rollback/
+最新闭环: G6.2 pinned HTTP error payload closeout、HTTP payload cancellation
+header-size canonical probe、G6.2 private HTTP producer write-error probe、
+G5c 15-row migration inventory final gate、D2 `descriptor.advise` private
+bounded compiler/runtime slice、G6.2 shared
+emitter/state-IR single-route private pilot 的
+Task 6 artifact/default-route parity/rollback/
 repository inventory gate，以及 D2 私有 `descriptor.read-via-stream` bounded
 byte-reader gate 已完成。
 `598f2a0` 修复 pilot guard/test-oracle 的 ARC inventory 分类；当前 scan 为
 `rows=55 matches=492 unclassified=0`，post-cutover
 `normal_route_matches=0`，生产依赖闭包为 `modules=164 forbidden=0`。
-完整 harness 为 `14/14 steps; 56/56 tests`，使用项目专用 Zig cache 的
-`zig test main.zig` 为
-`1743/1743`，ReleaseSmall 与 release smoke 通过。pilot 仍是 private
+2026-11-21 fresh default `./src/build/test/run_tests.sh` 为 `14/14 steps; 57/57 tests`；
+`bash examples/p3-runtime/test_do_http_payload_error_lowering.sh all`、
+`test_rust_http_payload_cancellation_request_header_size_probe.sh`、HTTP
+producer write-error lowering/runtime gates 与 ReleaseSmall/release smoke 均通过。
+header-size probe 只验证 canonical ABI discard, 不开放生成式 cancellation lowering。
+最近记录的
+`RUN_GC_CORE=1` harness 为 `14/14 steps`；focused GC tests 为
+`codegen_pipeline.zig` `1060/1060`、`codegen_gc_sync.zig` `295/295`、
+`gc_sync_probe.zig` `63/63`。pilot 仍是 private
 byte-parity staged；test-only callback counter gate 已闭环：八个单调用 mode 为
 `1/1`、`repeat` 为 `2/2`、`invalid` 为 `0/0`。Core-global counter tuple 仅作
 async Component 边界诊断。默认 dispatch、public ownership syntax 和 generic
 producer lowering 均未开放。
+
+G6.2 HTTP error payload 的证据范围和 variant coverage matrix 见
+`doc/wit/wasi_http_error_payload_evidence.md`。当前 gate 证明测试 host 下的
+Component ABI 往返, 不证明真实 HTTP provider 的错误产生行为。
 
 当前 G5c inventory 为 `complete_rows=15 pending_rows=0`、退出码 `0`；GC default
 gate 为 `87 fixtures`，semantic-equivalence 为 `26 rows; 0 pending`，evidence
@@ -93,7 +107,7 @@ payload。probe 在合成 WAT 中构造输入图；普通 Do struct producer 准
 | GC-first scalar call-graph boundary | `examples/gc-p3-runtime/scalar-call-graph.do` 的同模块、同步、无环 scalar helper calls 已接入默认 typed GC route；self/mutual/longer recursion 在 WAT 前 fail-closed。独立 gate、`130/130` scalar focused tests 和当时的 84-fixture slice checkpoint（当前总基线为 86 fixtures）已验证；imported graph、host/WIT、managed、async/resource 与任意 producer expression 仍不准入。 |
 | GC-first latest bounded producer slice | `nested-byte-list-put.do` 与 `managed-struct-list.do` 分别覆盖精确的 `[[u8]]`、`[Box]` 单值 `@put` producer；多值 `@put` 覆盖 `[u8]` 与注册标量数组，spread 覆盖 `[i32]`；`nested-field-path.do` 到 `five-level-nested-field-path.do` 覆盖一至五层 nested managed-struct scalar field update，并加入第 26 行 ARC/GC 等价矩阵；C10–C14 覆盖 manifest-backed 二至四层纯标量 record 的 lift/lower，C15-A/B/D 覆盖 `scalar + text` 与 multi-managed-text record 的 lift/lower Component host/equivalence，C15-C/C16-C 覆盖 compiler wiring，C15-B/D/C16-C/D 与 mixed scalar-record lower、bounded byte-list record lower/lift、bounded `list<u32>` record lower/lift 已有普通默认 route gate；C15-B/D 的 lower 固定 ABI 分别为 `(i32, i32, i32)` 和 `(i32, i32, i32, i32, i32)`，并验证调用后释放临时线性内存；2026-08-23 C19 固定 byte-list record lift 使用 12-byte result area、capacity `3`、accepted lengths `0..3`、`$do_bytes` 和 exactly-once linear cleanup，host/equivalence/negative 三个 phase 已纳入 G5c residual gate；`future_stream_frames` 的 bounded G5b 等价已闭合，resource `Result` terminal gate 仍仅闭合 Component 边界证据。仍未完成的是通用 nested/managed producer、任意 producer expression、text/list record lower、generic async/resource G5b/G5c 和 G5c。 |
 | 阶段 A–F、H | 已完成 |
-| 阶段 D | 可推进项已完成; D2.1 已按 B 方案绿色 regression 收口; D2 本地 file/dir/CLI/socket smoke 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size` async slices 已验证；通用 filesystem async、external HTTP 的 method-specific recovery 仍阻断 |
+| 阶段 D | 可推进项已完成; D2.1 已按 B 方案绿色 regression 收口; D2 本地 file/dir/CLI/socket smoke 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size`/`descriptor.read-via-stream`/`descriptor.advise` async slices 已验证；通用 filesystem async、external HTTP 的 method-specific recovery 仍阻断 |
 | 阶段 G | G1–G5、G6.1、G6.2 有界 read-directory slice + generic consumer + multi-owned-resource + 一层/两层/三层/四层/五层/六层 nested-owned-resource + multiple nested-owned-resource paths + bounded scalar producer + bounded/parameterized `u64` countdown producer + parameterized helper（含六跳 forwarding 与 typed 参数重排）producer + helper-mediated lease + branch-selected terminal + private resource Result error/cancellation checkpoints + path-sensitive `StreamWriter<T>` lease semantic foundation + record-layout/source-mirror lowering/runtime checkpoints + bounded root-owned local-frame async-call slice + scalar-argument async-call slice + **private bounded async host scalar-argument compiler promotion** + private owned-future compiler slice + private closed/dynamic-count/batched C-min list/resource producer slices + **private bounded scalar `stream<list<u32>>` producer promotion** + **private direct/two-field/parameterized two-field owned-record producer lifecycle checkpoints** + **private fixed three-owned-field `ResourceTriple` compiler admission** + **private mixed scalar/owned `MixedEntry` producer compiler admission** + D2 私有 filesystem `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size` slices、G6.3、G6.4 完成；generic list/producer、borrowed payload、general async-call、D2 general methods 与 root hard-cancel pending |
 | G6.2 parameterized six-hop forwarding | 现有 `StreamWriter<u8>` descriptor 的参数化 helper 链已准入六个静态 forwarding edge；正例 Component、七跳负例、Rust/Wasmtime `count=0/1/3`、`value=90`、pending/ready/error/early-drop/cancel 均通过，保持一次 callback、一次 stream drop、空 `ResourceTable` 与 exactly-once cleanup；任意 producer、七跳、borrowed/list/variant 与通用 resource 仍拒绝 |
 | G6.2 direct owned-record producer | 私有 descriptor `do:g6-2-owned-record-producer@0.1.0` 仅准入 `StreamWriter<ResourceEntry>`；`ResourceEntry` 为 4 bytes，`ticket: own<Ticket>` 位于 offset `0`，stream capacity `1`，WIT hash 为 `6c1406962ee4c4e3eec5b3b4a866acfd1d8eb6ee159ce5b4077df113063d1ace`。canonical/generated Component 与 Rust/Wasmtime 十模式（ready/pending、传输前后 error/cancel/early-drop、repeat、invalid）通过；valid row exactly-once ticket/stream/future cleanup、空 `ResourceTable`，repeat 为 `2/2`。这是独立 Component 生命周期等价证据，不计入 ARC/GC 26-row 矩阵；通用 producer、borrowed/list/variant 与公开 ownership syntax 仍拒绝 |
@@ -104,7 +118,7 @@ payload。probe 在合成 WAT 中构造输入图；普通 Do struct producer 准
 | Colorless async / WIT bindgen | canonical `@async/@await/@cancel`、legacy `async` 弃用、schema 1/2 生成 manifest 校验、已准入 schema 2 unit 与 scalar capabilities 的 manifest 自动发现，以及 opt-in v2 variant/scalar-i64 gates、统一 promotion profile、`--p3-async-call-component` root-owned local-frame gate、private `--p3-async-host-arg-component` scalar-argument compiler gate 和 `--p3-owned-future-component` `Future<Ticket>` -> `future<own<ticket>>` gate 已验证；general async-call promotion contract 与 D2 recovery design 已冻结，unrestricted generated WIT lowering 仍 pending |
 | 阶段 I | **已关闭** (I1 递归/self-tail TCO + I2 `Tuple<...>` 第一版) |
 | 架构审查/重构 | 五轮已落地 (见 §4); 默认不继续拆 god module |
-| active Component tooling | `wasm-tools 1.258.0 (5c6d31c78 2026-08-24)`; SHA-256 `282e0014d38daf233cb10fb92815813b339e2b7f8b4734f6698f0176c7d99424`; current-only adapter path is `bin/do-toolchain` |
+| documented Component tooling baseline | `wasm-tools 1.258.0 (5c6d31c78 2026-08-24)`; SHA-256 `282e0014d38daf233cb10fb92815813b339e2b7f8b4734f6698f0176c7d99424`; current-only adapter path is `bin/do-toolchain`. The 2026-11-21 `descriptor.advise` ABI probe observed PATH `wasm-tools 1.263.0` and pins its hash locally; the global lock remains blank and was not changed. |
 | Toolchain adapter / Zig harness | Task 9 Step 1 active gate、Task 8 Step 3 Rust host adapter、Step 4/5 Shell-to-Zig parity 均已闭合；`run_tests.sh` 现在只是 `cd src && zig build test --summary all` 的薄入口，`RUN_WASM`/`RUN_GC_CORE` 由 Zig harness 继承处理 |
 | WIT `map<K,V>` runtime | parser/model/manifest/registry 的 pair-list schema 已完成；精确同步 manifest-backed `map<u32,u32>` lower/lift Component route 已通过 Do/Rust/Wasmtime host gate（各一次 host call 与一次 allocation/free）；同步 operation-frame 顺序门禁已锁定 lower 的 copy-before-call/free-after-call 与 lift 的 copy/construct/publish-before-free；精确 async `map<u32,u32>` capability probe 与私有 `--p3-async-map-component` compiler route 均已通过，固定 `(ptr,len,result_area)` Core 形状、WAT/WIT snapshot、五个 WAT 前负例和 `ready/pending/cancel/drop` lifecycle；`wit_abi_types` 与 bounded Core WAT probe 已覆盖 `u32` key + `u32`/`text` value 的 lower/lift 并通过 current toolchain parse/validate；通用 Component/WIT map lowering、其他 key/value 组合、Stream 跨 poll owned buffer 与统一 cleanup authority 仍阻断，未支持 shape 继续 fail-closed |
 
@@ -773,7 +787,7 @@ Rust/Wasmtime -> exactly-once cleanup 顺序单独立项。默认 route 不直�
 | ID | 说明 | 恢复条件 |
 | --- | --- | --- |
 | G6.2 | `descriptor.read-directory`、注册 record-stream consumer 与 bounded scalar/dynamic/batched producer | scalar/string、多-owned-resource、多个顶层 nested paths 与一层/两层/三层/四层/五层/六层 nested-owned-resource consumer、注册 `do:stream-probe` 的 capacity-one `StreamWriter<u8>` producer、固定/参数化 `u64` countdown producer、参数化 helper 的六跳 forwarding、typed 参数受限重排、其它同类型 async helper、bounded StreamMirror、私有 `variant-resource-stream`、private C-min list/resource producer、动态 count `0..3` producer、固定两批 list-resource producer 与固定三字段 `ResourceTriple` compiler admission 已验证；一般 producer lease、borrowed/list/通用 variant、第七跳 forwarding、第七层或更一般 nested resource gates 与任意其它 filesystem async method 仍待单独推进 |
-| G6.2-cancel | 私有 resource Result cancellation | 显式 `@cancel(completion)` 的 Do lowering、负边界、Component assembly 与 Rust/Wasmtime pending/drop/empty-table gate 已通过；pinned `wasi:http` service-world gate 另验证 pending、immediate `Ok(response)` 的 exactly-once drop、`DnsTimeout`、bounded `DNS-error.rcode` 的 `Some(nonempty)` 与 `None`（两种长度和 `info-code` optional 状态）以及同一布局的 `InternalError(Some(nonempty string))` / `InternalError(None)` canonical discard。同一组件实例连续两次 nonempty DNS error 会在每次精确释放后复用该私有槽位。`None` 不读取或释放 pointer/length；空字符串和其他 payload error 仍 trap；不扩展到通用 resource cancellation 或公开 ownership syntax |
+| G6.2-cancel | 私有 resource Result cancellation | 显式 `@cancel(completion)` 的 Do lowering、负边界、Component assembly 与 Rust/Wasmtime pending/drop/empty-table gate 已通过；pinned `wasi:http` service-world gate 另验证 pending、immediate `Ok(response)` 的 exactly-once drop、`DnsTimeout`、bounded `DNS-error.rcode` 的 `Some(nonempty)` 与 `None`（两种长度和 `info-code` optional 状态）以及同一布局的 `InternalError(Some(nonempty string))` / `InternalError(None)` canonical discard。同一组件实例连续两次 nonempty DNS error 会在每次精确释放后复用该私有槽位。`None` 不读取或释放 pointer/length；空字符串和其他 payload error 仍在这个 cancellation world 外；不扩展到通用 resource cancellation 或公开 ownership syntax |
 | G6.3 | **已关闭 (方案 B)** create/bind/drop + dual address | 见 `compile_ok/291`–`294`; TCP/UDP loopback real-host gate 已通过，listen/connect/accept 与真实 socket I/O 仍后置 |
 | D2 | 真实 host runtime smoke | local filesystem preopen/open-at/sync、read-directory stream、CLI stdin pipe、TCP/UDP socket create/bind/drop，以及私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size`/`descriptor.read-via-stream` async slices 已有 gates；通用 filesystem async 与 external HTTP 仍阻断 |
 | 06.2 | 已拆到 G2–G6; 剩余由 G6.2 承接 | 同上 |
@@ -790,21 +804,25 @@ public `own<T>`, `borrow<T>`, or `ref<T>` syntax.
 
 已落地对照 (勿当待办): pure-scalar Tuple 子槽 `ok/192`; managed 叶子 storage `compile_ok/270`–`271`; field_set `ok/191`。
 
-## 6. 当前计划候选
+## 6. 当前阶段和计划候选
 
 用户说 `go` / `next` 时, 按以下优先级 (细节与恢复条件见 [pending_blocked.md](pending_blocked.md)):
+
+当前阶段：G5c inventory 和 GC-first cutover 已关闭；最近的 GC 同步实现及 ReleaseSmall/
+release smoke 验证已完成。下一步只处理新回归、发布阻断或文档漂移。G6.2 当前没有
+已选定的下一个 exact producer/resource shape；若要扩展，须先定具体形状并单独完成
+design、probe、负例及 Rust/Wasmtime runtime gate。D2 通用 filesystem async/external
+HTTP 和 deferred 项不自动进入当前任务。
+
+下方较早的增量计划和 gate 列表是历史背景，不代表当前已选定的候选或承诺。
 
 当前默认 GC build/parse gate 基线为 87 fixtures；下方较早增量中的 79/80/81/82/83/84/85/86 为
 历史 checkpoint。
 
-1. **发布候选维护**: 回归红灯、文档漂移、可独立验证的小修
-1a. **G5a/G5b/G5c GC migration**: parsed bounded text/list/struct/tuple/union/generic/import slices 已有 typed GC evidence，当前 admitted synchronous 的 26 行 ARC/GC executable equivalence 已闭环；Task 3 已把已准入同步 candidates 接入默认 pipeline，并覆盖推断出的 `text` body binding 的首次 `local_bind` 与后续 `overwrite`、推断出的 `[u8]`/`[u32]` body storage `@put`，以及 body-only managed-struct storage ctor/field update，未准入形状在 WAT 前 fail-closed。`src/build/test/check_gc_default_build_gate.sh` 已锁定 87 个 admitted fixture 的默认 `do build` + current-only `bin/do-toolchain parse-core` gate；scalar-leaf 的纯同步 identity/arithmetic、scalar control-flow 的 `if/else`、`else-if`、guard-return 与 acyclic same-module scalar helper calls 也已通过独立 no-ARC gate，self/mutual/longer recursion、loop、defer、导入模块和 scalar host binding 保持 fail-closed。bounded parser-backed scalar-record `lift/lower` 已通过 Component assembly、host execution 与 ARC/GC equivalence gates，C14 已扩到四层纯标量树，C15-A/B/D 已闭合私有 scalar-plus-text 与 multi-managed-text record lift/lower 的独立 Component host/equivalence gates，C15-C 已闭合单 descriptor的 lower compiler wiring，C16-C 已闭合 C15-A 的 lift compiler wiring；C15-B/D 的固定 lower ABI 分别为 `(i32, i32, i32)` 和 `(i32, i32, i32, i32, i32)`，临时线性内存均只在 host call 后释放。C14 lift/lower、C15-D/C16-D multi-managed-text promotion、C19 byte-list record lift、C20 mixed text/byte-list record lift、two-u32-list record lower、mixed text/two-u32-list record lower 与 mixed text/two-u32-list record lift 已完成默认 route、probe、negative 与等价 gate；G5c residual capability matrix 已完成逐行复核，当前 exact candidate 已通过专用和全局门禁；G6.2 固定三字段 `ResourceTriple` compiler admission 也已完成其独立 manifest/negative/Component/Rust/Wasmtime/parity 闭环。保持通用 aggregate、未准入 host/WIT shape、async/resource、ownership syntax 与 full cutover 不开放。
-    2026-08-20 增量（已由后续 bounded slice 扩展）：第三个 managed segment 的直接 `@get/@set(outer, .inner, .middle, .leaf, ...)` nested managed-struct 路径已通过 typed GC lowering、compiled-test、Wasmtime probe 和等价矩阵；更深路径、producer expression、async/resource 与 host/WIT 当时仍不准入。
-    2026-08-22 增量：第五个 managed segment 的直接 `@get/@set(top, .outer, .inner, .middle, .leaf, .core, ...)` nested managed-struct 路径已通过 typed GC lowering、compiled-test、Wasmtime probe 和 26 行 ARC/GC 等价矩阵；内部实现随后收敛为固定容量五-link 的 `GenericNestedFieldPath` 与 loop-based parser/emitter，未改变公开 admission。第六个 managed segment、producer expression、async/resource 与通用 host/WIT 仍不准入。focused `codegen_gc_sync.zig` 为 `245/245`、`gc_sync_probe.zig` 为 `65/65`，默认 GC build/parse gate 为 72 fixtures，均使用 pinned `wasm-tools 1.255.0` 与 `27815` oracle。
-2. **推进 G6.2 后续 gates**: generic consumer、multi-owned-resource、多个顶层 nested-owned-resource paths、一层/两层/三层/四层/五层/六层 nested-owned-resource、bounded scalar/parameterized dynamic producer、参数化 helper（含六跳 forwarding 与 typed 参数受限重排）与受限 helper-mediated lease slices 已闭环；继续一般 producer lease、borrowed/list/variant、第七跳 forwarding、第七层或更一般 nested resource fields 与更广泛 async method 的独立验证
-2a. **当前 gate 状态**: branch-selected terminal、reordered helper、StreamMirror、pinned negative probes 与 ownership invariant 复核已通过；下一步只能在独立 positive plan 授权后扩大 producer/resource 形状
-3. **推进 D2 已授权的本地 smoke**: 维护 file/dir/CLI/socket create-bind-drop 与私有 `descriptor.get-type`/`descriptor.sync`/`descriptor.get-flags`/`descriptor.stat`/`descriptor.sync-data`/`descriptor.metadata-hash`/`descriptor.metadata-hash-at`/`descriptor.stat-at`/`descriptor.open-at`/`descriptor.set-size`/`descriptor.read-via-stream` gates；通用 filesystem async/external HTTP 另立 target/design 后再推进
-4. **可选授权**: 其他 deferred 项 (ownership / JSON / LSP / codegen 再拆)
+1. **发布候选维护**: 只处理新回归、真实发布阻断和文档漂移。最近一次记录的默认回归与 ReleaseSmall/release smoke 已通过；后续维护项以新证据为准。
+2. **G6.2 bounded work**: 已登记的 capability matrix、ownership invariants、正向 Rust/Wasmtime gates 与 pinned negative gates 已闭环；当前没有已选定的下一个 exact producer/resource shape。新增 shape 前先独立确定需求与 design，再完成 pinned ABI probe、负例、Component parity 和 Rust/Wasmtime cleanup gate。generic producer、borrowed/list/variant、general async/resource 与 root hard-cancel 仍是后续能力，不是当前默认待办。
+3. **D2**: 已授权的本地 file/dir/CLI/socket smoke 和列明的私有 descriptor gates 已完成。`descriptor.advise` 已完成 exact private compiler admission、Component ABI 和 Rust/Wasmtime lifecycle gate；通用 filesystem async 与 external HTTP 需各自另立 target/design。
+4. **P2 / deferred**: 泛型左侧反推默认不改；ownership、JSON、LSP、codegen 再拆等项目需独立立项。
 
 **已关闭边界速查**:
 

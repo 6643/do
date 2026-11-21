@@ -900,6 +900,19 @@ ready/pending/error/cancel cleanup matrix before changing `p3_async_registry`
 or filesystem/HTTP lowering. Cancellation releases live guest/Component state
 and never rolls back an effect already issued to the host.
 
+**D2 `descriptor.advise` ABI probe (2026-11-21):** regular and cancel probe
+worlds assemble and validate with the pinned filesystem WIT. The observed
+method import is direct `(i32,i64,i64,i32,i32)->i32`, not the indirect shape
+expected by the earlier design. The gate checks the six-arm advice order,
+descriptor drop, result area, and cancel imports. It uses PATH
+`wasm-tools 1.263.0` with SHA-256
+`c8b33fa4abc6b2cc85a68a10779c1968f1a98725e5d462ffbc5a71a4a8c8fb87`; this
+task-specific measurement does not change the repository-wide toolchain pin.
+The probe is ABI-only and does not execute a host method or admit compiler
+lowering. See
+`examples/p3-runtime/test_d2_wasi_filesystem_advise_abi.sh` and
+`doc/superpowers/specs/2026-08-11-d2-filesystem-async-advise-design.md`.
+
 ## D2 Bounded Filesystem Async `descriptor.stat` Early-Drop Boundary (2026-08-10)
 
 **Status:** the private `descriptor.stat` WIT/ABI probe, the exact opt-in Do
@@ -1594,8 +1607,16 @@ are `test_do_http_request_body_producer_abi.sh`,
 pending write, one success and one no-payload error, exactly-once endpoint and
 future cleanup, and an empty `ResourceTable`.
 
-This is still a bounded compiler probe. Dynamic producer loops, arbitrary
-stream element types or endpoints, producer error mapping, dynamic trailers,
+The separate `http-request-body-producer-write-error.do` probe covers the
+bounded writer failure path. Wasmtime's stream return status 1 (`Dropped`)
+maps to `StreamClosed`; status 2 (`Cancelled`) maps coarsely to the Do
+`StreamWriteFailed` case, and unknown nonzero statuses trap. This maps
+Component Model control statuses; it does not preserve an underlying WIT error
+payload. The runtime case closes the body consumer after byte 65 and observes
+`StreamClosed`, cancellation of the pending send, exactly-once cleanup, no
+response, and an empty `ResourceTable`; the status-2 mapping is checked in
+generated WAT. This does not enable general producer error mapping. Dynamic
+producer loops, arbitrary stream element types or endpoints, dynamic trailers,
 unregistered/general payload-bearing error codes, and public
 `own<T>`/`borrow<T>`/`ref<T>` syntax remain outside the admitted surface.
 

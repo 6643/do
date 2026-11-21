@@ -425,7 +425,7 @@ executable today.
 | `sockets/types/udp-socket.create` | `result<udp-socket,error-code>` | lowerable (G6.3 B): same shape as tcp create; preferred do `UdpSocket \| UdpError` |
 | `sockets/types/udp-socket.bind` | `result<_,error-code>` | lowerable (G6.3 B): same shape as tcp bind; preferred do `UdpError \| nil` |
 | `sockets/types/udp-socket.drop` | `nil` | lowerable resource-drop `[resource-drop]udp-socket` |
-| `http/client/send` | `result<response,error-code>` | fixed P3 HTTP service lowering: empty request plus one finite pinned CLI `Stream<u8>` body slice, own request transfer, owned response `Ok`, no-payload `error-code` `Err`; registered `internal-error`/`DNS-error` payloads preserve exact values through pending/ready compiler-service gates; explicit `@cancel(completion)` is additionally lowerable for the registered nil-returning payload-cancellation world; dynamic bodies, trailers, unregistered payloads, implicit/terminal/double cancellation, and general source shapes remain unsupported |
+| `http/client/send` | `result<response,error-code>` | fixed P3 HTTP service lowering: empty request plus one finite pinned CLI `Stream<u8>` body slice, own request transfer, owned response `Ok`, and all 15 payload-bearing `error-code` variants from the pinned `wasi:http@0.3.0-rc-2025-09-16` descriptor preserve exact values through pending/ready compiler-service gates; explicit `@cancel(completion)` remains a separate bounded world; dynamic bodies, trailers, future package versions, unknown variants, implicit/terminal/double cancellation, and general source shapes remain unsupported |
 
 For lowerable scalar/record/list<u8>/filesystem-result signatures,
 `shim.lowering` records the component import identity, the concrete `cm32p2`
@@ -847,9 +847,10 @@ task-return ABI and is therefore not used for this combined probe.
 
 This checkpoint does not expose `own<T>`, `borrow<T>`, or `ref<T>` in Do source,
 and it does not admit request body producers, dynamic trailers, trailer payload
-lifting, unregistered/ready payload-bearing error variants, or general HTTP
-resource methods. The two registered payload variants are covered by the
-separate pending compiler-service gate.
+lifting, future package versions, or general HTTP resource methods. The pinned
+`client.send` route covers all 15 measured payload-bearing error variants in its
+separate pending/ready compiler-service gate; unregistered variants remain
+fail-closed.
 
 ### HTTP request body stream checkpoint
 
@@ -867,7 +868,7 @@ Run `bash examples/p3-runtime/test_do_http_request_body_abi.sh` for indexed
 ABI facts, `bash examples/p3-runtime/test_do_http_request_body_lowering.sh` for
 Core/Component assembly, and `bash examples/p3-runtime/test_rust_http_request_body.sh`
 for Wasmtime ownership and cleanup. This remains a fixed descriptor slice;
-arbitrary body producers, dynamic EOF loops, dynamic trailers, unregistered/ready
+arbitrary body producers, dynamic EOF loops, dynamic trailers, unregistered
 payload-bearing error variants, and public `own<T>`/`borrow<T>`/`ref<T>`
 syntax remain outside the supported language surface.
 
@@ -880,9 +881,21 @@ is therefore rejected because it cannot make progress without an attached
 consumer. Its ABI, lowering, and runtime gates are
 `examples/p3-runtime/test_do_http_request_body_producer_abi.sh`,
 `test_do_http_request_body_producer_lowering.sh`, and
-`test_rust_http_request_body_producer.sh`. This does not imply generic producer
-loops, dynamic byte sources, arbitrary stream endpoints, payload-bearing
-errors, or public ownership syntax.
+`test_rust_http_request_body_producer.sh`. The separate
+`http-request-body-producer-write-error.do` probe closes the body consumer after
+byte 65; the second write returns `StreamClosed`, the guest cancels the
+still-pending send, closes the writer, and returns a private
+`Result<nil, ProducerError>`. The private result maps Wasmtime stream status 1
+(`Dropped`) to `StreamClosed` and status 2 (`Cancelled`) coarsely to
+`StreamWriteFailed`; unknown nonzero statuses trap. This does not preserve a WIT
+error payload. Its lowering and runtime gates are
+`test_do_http_request_body_producer_write_error_lowering.sh` and
+`test_rust_http_request_body_producer_write_error.sh`. The Wasmtime runner
+observes one accepted byte, one send cancellation, no response, exactly-once
+Future/stream cleanup, and an empty `ResourceTable`. This remains a fixed
+failure probe; it does not imply generic producer loops, dynamic byte sources,
+arbitrary stream endpoints, general producer error mapping, or public
+ownership syntax.
 
 The serialized completion variant
 `examples/p3-runtime/http-request-body-await-completion.do` awaits the same

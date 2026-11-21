@@ -459,6 +459,42 @@ const pure_lowering_cases = [_]PureLoweringCase{
         .ordered_markers = .{ .first = "call $producer-request-new", .second = "call $producer-stream-drop-writable" },
     },
     .{
+        .name = "HTTP request body producer write-error package lowering",
+        .source = "examples/p3-runtime/http-request-body-producer-write-error.do",
+        .build_flag = "--p3-async-component",
+        .world = "http-request-body-producer-write-error-probe",
+        .wit_snapshot = null,
+        .wit_output_kind = .package,
+        .package_wit_markers = &.{"package wasi:http@0.3.0-rc-2025-09-16"},
+        .package_type_markers = &.{ "consume-body-payload: func(", "request-new-payload: func(" },
+        .package_world_suffix =
+        \\
+        \\interface probe {
+        \\  variant producer-error { http-failure, stream-closed, stream-write-failed }
+        \\  run: async func() -> result<_, producer-error>;
+        \\}
+        \\
+        \\world http-request-body-producer-write-error-probe {
+        \\  import types;
+        \\  import client;
+        \\  import wasi:cli/stdout@0.3.0-rc-2025-09-16;
+        \\  export probe;
+        \\}
+        \\
+        ,
+        .markers = &.{
+            "wasi:cli/stdout@0.3.0-rc-2025-09-16\" \"[stream-new-0]write-via-stream\"",
+            "wasi:cli/stdout@0.3.0-rc-2025-09-16\" \"[async-lower][stream-write-0]write-via-stream\"",
+            "wasi:http/client@0.3.0-rc-2025-09-16\" \"[async-lower]send\"",
+            "(type $task-return (func (param i32 i32)))",
+            "call $subtask-cancel",
+            "call $producer-stream-drop-writable",
+            "(export \"[async-lift]wasi:http/probe@0.3.0-rc-2025-09-16#run\")",
+        },
+        .forbidden_markers = &.{},
+        .ordered_markers = .{ .first = "call $start-producer-send", .second = "call $start-producer-write" },
+    },
+    .{
         .name = "HTTP response consume-body package assembly",
         .source = "examples/p3-runtime/http-response-consume-body.do",
         .build_flag = "--p3-async-component",
