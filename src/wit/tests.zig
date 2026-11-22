@@ -269,7 +269,7 @@ test "wit marshal registry rejects an unknown member" {
     );
 }
 
-test "wit marshal registry rejects async resource and unsupported value members" {
+test "wit marshal registry rejects async and resource members but admits option values" {
     var binding = try resolve.resolve_source(std.testing.allocator, marshal_registry_source, "probe");
     defer binding.deinit();
 
@@ -281,10 +281,8 @@ test "wit marshal registry rejects async resource and unsupported value members"
         error.UnsupportedMarshalMember,
         marshal_registry.find_value_member(&binding, "api", "open"),
     );
-    try std.testing.expectError(
-        error.UnsupportedMarshalMember,
-        marshal_registry.find_value_member(&binding, "api", "choose"),
-    );
+    const choose = try marshal_registry.find_value_member(&binding, "api", "choose");
+    try std.testing.expectEqual(model.TypeKind.option, choose.function.result.?.kind);
 }
 
 test "wit resolver accepts a file input path" {

@@ -142,3 +142,260 @@ test "component marshal route resolves a parser-backed map member" {
     try std.testing.expect(std.mem.indexOf(u8, lift, "demo:marshal-route-map/api@1.0.0") != null);
     try std.testing.expect(std.mem.indexOf(u8, lift, "(result (ref null $do_map))") != null);
 }
+
+test "component marshal route resolves a parser-backed scalar list member" {
+    const source =
+        \\package demo:marshal-route-scalar-list@1.0.0;
+        \\
+        \\interface api {
+        \\  exchange: func(value: list<u16>) -> list<u16>;
+        \\}
+        \\
+        \\world probe { import api; }
+    ;
+    const measured = marshal.MeasuredNode{
+        .layout = .{ .list = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .element_byte_size = 2,
+            .element_stride = 2,
+            .element_alignment = 2,
+            .ticket_offset = 0,
+            .capacity = 4,
+            .accepted_lengths = &.{ 0, 1, 2, 4 },
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } },
+        .children = &.{.{ .layout = .{ .scalar = .{
+            .offset = 0,
+            .byte_size = 2,
+            .alignment = 2,
+            .core_type = .i32,
+        } } }},
+    };
+    const lower = try emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "exchange",
+        .direction = .lower,
+        .measured = measured,
+    });
+    defer std.testing.allocator.free(lower);
+    try std.testing.expect(std.mem.indexOf(u8, lower, "(type $do_u16 (array (mut i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower, "i32.store16") != null);
+
+    const lift = try emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "exchange",
+        .direction = .lift,
+        .measured = measured,
+    });
+    defer std.testing.allocator.free(lift);
+    try std.testing.expect(std.mem.indexOf(u8, lift, "(result (ref null $do_u16))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lift, "i32.load16_u") != null);
+}
+
+test "component marshal route resolves parser-backed option and result members" {
+    const source =
+        \\package demo:marshal-route-variants@1.0.0;
+        \\
+        \\interface api {
+        \\  choose: func(value: option<u32>) -> option<u32>;
+        \\  exchange: func(value: result<string, u32>) -> result<string, u32>;
+        \\}
+        \\
+        \\world probe { import api; }
+    ;
+    const option_measured = marshal.MeasuredNode{
+        .layout = .{ .variant = .{
+            .tag_offset = 0,
+            .payload_offset = 4,
+            .byte_size = 8,
+            .alignment = 4,
+            .cases = &.{
+                .{ .name = "none", .tag = 0, .payload_required = false, .payload = null },
+                .{ .name = "some", .tag = 1, .payload_required = true, .payload = .{ .offset = 4, .byte_size = 4, .alignment = 4, .core_type = .i32 } },
+            },
+        } },
+        .children = &.{.{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } }},
+    };
+    const option = try emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "choose",
+        .direction = .lower,
+        .measured = option_measured,
+    });
+    defer std.testing.allocator.free(option);
+    try std.testing.expect(std.mem.indexOf(u8, option, "demo:marshal-route-variants/api@1.0.0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, option, "call $canonical_call") != null);
+
+    const result_measured = marshal.MeasuredNode{
+        .layout = .{ .variant = .{
+            .tag_offset = 0,
+            .payload_offset = 4,
+            .byte_size = 12,
+            .alignment = 4,
+            .cases = &.{
+                .{ .name = "ok", .tag = 0, .payload_required = true, .payload = .{ .offset = 4, .byte_size = 8, .alignment = 4, .core_type = .i32 } },
+                .{ .name = "err", .tag = 1, .payload_required = true, .payload = .{ .offset = 4, .byte_size = 4, .alignment = 4, .core_type = .i32 } },
+            },
+        } },
+        .children = &.{
+            .{ .layout = .{ .text = .{ .pointer_offset = 0, .length_offset = 4, .byte_size = 8, .alignment = 4, .allocation = .cabi_realloc, .free = .cabi_realloc } } },
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+        },
+    };
+    const result = try emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "exchange",
+        .direction = .lift,
+        .measured = result_measured,
+    });
+    defer std.testing.allocator.free(result);
+    try std.testing.expect(std.mem.indexOf(u8, result, "array.new_default $do_u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "call $cabi_realloc") != null);
+}
+
+test "component marshal route resolves a parser-backed named variant" {
+    const source =
+        \\package demo:marshal-route-named-variant@1.0.0;
+        \\
+        \\interface api {
+        \\  variant event { none, value(u32), }
+        \\  read: func() -> event;
+        \\}
+        \\
+        \\world probe { import api; }
+    ;
+    const measured = marshal.MeasuredNode{
+        .layout = .{ .variant = .{
+            .tag_offset = 0,
+            .payload_offset = 4,
+            .byte_size = 8,
+            .alignment = 4,
+            .cases = &.{
+                .{ .name = "none", .tag = 0, .payload_required = false, .payload = null },
+                .{ .name = "value", .tag = 1, .payload_required = true, .payload = .{ .offset = 4, .byte_size = 4, .alignment = 4, .core_type = .i32 } },
+            },
+        } },
+        .children = &.{.{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } }},
+    };
+    const wat = try emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "read",
+        .direction = .lift,
+        .measured = measured,
+    });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(result i32)") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $do_variant") != null);
+}
+
+test "component marshal route rejects unsupported parser-backed shapes before WAT" {
+    const source =
+        \\package demo:marshal-route-negative@1.0.0;
+        \\
+        \\interface api {
+        \\  tupled: func(value: tuple<u32, string>) -> u32;
+        \\  async_value: func() -> future<u32>;
+        \\}
+        \\
+        \\world probe { import api; }
+    ;
+    try std.testing.expectError(error.UnsupportedMarshalMember, emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "tupled",
+        .direction = .lower,
+        .measured = .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+    }));
+    try std.testing.expectError(error.UnsupportedMarshalMember, emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "async_value",
+        .direction = .lift,
+        .measured = .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+    }));
+}
+
+test "component marshal route rejects resource and async variant payloads before WAT" {
+    const source =
+        \\package demo:marshal-route-unsupported-variants@1.0.0;
+        \\
+        \\interface api {
+        \\  variant resource_event { opened(handle), }
+        \\  resource handle {}
+        \\  resource_value: func() -> resource_event;
+        \\  async_value: func() -> result<future<u32>, u32>;
+        \\}
+        \\
+        \\world probe { import api; }
+    ;
+    const scalar_measured = marshal.MeasuredNode{ .layout = .{ .scalar = .{
+        .offset = 0,
+        .byte_size = 4,
+        .alignment = 4,
+        .core_type = .i32,
+    } } };
+
+    try std.testing.expectError(error.UnsupportedMarshalMember, emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "resource_value",
+        .direction = .lift,
+        .measured = scalar_measured,
+    }));
+    try std.testing.expectError(error.UnsupportedMarshalMember, emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "async_value",
+        .direction = .lift,
+        .measured = scalar_measured,
+    }));
+}
+
+test "component marshal route rejects variant measurement case drift before WAT" {
+    const source =
+        \\package demo:marshal-route-variant-drift@1.0.0;
+        \\
+        \\interface api {
+        \\  choose: func() -> option<u32>;
+        \\}
+        \\
+        \\world probe { import api; }
+    ;
+    const drifted = marshal.MeasuredNode{
+        .layout = .{ .variant = .{
+            .tag_offset = 0,
+            .payload_offset = 4,
+            .byte_size = 8,
+            .alignment = 4,
+            .cases = &.{
+                .{ .name = "none", .tag = 0, .payload_required = false, .payload = null },
+                .{ .name = "renamed", .tag = 1, .payload_required = true, .payload = .{ .offset = 4, .byte_size = 4, .alignment = 4, .core_type = .i32 } },
+            },
+        } },
+        .children = &.{.{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } }},
+    };
+    try std.testing.expectError(error.MissingPayloadMetadata, emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "choose",
+        .direction = .lift,
+        .measured = drifted,
+    }));
+}

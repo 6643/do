@@ -98,7 +98,27 @@ fn convert_type(
         .list => convert_list(allocator, interface, type_ref, active),
         .map => convert_map(allocator, interface, type_ref, active),
         .named => convert_named(allocator, interface, type_ref, active),
-        .unit, .option, .result, .future, .stream, .tuple, .own, .borrow => error.UnsupportedWitMarshalShape,
+        .option => {
+            if (type_ref.args.len != 1) return error.UnsupportedWitMarshalShape;
+            var value = try convert_type(allocator, interface, type_ref.args[0], active);
+            defer value.deinit();
+            return wit_types.AbiType.option(allocator, &value);
+        },
+        .result => {
+            if (type_ref.args.len > 2) return error.UnsupportedWitMarshalShape;
+            const ok_ref = if (type_ref.args.len > 0 and !is_unit_placeholder(type_ref.args[0])) type_ref.args[0] else null;
+            const err_ref = if (type_ref.args.len > 1 and !is_unit_placeholder(type_ref.args[1])) type_ref.args[1] else null;
+            var ok = if (ok_ref) |ref| try convert_type(allocator, interface, ref, active) else null;
+            defer if (ok) |*value| value.deinit();
+            var err = if (err_ref) |ref| try convert_type(allocator, interface, ref, active) else null;
+            defer if (err) |*value| value.deinit();
+            return wit_types.AbiType.result(
+                allocator,
+                if (ok) |*value| value else null,
+                if (err) |*value| value else null,
+            );
+        },
+        .unit, .future, .stream, .tuple, .own, .borrow => error.UnsupportedWitMarshalShape,
         .char => error.UnsupportedWitMarshalShape,
     };
 }
@@ -162,7 +182,6 @@ fn convert_named(
     active: *std.StringHashMap(void),
 ) (ResolveError || wit_types.AbiTypeError || std.mem.Allocator.Error)!wit_types.AbiType {
     if (find_resource(interface.resources, type_ref.name) != null or
-        find_variant(interface.variants, type_ref.name) != null or
         find_enum(interface.enums, type_ref.name) != null or
         find_flags(interface.flags, type_ref.name) != null)
     {
@@ -175,10 +194,40 @@ fn convert_named(
     if (find_alias(interface.aliases, type_ref.name)) |alias| {
         return convert_type(allocator, interface, alias.type_ref, active);
     }
+    if (find_variant(interface.variants, type_ref.name)) |variant| {
+        return convert_variant(allocator, interface, variant, active);
+    }
     if (find_record(interface.records, type_ref.name)) |record| {
         return convert_record(allocator, interface, record, active);
     }
     return error.UnresolvedWitType;
+}
+
+fn convert_variant(
+    allocator: std.mem.Allocator,
+    interface: *const wit_model.InterfaceDecl,
+    variant: *const wit_model.VariantDecl,
+    active: *std.StringHashMap(void),
+) (ResolveError || wit_types.AbiTypeError || std.mem.Allocator.Error)!wit_types.AbiType {
+    const cases = try allocator.alloc(wit_types.VariantSpec, variant.cases.len);
+    var initialized: usize = 0;
+    errdefer {
+        for (cases[0..initialized]) |*case| if (case.payload) |value| @constCast(value).deinit();
+        allocator.free(cases);
+    }
+    for (variant.cases, 0..) |case, index| {
+        var payload = if (case.payload) |payload_ref| try convert_type(allocator, interface, payload_ref, active) else null;
+        cases[index] = .{ .tag = @intCast(index), .name = case.name, .payload = if (payload) |*value| value else null };
+        initialized += 1;
+    }
+    const result = try wit_types.AbiType.variant(allocator, cases[0..initialized]);
+    for (cases[0..initialized]) |*case| if (case.payload) |value| @constCast(value).deinit();
+    allocator.free(cases);
+    return result;
+}
+
+fn is_unit_placeholder(type_ref: *const wit_model.TypeRef) bool {
+    return type_ref.kind == .named and std.mem.eql(u8, type_ref.name, "_");
 }
 
 fn convert_record(

@@ -43,12 +43,12 @@ pub fn find_value_member(
         return error.UnsupportedMarshalMember;
     }
     for (function.params) |param| {
-        if (contains_unsupported_shape(param.type_ref, interface.resources)) {
+        if (contains_unsupported_shape(param.type_ref, interface, 0)) {
             return error.UnsupportedMarshalMember;
         }
     }
     if (function.result) |result| {
-        if (contains_unsupported_shape(result, interface.resources)) {
+        if (contains_unsupported_shape(result, interface, 0)) {
             return error.UnsupportedMarshalMember;
         }
     }
@@ -81,15 +81,41 @@ fn find_function(functions: []const model.FunctionDecl, name: []const u8) ?*cons
 
 fn contains_unsupported_shape(
     type_ref: *const model.TypeRef,
-    resources: []const model.ResourceDecl,
+    interface: *const model.InterfaceDecl,
+    depth: usize,
 ) bool {
-    if (model.type_is_resource(type_ref, resources)) return true;
+    if (depth > 128) return true;
+    if (model.type_is_resource(type_ref, interface.resources)) return true;
     switch (type_ref.kind) {
-        .own, .borrow, .future, .stream, .tuple, .option, .result => return true,
+        .own, .borrow, .future, .stream, .tuple => return true,
         else => {},
     }
     for (type_ref.args) |arg| {
-        if (contains_unsupported_shape(arg, resources)) return true;
+        if (contains_unsupported_shape(arg, interface, depth + 1)) return true;
+    }
+    if (type_ref.kind != .named) return false;
+    for (interface.aliases) |alias| {
+        if (std.mem.eql(u8, alias.name, type_ref.name)) {
+            return contains_unsupported_shape(alias.type_ref, interface, depth + 1);
+        }
+    }
+    for (interface.records) |record| {
+        if (std.mem.eql(u8, record.name, type_ref.name)) {
+            for (record.fields) |field| {
+                if (contains_unsupported_shape(field.type_ref, interface, depth + 1)) return true;
+            }
+            return false;
+        }
+    }
+    for (interface.variants) |variant| {
+        if (std.mem.eql(u8, variant.name, type_ref.name)) {
+            for (variant.cases) |case| {
+                if (case.payload) |payload| {
+                    if (contains_unsupported_shape(payload, interface, depth + 1)) return true;
+                }
+            }
+            return false;
+        }
     }
     return false;
 }
