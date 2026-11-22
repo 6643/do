@@ -18,10 +18,11 @@ compiler/runtime gates 已完成。
 `598f2a0` 修复 pilot guard/test-oracle 的 ARC inventory 分类；当前 scan 为
 `rows=55 matches=492 unclassified=0`，post-cutover
 `normal_route_matches=0`，生产依赖闭包为 `modules=164 forbidden=0`。
-2026-11-21 fresh default `./src/build/test/run_tests.sh` 为 `14/14 steps; 57/57 tests`；
+2026-11-22 fresh default `./src/build/test/run_tests.sh` 为 `14/14 steps; 57/57 tests`；
 `bash examples/p3-runtime/test_do_http_payload_error_lowering.sh all`、
 `test_rust_http_payload_cancellation_request_header_size_probe.sh`、HTTP
-producer write-error lowering/runtime gates 与 ReleaseSmall/release smoke 均通过。
+producer write-error lowering/runtime gates、D2 `descriptor.write-via-stream`
+ABI/lowering/Rust runtime gates 与 ReleaseSmall/release smoke 均通过。
 header-size probe 只验证 canonical ABI discard, 不开放生成式 cancellation lowering。
 
 D2 `descriptor.write-via-stream` 的 pinned ABI、manifest/source admission、
