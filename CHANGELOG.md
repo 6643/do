@@ -1,5 +1,15 @@
 # Changelog
 
+# 2026-11-22 synchronous scalar list canonical marshal:
+  promoted the measured value-only canonical `list<T>` route from `list<u8>` and
+  `list<u32>` to `bool`, `u8`, `u16`, `u32`, `u64`, `i32`, `i64`, `f32`, and `f64`.
+  Lower and lift keep the `(ptr, len)` ABI, select the matching GC typed array and
+  linear load/store width, validate measured size/alignment/stride/core facts before
+  WAT emission, and preserve zero-length allocation/call/reverse-free behavior.
+  Text, record/resource, nested-list, async/stream, `i8`/`i16`, and arbitrary
+  tuple/map lowering remain fail-closed; this does not claim complete WASI support
+  for arbitrary list/map/tuple values.
+
 # 2026-11-22 D2 `descriptor.write-via-stream` bounded promotion:
   pinned the filesystem WIT hash and `(i32,i32,i64,i32)->i32` async method ABI,
   added fail-closed manifest/source admission, and assembled the bounded compiler
@@ -643,7 +653,7 @@
   the synchronous record lowerer now uses one internal
   `ManagedScalarListField` specification for both manifest `byte_list` and
   `list` inputs. The external manifest schema and canonical Component ABI are
-  unchanged. Element kind selects `$do_bytes`/`array.get_s $do_bytes`/
+  unchanged. Element kind selects `$do_u8`/`array.get_s $do_u8`/
   `i32.store8` with stride `1`, or `$do_u32`/`array.get $do_u32`/`i32.store`
   with stride `4`; measured capacity remains `u8=4` and `u32=3`. Length,
   multiplication, linear-span, allocation, canonical-call, and exactly-once
@@ -657,7 +667,7 @@
   the ordinary synchronous `@host_func` route and the explicit
   `--gc-wit-marshal` route. The canonical lift receives one result-area pointer
   for the measured 12-byte record (`code@0`, `payload.ptr@4`,
-  `payload.len@8`), copies the bounded byte list into `$do_bytes`, frees the
+  `payload.len@8`), copies the bounded byte list into `$do_u8`, frees the
   temporary linear span exactly once, and constructs the GC record. Pinned
   `wasm-tools 1.255.0` Component host execution observes `code=7`,
   `payload=[10,20,30]`, `result=67`, one callback, and one allocation/free

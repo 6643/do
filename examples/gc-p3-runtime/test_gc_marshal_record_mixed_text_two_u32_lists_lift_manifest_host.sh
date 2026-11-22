@@ -44,7 +44,7 @@ if rg -q '^\s*\(import.*\(ref' "$tmp_dir/core.wat"; then
   printf 'GC reference crossed canonical mixed text/two-u32-lists record lift import\n' >&2
   exit 1
 fi
-rg -q 'array.new_default \$do_bytes' "$tmp_dir/core.wat"
+rg -q 'array.new_default \$do_u8' "$tmp_dir/core.wat"
 test "$(rg -c 'array.new_default \$do_u32' "$tmp_dir/core.wat")" -eq 2
 test "$(rg -c 'call \$cabi_realloc' "$tmp_dir/core.wat")" -eq 3
 rg -q 'struct.new \$do_record' "$tmp_dir/core.wat"

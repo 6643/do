@@ -80,7 +80,7 @@ test "manifest-backed managed-field record lift probe emits a host entry" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-record-managed-lift/api@1.0.0") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lift (func (param i32)))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(field $field1 (ref null $do_text))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $do_text $length") != null);
 }
 

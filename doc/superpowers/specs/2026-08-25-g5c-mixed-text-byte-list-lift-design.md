@@ -69,7 +69,7 @@ a byte-list span with pointer/length offsets `0/4`, byte size `8`, alignment
 `4`, element byte size/alignment/stride `1/1/1`, capacity `4`, and accepted
 lengths `0, 1, 2, 3, 4`; its allocation and free authority is `cabi_realloc`.
 The scalar `code` uses Core `i32`; byte elements use `i32.load8_u` and the
-managed GC array type `$do_bytes`.
+managed GC array type `$do_u8`.
 
 The canonical lift import has one result-area pointer and no Core result:
 
@@ -91,12 +91,12 @@ spans. The generated lift performs this sequence:
 2. load `code`, label pointer/length, and payload pointer/length;
 3. validate both linear spans and the byte-list bounds without multiplication
    overflow;
-4. allocate `$do_bytes` and copy the label with `i32.load8_u`;
-5. allocate `$do_bytes` and copy the payload with `i32.load8_u`;
+4. allocate `$do_u8` and copy the label with `i32.load8_u`;
+5. allocate `$do_u8` and copy the payload with `i32.load8_u`;
 6. free the payload span exactly once;
 7. free the label span exactly once;
 8. construct and publish one `$do_record` containing `code`, `$do_text`, and
-   the payload `$do_bytes` value.
+   the payload `$do_u8` value.
 
 Empty label and empty payload are valid. A malformed pointer/length pair,
 length above `4`, integer overflow, or an out-of-bounds span traps before the

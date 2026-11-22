@@ -426,7 +426,7 @@ only for the exact synchronous source/WIT pair
 is 20 bytes with field offsets `0`, `4`, and `12`; the `list<u32>` child has
 capacity `3`, element size/alignment/stride `4`, and the canonical lift import
 has one `i32` result-area pointer with no GC reference. The GC lift copies the
-label into `$do_bytes` and the payload into `$do_u32`, then frees payload before
+label into `$do_u8` and the payload into `$do_u32`, then frees payload before
 label exactly once. Host output is `code=7`, `label=hello`,
 `payload=[10,20,5]`, `result=47`, `stats=34`, `read-calls=1`,
 `allocations=2`, `frees=2`; ARC/GC equivalence observes `47/47`, `34/34`,
@@ -449,7 +449,7 @@ only for the exact synchronous source/WIT pair
 is 20 bytes with field offsets `0`, `4`, and `12`; the `list<u8>` child has
 capacity `4`, element size/alignment/stride `1`, and the canonical lift import
 has one `i32` result-area pointer with no GC reference. The GC lift copies both
-label and payload into `$do_bytes`, then frees payload before label exactly once.
+label and payload into `$do_u8`, then frees payload before label exactly once.
 Host output is `code=7`, `label=hello`, `payload=[10,20,5]`, `result=47`,
 `stats=17`, `read-calls=1`, `allocations=2`, `frees=2`; ARC/GC equivalence
 observes `47/47`, `17/17`, and `1/1`. Fixtures `649–656` reject async,
@@ -524,7 +524,7 @@ The hash-pinned descriptor
 exact source/WIT pair `Reading { code: u32, payload: [u8] }`. The ordinary
 default route and explicit `--gc-wit-marshal` route share the measured 12-byte
 result area and one `(i32)` canonical lift pointer. The lift validates the
-result-area and list span, copies `payload` into a GC `$do_bytes` array, frees
+result-area and list span, copies `payload` into a GC `$do_u8` array, frees
 the temporary linear span exactly once, and constructs one GC record. The host
 gate observes `code=7`, `payload=[10,20,30]`, `result=67`, one callback, one
 allocation/free pair, and `stats=17`; ARC/GC equivalence observes `67/67`,

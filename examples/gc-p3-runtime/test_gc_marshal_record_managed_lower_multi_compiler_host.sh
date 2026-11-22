@@ -40,7 +40,7 @@ if rg -q '^\s*\(import.*\(ref' "$tmp_dir/core.wat"; then
   printf 'GC reference crossed canonical multi-managed-text lower import\n' >&2
   exit 1
 fi
-test "$(rg -c 'array.get_s \$do_bytes' "$tmp_dir/core.wat")" -eq 2
+test "$(rg -c 'array.get_s \$do_u8' "$tmp_dir/core.wat")" -eq 2
 test "$(rg -c 'call \$cabi_realloc' "$tmp_dir/core.wat")" -eq 4
 rg -q '\(local \$label \(ref null \$do_text\)\)' "$tmp_dir/core.wat"
 rg -q '\(local \$note \(ref null \$do_text\)\)' "$tmp_dir/core.wat"

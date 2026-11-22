@@ -66,7 +66,7 @@
 - Consumes: the Task 2 managed-text `MemoryPlan`.
 - Produces: `(type $canonical_lower (func (param i32 i32 i32)))`, `$do_record` with `u32`/`do_text` fields, exported memory/realloc, byte copy, canonical call, and post-call free.
 
-- [x] **Step 1: Add RED emitter assertions.** Assert that the exact plan requires three canonical params, contains `array.get_s $do_bytes`, `call $canonical_call` before the realloc free, and rejects GC-reference imports/indirect managed lower.
+- [x] **Step 1: Add RED emitter assertions.** Assert that the exact plan requires three canonical params, contains `array.get_s $do_u8`, `call $canonical_call` before the realloc free, and rejects GC-reference imports/indirect managed lower.
 - [x] **Step 2: Run the focused emitter/module tests and capture failure.** Run `cd src && zig test main.zig --test-filter 'canonical marshal WAT.*managed|marshal module.*managed'`.
 - [x] **Step 3: Implement flat text parameter emission.** Extend the canonical record type builder for text as two `i32` words and add the specialized root lower emitter that loads scalar and text bytes, allocates, copies, calls, then frees.
 - [x] **Step 4: Ensure module resources are emitted.** Mark managed-text lower as using linear memory and realloc; keep result-area/indirect paths unchanged.

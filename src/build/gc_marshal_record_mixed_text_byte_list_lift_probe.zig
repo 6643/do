@@ -88,21 +88,21 @@ pub fn emit_mixed_text_byte_list_lift_module(
         \\    struct.get $do_record $field2
         \\    ref.as_non_null
         \\    i32.const 0
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.add
         \\    local.get $reading
         \\    ref.as_non_null
         \\    struct.get $do_record $field2
         \\    ref.as_non_null
         \\    i32.const 1
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.add
         \\    local.get $reading
         \\    ref.as_non_null
         \\    struct.get $do_record $field2
         \\    ref.as_non_null
         \\    i32.const 2
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.add)
         \\  (func $stats (result i32)
         \\    global.get $__alloc_count
@@ -123,8 +123,8 @@ test "mixed text byte-list lift probe emits the fixed host entry" {
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-record-mixed-text-byte-list-lift/api@1.0.0") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lift (func (param i32)))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_bytes") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get_s $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get_s $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"run\" (func $run))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"stats\" (func $stats))") != null);
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "call $cabi_realloc"));

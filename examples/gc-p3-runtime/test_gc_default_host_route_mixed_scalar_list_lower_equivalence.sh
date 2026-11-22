@@ -52,7 +52,7 @@ if rg -q '^\s*\(import.*\(ref' "$arc_core_wat"; then
   printf 'ARC oracle canonical import unexpectedly carries a GC reference\n' >&2
   exit 1
 fi
-test "$(rg -c 'array.get_s \$do_bytes' "$tmp_dir/gc.core.wat")" -eq 2
+test "$(rg -c 'array.get_s \$do_u8' "$tmp_dir/gc.core.wat")" -eq 2
 test "$(rg -c 'i32.store8' "$tmp_dir/gc.core.wat")" -eq 2
 mapfile -t realloc_lines < <(rg -n 'call \$cabi_realloc' "$tmp_dir/gc.core.wat" | cut -d: -f1)
 test "${#realloc_lines[@]}" -eq 4

@@ -37,7 +37,7 @@ if rg -q '__arc_' "$tmp_dir/gc.core.wat"; then
   exit 1
 fi
 rg -q '\(type \$canonical_lift \(func \(param i32\)\)\)' "$tmp_dir/gc.core.wat"
-rg -q 'array.set \$do_bytes' "$tmp_dir/gc.core.wat"
+rg -q 'array.set \$do_u8' "$tmp_dir/gc.core.wat"
 rg -q 'i32.load8_u' "$tmp_dir/gc.core.wat"
 if rg -q '^\s*\(import.*\(ref' "$tmp_dir/gc.core.wat" "$arc_core_wat"; then
   printf 'GC reference crossed canonical mixed text/byte-list lift import\n' >&2

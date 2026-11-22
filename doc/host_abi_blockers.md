@@ -38,7 +38,7 @@ The synchronous bounded record lower path now normalizes manifest `byte_list`
 and `list<u32>` measurements into one internal `ManagedScalarListField` and
 one parameterized WAT emitter. The only selected differences are GC array
 kind, load/store instruction, measured stride, and measured capacity:
-`u8 -> $do_bytes / array.get_s $do_bytes / i32.store8 / 1 / 4` and
+`u8 -> $do_u8 / array.get_s $do_u8 / i32.store8 / 1 / 4` and
 `u32 -> $do_u32 / array.get $do_u32 / i32.store / 4 / 3`. The external
 manifest kinds, canonical ABI, synchronous `@host_func` boundary, linear-span
 guard, and exactly-once free contract are unchanged. This closes an internal
@@ -321,7 +321,7 @@ inventory row is still pending.
 
 The bounded synchronous text plan now also has a standalone Core-module
 assembly checkpoint. `src/build/codegen_component_marshal_module.zig` wraps
-the parser-backed plan with the measured `$do_bytes`/`$do_text` declarations,
+the parser-backed plan with the measured `$do_u8`/`$do_text` declarations,
 linear memory, a typed `cabi_realloc`, and a descriptor-checked canonical
 import. `examples/gc-p3-runtime/test_gc_marshal_text_component.sh` runs the
 exact pinned `wasm-tools 1.255.0` sequence (`parse`, `component embed`,
@@ -604,7 +604,7 @@ frames, resources, and G5c default routing remain blocked.
 
 **Status:** GO only for a parsed payload enum with exactly one unit arm and one
 `[u8]` arm, for example `Message = Empty | Bytes([u8])`. The GC carrier is a
-typed immutable struct containing an `i32` tag and nullable `do_bytes`
+typed immutable struct containing an `i32` tag and nullable `do_u8`
 reference. `Empty` constructs a null payload; `Bytes(bytes)` stores the direct
 `[u8]` reference; rewriting allocates a distinct union object and leaves the
 input union unchanged.
@@ -3470,7 +3470,7 @@ The descriptor manifest now pins
 `reading { code: u32, label: string }` record. The measured result area is 12
 bytes with `code@0`, `label.ptr@4`, and `label.len@8`; canonical lift remains a
 single `(i32)` result-area pointer. The private GC emitter copies the measured
-text span into `$do_bytes`, constructs `$do_text`, and then constructs the
+text span into `$do_u8`, constructs `$do_text`, and then constructs the
 record. The canonical import contains no GC reference.
 
 `test_gc_marshal_record_managed_lift_manifest_host.sh` passes pinned Core and

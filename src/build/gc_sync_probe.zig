@@ -2399,12 +2399,12 @@ fn append_byte_list_probe(
     };
     try generated_text.append_block(allocator, out, 2,
         \\  (func (export "probe") (result i32)
-        \\    (local $original (ref $do_bytes))
-        \\    (local $updated (ref null $do_bytes))
+        \\    (local $original (ref $do_u8))
+        \\    (local $updated (ref null $do_u8))
         \\    i32.const 1
         \\    i32.const 2
         \\    i32.const 3
-        \\    array.new_fixed $do_bytes 3
+        \\    array.new_fixed $do_u8 3
         \\    local.tee $original
     );
     if (call_shape == .parameterized_list_update) {
@@ -2422,14 +2422,14 @@ fn append_byte_list_probe(
         \\    local.set $updated
         \\    local.get $original
         \\    i32.const {[original_index]d}
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.const {[original_value]d}
         \\    i32.ne
         \\    if unreachable end
         \\    local.get $updated
         \\    ref.as_non_null
         \\    i32.const {[updated_index]d}
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.const 65
         \\    i32.ne
         \\    if unreachable end
@@ -2501,12 +2501,12 @@ fn append_managed_text_branch_probe(
         \\    (local $selected (ref null $do_text))
         \\    i32.const 1
         \\    i32.const 97
-        \\    array.new_fixed $do_bytes 1
+        \\    array.new_fixed $do_u8 1
         \\    struct.new $do_text
         \\    local.set $left
         \\    i32.const 1
         \\    i32.const 98
-        \\    array.new_fixed $do_bytes 1
+        \\    array.new_fixed $do_u8 1
         \\    struct.new $do_text
         \\    local.set $right
         \\    i32.const 1
@@ -2607,7 +2607,7 @@ fn append_managed_struct_list_literal_probe(
             \\    struct.get ${[struct_name]s} ${[managed_field_name]s}
             \\    ref.as_non_null
             \\    i32.const {[index]d}
-            \\    array.get_s $do_bytes
+            \\    array.get_s $do_u8
             \\    i32.const {[value]d}
             \\    i32.ne
             \\    if unreachable end
@@ -2639,7 +2639,7 @@ fn append_managed_struct_list_put_probe(
     defer allocator.free(list_array_name);
 
     try out.appendSlice(allocator, wat[0..module_end]);
-    try generated_text.append_fmt_block(allocator, out, 0, "  (func (export \"probe\") (result i32)\n    (local $original (ref null {[list_array_name]s}))\n    (local $updated (ref null {[list_array_name_2]s}))\n    (local $original_element (ref null ${[struct_name]s}))\n    (local $updated_first (ref null ${[struct_name_2]s}))\n    (local $updated_second (ref null ${[struct_name_3]s}))\n    (local $value (ref null ${[struct_name_4]s}))\n    i32.const 7\n    i32.const 12\n    i32.const 17\n    array.new_fixed $do_bytes 3\n    i32.const 7\n    struct.new ${[struct_name_5]s}\n    array.new_fixed {[list_array_name_3]s} 1\n    local.set $original\n    i32.const 42\n    array.new_fixed $do_bytes 1\n    i32.const 9\n    struct.new ${[struct_name_6]s}\n    local.set $value\n    local.get $original\n    local.get $value\n    call ${[function_name]s}\n    local.set $updated\n    local.get $original\n    ref.as_non_null\n    array.len\n    i32.const 1\n    i32.ne\n    if unreachable end\n    local.get $original\n    ref.as_non_null\n    i32.const 0\n    array.get {[list_array_name_4]s}\n    local.set $original_element\n    local.get $original_element\n    ref.as_non_null\n    struct.get ${[struct_name_7]s} ${[scalar_field_name]s}\n    i32.const 7\n    i32.ne\n    if unreachable end\n    local.get $original_element\n    ref.as_non_null\n    struct.get ${[struct_name_8]s} ${[managed_field_name]s}\n    ref.as_non_null\n    i32.const 0\n    array.get_s $do_bytes\n    i32.const 7\n    i32.ne\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    array.len\n    i32.const 2\n    i32.ne\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    i32.const 0\n    array.get {[list_array_name_5]s}\n    local.set $updated_first\n    local.get $updated\n    ref.as_non_null\n    i32.const 1\n    array.get {[list_array_name_6]s}\n    local.set $updated_second\n    local.get $updated_first\n    ref.as_non_null\n    struct.get ${[struct_name_9]s} ${[scalar_field_name_2]s}\n    i32.const 7\n    i32.ne\n    if unreachable end\n    local.get $updated_second\n    ref.as_non_null\n    struct.get ${[struct_name_10]s} ${[scalar_field_name_3]s}\n    i32.const 9\n    i32.ne\n    if unreachable end\n    local.get $updated_second\n    ref.as_non_null\n    struct.get ${[struct_name_11]s} ${[managed_field_name_2]s}\n    ref.as_non_null\n    i32.const 0\n    array.get_s $do_bytes\n    i32.const 42\n    i32.ne\n    if unreachable end\n    i32.const 27815)\n)\n", .{
+    try generated_text.append_fmt_block(allocator, out, 0, "  (func (export \"probe\") (result i32)\n    (local $original (ref null {[list_array_name]s}))\n    (local $updated (ref null {[list_array_name_2]s}))\n    (local $original_element (ref null ${[struct_name]s}))\n    (local $updated_first (ref null ${[struct_name_2]s}))\n    (local $updated_second (ref null ${[struct_name_3]s}))\n    (local $value (ref null ${[struct_name_4]s}))\n    i32.const 7\n    i32.const 12\n    i32.const 17\n    array.new_fixed $do_u8 3\n    i32.const 7\n    struct.new ${[struct_name_5]s}\n    array.new_fixed {[list_array_name_3]s} 1\n    local.set $original\n    i32.const 42\n    array.new_fixed $do_u8 1\n    i32.const 9\n    struct.new ${[struct_name_6]s}\n    local.set $value\n    local.get $original\n    local.get $value\n    call ${[function_name]s}\n    local.set $updated\n    local.get $original\n    ref.as_non_null\n    array.len\n    i32.const 1\n    i32.ne\n    if unreachable end\n    local.get $original\n    ref.as_non_null\n    i32.const 0\n    array.get {[list_array_name_4]s}\n    local.set $original_element\n    local.get $original_element\n    ref.as_non_null\n    struct.get ${[struct_name_7]s} ${[scalar_field_name]s}\n    i32.const 7\n    i32.ne\n    if unreachable end\n    local.get $original_element\n    ref.as_non_null\n    struct.get ${[struct_name_8]s} ${[managed_field_name]s}\n    ref.as_non_null\n    i32.const 0\n    array.get_s $do_u8\n    i32.const 7\n    i32.ne\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    array.len\n    i32.const 2\n    i32.ne\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    i32.const 0\n    array.get {[list_array_name_5]s}\n    local.set $updated_first\n    local.get $updated\n    ref.as_non_null\n    i32.const 1\n    array.get {[list_array_name_6]s}\n    local.set $updated_second\n    local.get $updated_first\n    ref.as_non_null\n    struct.get ${[struct_name_9]s} ${[scalar_field_name_2]s}\n    i32.const 7\n    i32.ne\n    if unreachable end\n    local.get $updated_second\n    ref.as_non_null\n    struct.get ${[struct_name_10]s} ${[scalar_field_name_3]s}\n    i32.const 9\n    i32.ne\n    if unreachable end\n    local.get $updated_second\n    ref.as_non_null\n    struct.get ${[struct_name_11]s} ${[managed_field_name_2]s}\n    ref.as_non_null\n    i32.const 0\n    array.get_s $do_u8\n    i32.const 42\n    i32.ne\n    if unreachable end\n    i32.const 27815)\n)\n", .{
         .list_array_name = list_array_name,
         .list_array_name_2 = list_array_name,
         .list_array_name_3 = list_array_name,
@@ -2711,7 +2711,7 @@ fn append_text_list_literal_probe(
         \\    struct.get $do_text $bytes
         \\    ref.as_non_null
         \\    i32.const 0
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.const 97
         \\    i32.ne
         \\    if unreachable end
@@ -2726,7 +2726,7 @@ fn append_text_list_literal_probe(
         \\    struct.get $do_text $bytes
         \\    ref.as_non_null
         \\    i32.const 0
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.const 98
         \\    i32.ne
         \\    if unreachable end
@@ -2746,7 +2746,7 @@ fn append_text_list_put_probe(
     const module_end = std.mem.lastIndexOf(u8, wat, ")\n") orelse return error.InvalidGcSyncProbeWat;
     if (module_end + 2 != wat.len) return error.InvalidGcSyncProbeWat;
     try out.appendSlice(allocator, wat[0..module_end]);
-    try generated_text.append_fmt_block(allocator, out, 0, "  (func (export \"probe\") (result i32)\n    (local $original (ref $do_list_text))\n    (local $updated (ref null $do_list_text))\n    (local $first (ref null $do_text))\n    (local $second (ref null $do_text))\n    (local $original_first (ref null $do_text))\n    (local $updated_first (ref null $do_text))\n    i32.const 1\n    i32.const 97\n    array.new_fixed $do_bytes 1\n    struct.new $do_text\n    local.set $first\n    i32.const 2\n    i32.const 98\n    i32.const 99\n    array.new_fixed $do_bytes 2\n    struct.new $do_text\n    local.set $second\n    local.get $first\n    array.new_fixed $do_list_text 1\n    local.tee $original\n    local.get $second\n    call ${[function_name]s}\n    local.set $updated\n    local.get $original\n    ref.as_non_null\n    array.len\n    i32.const 1\n    i32.ne\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    array.len\n    i32.const 2\n    i32.ne\n    if unreachable end\n    local.get $original\n    ref.as_non_null\n    i32.const 0\n    array.get $do_list_text\n    local.set $original_first\n    local.get $updated\n    ref.as_non_null\n    i32.const 0\n    array.get $do_list_text\n    local.set $updated_first\n    local.get $original_first\n    local.get $updated_first\n    ref.eq\n    i32.eqz\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    i32.const 1\n    array.get $do_list_text\n    ref.as_non_null\n    struct.get $do_text $length\n    i32.const 2\n    i32.ne\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    i32.const 1\n    array.get $do_list_text\n    ref.as_non_null\n    struct.get $do_text $bytes\n    ref.as_non_null\n    i32.const 0\n    array.get_s $do_bytes\n    i32.const 98\n    i32.ne\n    if unreachable end\n    i32.const 27815)\n)\n", .{ .function_name = probe.function_name });
+    try generated_text.append_fmt_block(allocator, out, 0, "  (func (export \"probe\") (result i32)\n    (local $original (ref $do_list_text))\n    (local $updated (ref null $do_list_text))\n    (local $first (ref null $do_text))\n    (local $second (ref null $do_text))\n    (local $original_first (ref null $do_text))\n    (local $updated_first (ref null $do_text))\n    i32.const 1\n    i32.const 97\n    array.new_fixed $do_u8 1\n    struct.new $do_text\n    local.set $first\n    i32.const 2\n    i32.const 98\n    i32.const 99\n    array.new_fixed $do_u8 2\n    struct.new $do_text\n    local.set $second\n    local.get $first\n    array.new_fixed $do_list_text 1\n    local.tee $original\n    local.get $second\n    call ${[function_name]s}\n    local.set $updated\n    local.get $original\n    ref.as_non_null\n    array.len\n    i32.const 1\n    i32.ne\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    array.len\n    i32.const 2\n    i32.ne\n    if unreachable end\n    local.get $original\n    ref.as_non_null\n    i32.const 0\n    array.get $do_list_text\n    local.set $original_first\n    local.get $updated\n    ref.as_non_null\n    i32.const 0\n    array.get $do_list_text\n    local.set $updated_first\n    local.get $original_first\n    local.get $updated_first\n    ref.eq\n    i32.eqz\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    i32.const 1\n    array.get $do_list_text\n    ref.as_non_null\n    struct.get $do_text $length\n    i32.const 2\n    i32.ne\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    i32.const 1\n    array.get $do_list_text\n    ref.as_non_null\n    struct.get $do_text $bytes\n    ref.as_non_null\n    i32.const 0\n    array.get_s $do_u8\n    i32.const 98\n    i32.ne\n    if unreachable end\n    i32.const 27815)\n)\n", .{ .function_name = probe.function_name });
 }
 
 fn append_nested_byte_list_probe(
@@ -2764,7 +2764,7 @@ fn append_nested_byte_list_probe(
         2,
         \\  (func (export "probe") (result i32)
         \\    (local $result (ref null $do_list_list_u8))
-        \\    (local $row (ref null $do_bytes))
+        \\    (local $row (ref null $do_u8))
         \\    call ${[function_name]s}
         \\    local.tee $result
         \\    ref.as_non_null
@@ -2795,7 +2795,7 @@ fn append_nested_byte_list_probe(
             \\    local.get $row
             \\    ref.as_non_null
             \\    i32.const {[index]d}
-            \\    array.get_s $do_bytes
+            \\    array.get_s $do_u8
             \\    i32.const {[value]d}
             \\    i32.ne
             \\    if unreachable end
@@ -2825,20 +2825,20 @@ fn append_nested_byte_list_put_probe(
         \\  (func (export "probe") (result i32)
         \\    (local $original (ref $do_list_list_u8))
         \\    (local $updated (ref null $do_list_list_u8))
-        \\    (local $row (ref $do_bytes))
-        \\    (local $original_row (ref null $do_bytes))
-        \\    (local $updated_first (ref null $do_bytes))
-        \\    (local $updated_second (ref null $do_bytes))
+        \\    (local $row (ref $do_u8))
+        \\    (local $original_row (ref null $do_u8))
+        \\    (local $updated_first (ref null $do_u8))
+        \\    (local $updated_second (ref null $do_u8))
         \\    i32.const 1
         \\    i32.const 2
         \\    i32.const 3
-        \\    array.new_fixed $do_bytes 3
+        \\    array.new_fixed $do_u8 3
         \\    local.tee $row
         \\    array.new_fixed $do_list_list_u8 1
         \\    local.tee $original
         \\    i32.const 4
         \\    i32.const 5
-        \\    array.new_fixed $do_bytes 2
+        \\    array.new_fixed $do_u8 2
         \\    call ${[function_name]s}
         \\    local.set $updated
         \\    local.get $original
@@ -2867,7 +2867,7 @@ fn append_nested_byte_list_put_probe(
         \\    local.get $original_row
         \\    ref.as_non_null
         \\    i32.const 0
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.const 1
         \\    i32.ne
         \\    if unreachable end
@@ -2895,14 +2895,14 @@ fn append_nested_byte_list_put_probe(
         \\    local.get $updated_second
         \\    ref.as_non_null
         \\    i32.const 0
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.const 4
         \\    i32.ne
         \\    if unreachable end
         \\    local.get $updated_second
         \\    ref.as_non_null
         \\    i32.const 1
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.const 5
         \\    i32.ne
         \\    if unreachable end
@@ -2935,7 +2935,7 @@ fn append_managed_text_identity_probe(
         \\    i32.const 108
         \\    i32.const 108
         \\    i32.const 111
-        \\    array.new_fixed $do_bytes 5
+        \\    array.new_fixed $do_u8 5
         \\    struct.new $do_text
         \\    local.tee $input
         \\    call ${[function_name]s}
@@ -2956,7 +2956,7 @@ fn append_managed_text_identity_probe(
         \\    struct.get $do_text $bytes
         \\    ref.as_non_null
         \\    i32.const 0
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.const 104
         \\    i32.ne
         \\    if unreachable end
@@ -3683,7 +3683,7 @@ fn append_managed_struct_call_payload_probe(
     defer allocator.free(scalar_field_name);
 
     try out.appendSlice(allocator, wat[0..module_end]);
-    try generated_text.append_fmt_block(allocator, out, 2, "  (func (export \"probe\") (result i32)\n    (local $original (ref ${[struct_name]s}))\n    (local $updated (ref null ${[struct_name_2]s}))\n    (local $original_value (ref null $do_bytes))\n    (local $updated_value (ref null $do_bytes))\n", .{ .struct_name = struct_name, .struct_name_2 = struct_name });
+    try generated_text.append_fmt_block(allocator, out, 2, "  (func (export \"probe\") (result i32)\n    (local $original (ref ${[struct_name]s}))\n    (local $updated (ref null ${[struct_name_2]s}))\n    (local $original_value (ref null $do_u8))\n    (local $updated_value (ref null $do_u8))\n", .{ .struct_name = struct_name, .struct_name_2 = struct_name });
     if (probe.managed_field_first) {
         try generated_text.append_block(
             allocator,
@@ -3692,7 +3692,7 @@ fn append_managed_struct_call_payload_probe(
             \\    i32.const 1
             \\    i32.const 2
             \\    i32.const 3
-            \\    array.new_fixed $do_bytes 3
+            \\    array.new_fixed $do_u8 3
             \\    i32.const 7
             \\
             ,
@@ -3703,7 +3703,7 @@ fn append_managed_struct_call_payload_probe(
             \\    i32.const 1
             \\    i32.const 2
             \\    i32.const 3
-            \\    array.new_fixed $do_bytes 3
+            \\    array.new_fixed $do_u8 3
             \\
         );
     }
@@ -3728,21 +3728,21 @@ fn append_managed_struct_call_payload_probe(
         \\    local.get $original_value
         \\    ref.as_non_null
         \\    i32.const 0
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.const 1
         \\    i32.ne
         \\    if unreachable end
         \\    local.get $original_value
         \\    ref.as_non_null
         \\    i32.const 1
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.const 2
         \\    i32.ne
         \\    if unreachable end
         \\    local.get $original_value
         \\    ref.as_non_null
         \\    i32.const 2
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.const 3
         \\    i32.ne
         \\    if unreachable end
@@ -3755,14 +3755,14 @@ fn append_managed_struct_call_payload_probe(
         \\    local.get $updated_value
         \\    ref.as_non_null
         \\    i32.const 0
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.const 1
         \\    i32.ne
         \\    if unreachable end
         \\    local.get $updated_value
         \\    ref.as_non_null
         \\    i32.const 1
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.const 2
         \\    i32.ne
         \\    if unreachable end
@@ -3798,7 +3798,7 @@ fn append_managed_struct_call_text_probe(
             \\    i32.const 111
             \\    i32.const 108
             \\    i32.const 100
-            \\    array.new_fixed $do_bytes 3
+            \\    array.new_fixed $do_u8 3
             \\    struct.new $do_text
             \\    i32.const 7
             \\
@@ -3814,7 +3814,7 @@ fn append_managed_struct_call_text_probe(
             \\    i32.const 111
             \\    i32.const 108
             \\    i32.const 100
-            \\    array.new_fixed $do_bytes 3
+            \\    array.new_fixed $do_u8 3
             \\    struct.new $do_text
             \\
             ,
@@ -3849,7 +3849,7 @@ fn append_managed_struct_call_text_probe(
         \\    struct.get $do_text $bytes
         \\    ref.as_non_null
         \\    i32.const 0
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.const 102
         \\    i32.ne
         \\    if unreachable end
@@ -3870,13 +3870,13 @@ fn append_managed_struct_payload_probe(
     const struct_name = try lowered_wat_name(allocator, probe.struct_name);
     defer allocator.free(struct_name);
     try out.appendSlice(allocator, wat[0..module_end]);
-    try generated_text.append_fmt_block(allocator, out, 2, "  (func (export \"probe\") (result i32)\n    (local $original (ref ${[struct_name]s}))\n    (local $replacement (ref $do_bytes))\n    (local $updated (ref null ${[struct_name_2]s}))\n", .{ .struct_name = struct_name, .struct_name_2 = struct_name });
+    try generated_text.append_fmt_block(allocator, out, 2, "  (func (export \"probe\") (result i32)\n    (local $original (ref ${[struct_name]s}))\n    (local $replacement (ref $do_u8))\n    (local $updated (ref null ${[struct_name_2]s}))\n", .{ .struct_name = struct_name, .struct_name_2 = struct_name });
     if (probe.managed_field_first) {
         try generated_text.append_block(allocator, out, 4,
             \\    i32.const 1
             \\    i32.const 2
             \\    i32.const 3
-            \\    array.new_fixed $do_bytes 3
+            \\    array.new_fixed $do_u8 3
             \\    i32.const 7
             \\
         );
@@ -3886,11 +3886,11 @@ fn append_managed_struct_payload_probe(
             \\    i32.const 1
             \\    i32.const 2
             \\    i32.const 3
-            \\    array.new_fixed $do_bytes 3
+            \\    array.new_fixed $do_u8 3
             \\
         );
     }
-    try generated_text.append_fmt_block(allocator, out, 4, "    struct.new ${[struct_name]s}\n    local.tee $original\n    i32.const 65\n    i32.const 66\n    array.new_fixed $do_bytes 2\n    local.tee $replacement\n    call ${[function_name]s}\n    local.set $updated\n    local.get $original\n    local.get $updated\n    ref.as_non_null\n    ref.eq\n    if unreachable end\n", .{ .struct_name = struct_name, .function_name = probe.function_name });
+    try generated_text.append_fmt_block(allocator, out, 4, "    struct.new ${[struct_name]s}\n    local.tee $original\n    i32.const 65\n    i32.const 66\n    array.new_fixed $do_u8 2\n    local.tee $replacement\n    call ${[function_name]s}\n    local.set $updated\n    local.get $original\n    local.get $updated\n    ref.as_non_null\n    ref.eq\n    if unreachable end\n", .{ .struct_name = struct_name, .function_name = probe.function_name });
     try append_managed_field_checks(allocator, out, struct_name, probe.managed_field_name, "original", 3, &.{ 1, 2, 3 });
     try append_scalar_field_check(allocator, out, struct_name, probe.scalar_field_name, "original");
     try append_managed_field_checks(allocator, out, struct_name, probe.managed_field_name, "updated", 2, &.{ 65, 66 });
@@ -3985,7 +3985,7 @@ fn append_nested_managed_struct_probe(
     defer allocator.free(inner_name);
 
     try out.appendSlice(allocator, wat[0..module_end]);
-    try generated_text.append_fmt_block(allocator, out, 2, "  (func (export \"probe\") (result i32)\n    (local $original (ref ${[outer_name]s}))\n    (local $old_child (ref ${[inner_name]s}))\n    (local $replacement (ref ${[inner_name_2]s}))\n    (local $updated (ref null ${[outer_name_2]s}))\n    i32.const 1\n    i32.const 2\n    i32.const 3\n    array.new_fixed $do_bytes 3\n    struct.new ${[inner_name_3]s}\n    local.set $old_child\n", .{ .outer_name = outer_name, .inner_name = inner_name, .inner_name_2 = inner_name, .outer_name_2 = outer_name, .inner_name_3 = inner_name });
+    try generated_text.append_fmt_block(allocator, out, 2, "  (func (export \"probe\") (result i32)\n    (local $original (ref ${[outer_name]s}))\n    (local $old_child (ref ${[inner_name]s}))\n    (local $replacement (ref ${[inner_name_2]s}))\n    (local $updated (ref null ${[outer_name_2]s}))\n    i32.const 1\n    i32.const 2\n    i32.const 3\n    array.new_fixed $do_u8 3\n    struct.new ${[inner_name_3]s}\n    local.set $old_child\n", .{ .outer_name = outer_name, .inner_name = inner_name, .inner_name_2 = inner_name, .outer_name_2 = outer_name, .inner_name_3 = inner_name });
     if (probe.outer_child_first) {
         try generated_text.append_block(allocator, out, 4,
             \\    local.get $old_child
@@ -3999,7 +3999,7 @@ fn append_nested_managed_struct_probe(
             \\
         );
     }
-    try generated_text.append_fmt_block(allocator, out, 4, "    struct.new ${[outer_name]s}\n    local.tee $original\n    i32.const 65\n    i32.const 66\n    array.new_fixed $do_bytes 2\n    struct.new ${[inner_name]s}\n    local.tee $replacement\n    call ${[function_name]s}\n    local.set $updated\n    local.get $original\n    local.get $updated\n    ref.as_non_null\n    ref.eq\n    if unreachable end\n    local.get $original\n    ref.as_non_null\n    struct.get ${[outer_name_2]s} ${[outer_child_field_name]s}\n    local.get $old_child\n    ref.eq\n    i32.eqz\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    struct.get ${[outer_name_3]s} ${[outer_child_field_name_2]s}\n    local.get $replacement\n    ref.eq\n    i32.eqz\n    if unreachable end\n", .{ .outer_name = outer_name, .inner_name = inner_name, .function_name = probe.function_name, .outer_name_2 = outer_name, .outer_child_field_name = probe.outer_child_field_name, .outer_name_3 = outer_name, .outer_child_field_name_2 = probe.outer_child_field_name });
+    try generated_text.append_fmt_block(allocator, out, 4, "    struct.new ${[outer_name]s}\n    local.tee $original\n    i32.const 65\n    i32.const 66\n    array.new_fixed $do_u8 2\n    struct.new ${[inner_name]s}\n    local.tee $replacement\n    call ${[function_name]s}\n    local.set $updated\n    local.get $original\n    local.get $updated\n    ref.as_non_null\n    ref.eq\n    if unreachable end\n    local.get $original\n    ref.as_non_null\n    struct.get ${[outer_name_2]s} ${[outer_child_field_name]s}\n    local.get $old_child\n    ref.eq\n    i32.eqz\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    struct.get ${[outer_name_3]s} ${[outer_child_field_name_2]s}\n    local.get $replacement\n    ref.eq\n    i32.eqz\n    if unreachable end\n", .{ .outer_name = outer_name, .inner_name = inner_name, .function_name = probe.function_name, .outer_name_2 = outer_name, .outer_child_field_name = probe.outer_child_field_name, .outer_name_3 = outer_name, .outer_child_field_name_2 = probe.outer_child_field_name });
     try append_nested_child_checks(allocator, out, outer_name, probe.outer_child_field_name, inner_name, probe.inner_payload_field_name, "original", 3, &.{ 1, 2, 3 });
     try append_scalar_field_check(allocator, out, outer_name, probe.outer_scalar_field_name, "original");
     try append_nested_child_checks(allocator, out, outer_name, probe.outer_child_field_name, inner_name, probe.inner_payload_field_name, "updated", 2, &.{ 65, 66 });
@@ -4028,7 +4028,7 @@ fn append_nested_managed_scalar_field_probe(
     defer allocator.free(inner_name);
 
     try out.appendSlice(allocator, wat[0..module_end]);
-    try generated_text.append_fmt_block(allocator, out, 2, "  (func (export \"probe\") (result i32)\n    (local $original (ref ${[outer_name]s}))\n    (local $old_child (ref ${[inner_name]s}))\n    (local $updated (ref null ${[outer_name_2]s}))\n    i32.const 3\n    i32.const 111\n    i32.const 108\n    i32.const 100\n    array.new_fixed $do_bytes 3\n    struct.new ${[inner_name_2]s}\n    local.set $old_child\n", .{ .outer_name = outer_name, .inner_name = inner_name, .outer_name_2 = outer_name, .inner_name_2 = inner_name });
+    try generated_text.append_fmt_block(allocator, out, 2, "  (func (export \"probe\") (result i32)\n    (local $original (ref ${[outer_name]s}))\n    (local $old_child (ref ${[inner_name]s}))\n    (local $updated (ref null ${[outer_name_2]s}))\n    i32.const 3\n    i32.const 111\n    i32.const 108\n    i32.const 100\n    array.new_fixed $do_u8 3\n    struct.new ${[inner_name_2]s}\n    local.set $old_child\n", .{ .outer_name = outer_name, .inner_name = inner_name, .outer_name_2 = outer_name, .inner_name_2 = inner_name });
     if (probe.outer_child_first) {
         try generated_text.append_block(allocator, out, 4,
             \\    local.get $old_child
@@ -4092,7 +4092,7 @@ fn append_two_level_nested_managed_scalar_field_probe(
             \\    i32.const 111
             \\    i32.const 108
             \\    i32.const 100
-            \\    array.new_fixed $do_bytes 3
+            \\    array.new_fixed $do_u8 3
             \\    i32.const 3
             \\
             ,
@@ -4106,7 +4106,7 @@ fn append_two_level_nested_managed_scalar_field_probe(
             \\    i32.const 111
             \\    i32.const 108
             \\    i32.const 100
-            \\    array.new_fixed $do_bytes 3
+            \\    array.new_fixed $do_u8 3
             \\
             ,
         );
@@ -4202,7 +4202,7 @@ fn append_three_level_nested_managed_scalar_field_probe(
             \\    i32.const 111
             \\    i32.const 108
             \\    i32.const 100
-            \\    array.new_fixed $do_bytes 3
+            \\    array.new_fixed $do_u8 3
             \\
         );
     } else {
@@ -4210,7 +4210,7 @@ fn append_three_level_nested_managed_scalar_field_probe(
             \\    i32.const 111
             \\    i32.const 108
             \\    i32.const 100
-            \\    array.new_fixed $do_bytes 3
+            \\    array.new_fixed $do_u8 3
             \\    i32.const 3
             \\
         );
@@ -4322,7 +4322,7 @@ fn append_unbounded_nested_scalar_path_probe(
     const terminal = probe.nodes[terminal_index];
     for (terminal.fields) |field| {
         if (std.mem.eql(u8, field.ty, "[u8]")) {
-            try out.appendSlice(allocator, "    i32.const 111\n    i32.const 108\n    i32.const 100\n    array.new_fixed $do_bytes 3\n");
+            try out.appendSlice(allocator, "    i32.const 111\n    i32.const 108\n    i32.const 100\n    array.new_fixed $do_u8 3\n");
         } else {
             try out.appendSlice(allocator, "    i32.const 777\n");
         }
@@ -4371,7 +4371,7 @@ fn append_unbounded_nested_scalar_path_probe(
     try out.appendSlice(allocator, "    ref.as_non_null\n    array.len\n    i32.const 3\n    i32.ne\n    if unreachable end\n");
     for ([_]u32{ 111, 108, 100 }, 0..) |value, index| {
         try append_unbounded_path_field(allocator, out, probe, "$updated", terminal_index, probe.terminal_payload_field);
-        try append_fmt(allocator, out, "    ref.as_non_null\n    i32.const {[index]d}\n    array.get_s $do_bytes\n    i32.const {[value]d}\n    i32.ne\n    if unreachable end\n", .{ .index = index, .value = value });
+        try append_fmt(allocator, out, "    ref.as_non_null\n    i32.const {[index]d}\n    array.get_s $do_u8\n    i32.const {[value]d}\n    i32.ne\n    if unreachable end\n", .{ .index = index, .value = value });
     }
     try out.appendSlice(allocator, "    i32.const 27815)\n)\n");
 }
@@ -4445,7 +4445,7 @@ fn append_five_level_nested_managed_scalar_field_probe(
             \\    i32.const 111
             \\    i32.const 108
             \\    i32.const 100
-            \\    array.new_fixed $do_bytes 3
+            \\    array.new_fixed $do_u8 3
             \\
         );
     } else {
@@ -4453,7 +4453,7 @@ fn append_five_level_nested_managed_scalar_field_probe(
             \\    i32.const 111
             \\    i32.const 108
             \\    i32.const 100
-            \\    array.new_fixed $do_bytes 3
+            \\    array.new_fixed $do_u8 3
             \\    i32.const 3
             \\
         );
@@ -4605,7 +4605,7 @@ fn append_four_level_nested_managed_scalar_field_probe(
             \\    i32.const 111
             \\    i32.const 108
             \\    i32.const 100
-            \\    array.new_fixed $do_bytes 3
+            \\    array.new_fixed $do_u8 3
             \\
         );
     } else {
@@ -4613,7 +4613,7 @@ fn append_four_level_nested_managed_scalar_field_probe(
             \\    i32.const 111
             \\    i32.const 108
             \\    i32.const 100
-            \\    array.new_fixed $do_bytes 3
+            \\    array.new_fixed $do_u8 3
             \\    i32.const 3
             \\
         );
@@ -4751,7 +4751,7 @@ fn append_nested_bytes_chain_check(
         for (struct_names, field_names) |struct_name, field_name| {
             try generated_text.append_fmt_block(allocator, out, 4, "    ref.as_non_null\n    struct.get ${[struct_name]s} ${[field_name]s}\n", .{ .struct_name = struct_name, .field_name = field_name });
         }
-        try generated_text.append_fmt_block(allocator, out, 4, "    ref.as_non_null\n    i32.const {[index]d}\n    array.get_s $do_bytes\n    i32.const {[value]d}\n    i32.ne\n    if unreachable end\n", .{ .index = index, .value = value });
+        try generated_text.append_fmt_block(allocator, out, 4, "    ref.as_non_null\n    i32.const {[index]d}\n    array.get_s $do_u8\n    i32.const {[value]d}\n    i32.ne\n    if unreachable end\n", .{ .index = index, .value = value });
     }
 }
 
@@ -4767,7 +4767,7 @@ fn append_managed_tuple_text_bytes_probe(
     ) orelse return error.InvalidGcSyncProbeWat;
     if (module_end + 2 != wat.len) return error.InvalidGcSyncProbeWat;
     try out.appendSlice(allocator, wat[0..module_end]);
-    try generated_text.append_fmt_block(allocator, out, 0, "  (func (export \"probe\") (result i32)\n    (local $original (ref $tuple_text_bytes))\n    (local $updated (ref null $tuple_text_bytes))\n    (local $text (ref $do_text))\n    i32.const 2\n    i32.const 104\n    i32.const 105\n    array.new_fixed $do_bytes 2\n    struct.new $do_text\n    local.tee $text\n    i32.const 1\n    i32.const 2\n    i32.const 3\n    array.new_fixed $do_bytes 3\n    struct.new $tuple_text_bytes\n    local.tee $original\n    call ${[function_name]s}\n    local.set $updated\n    local.get $original\n    local.get $updated\n    ref.as_non_null\n    ref.eq\n    if unreachable end\n    local.get $original\n    ref.as_non_null\n    struct.get $tuple_text_bytes $text\n    local.get $text\n    ref.eq\n    i32.eqz\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    struct.get $tuple_text_bytes $text\n    local.get $text\n    ref.eq\n    i32.eqz\n    if unreachable end\n    local.get $original\n    ref.as_non_null\n    struct.get $tuple_text_bytes $bytes\n    ref.as_non_null\n    i32.const 0\n    array.get_s $do_bytes\n    i32.const 1\n    i32.ne\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    struct.get $tuple_text_bytes $bytes\n    ref.as_non_null\n    i32.const 0\n    array.get_s $do_bytes\n    i32.const 65\n    i32.ne\n    if unreachable end\n    i32.const 27815)\n)\n", .{ .function_name = probe.function_name });
+    try generated_text.append_fmt_block(allocator, out, 0, "  (func (export \"probe\") (result i32)\n    (local $original (ref $tuple_text_bytes))\n    (local $updated (ref null $tuple_text_bytes))\n    (local $text (ref $do_text))\n    i32.const 2\n    i32.const 104\n    i32.const 105\n    array.new_fixed $do_u8 2\n    struct.new $do_text\n    local.tee $text\n    i32.const 1\n    i32.const 2\n    i32.const 3\n    array.new_fixed $do_u8 3\n    struct.new $tuple_text_bytes\n    local.tee $original\n    call ${[function_name]s}\n    local.set $updated\n    local.get $original\n    local.get $updated\n    ref.as_non_null\n    ref.eq\n    if unreachable end\n    local.get $original\n    ref.as_non_null\n    struct.get $tuple_text_bytes $text\n    local.get $text\n    ref.eq\n    i32.eqz\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    struct.get $tuple_text_bytes $text\n    local.get $text\n    ref.eq\n    i32.eqz\n    if unreachable end\n    local.get $original\n    ref.as_non_null\n    struct.get $tuple_text_bytes $bytes\n    ref.as_non_null\n    i32.const 0\n    array.get_s $do_u8\n    i32.const 1\n    i32.ne\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    struct.get $tuple_text_bytes $bytes\n    ref.as_non_null\n    i32.const 0\n    array.get_s $do_u8\n    i32.const 65\n    i32.ne\n    if unreachable end\n    i32.const 27815)\n)\n", .{ .function_name = probe.function_name });
 }
 
 fn append_payload_union_probe(
@@ -4782,7 +4782,7 @@ fn append_payload_union_probe(
     defer allocator.free(union_name);
 
     try out.appendSlice(allocator, wat[0..module_end]);
-    try generated_text.append_fmt_block(allocator, out, 0, "  (func (export \"probe\") (result i32)\n    (local $original (ref ${[union_name]s}))\n    (local $replacement (ref $do_bytes))\n    (local $updated (ref null ${[union_name_2]s}))\n    i32.const {[unit_tag]d}\n    ref.null $do_bytes\n    struct.new ${[union_name_3]s}\n    local.set $original\n    i32.const 1\n    i32.const 2\n    i32.const 3\n    array.new_fixed $do_bytes 3\n    local.set $replacement\n    local.get $original\n    local.get $replacement\n    call ${[function_name]s}\n    local.set $updated\n    local.get $original\n    local.get $updated\n    ref.as_non_null\n    ref.eq\n    if unreachable end\n    local.get $original\n    ref.as_non_null\n    struct.get ${[union_name_4]s} $tag\n    i32.const {[unit_tag_2]d}\n    i32.ne\n    if unreachable end\n    local.get $original\n    ref.as_non_null\n    struct.get ${[union_name_5]s} $bytes\n    ref.is_null\n    i32.eqz\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    struct.get ${[union_name_6]s} $tag\n    i32.const {[managed_tag]d}\n    i32.ne\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    struct.get ${[union_name_7]s} $bytes\n    local.get $replacement\n    ref.eq\n    i32.eqz\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    struct.get ${[union_name_8]s} $bytes\n    ref.as_non_null\n    array.len\n    i32.const 3\n    i32.ne\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    struct.get ${[union_name_9]s} $bytes\n    ref.as_non_null\n    i32.const 0\n    array.get_s $do_bytes\n    i32.const 1\n    i32.ne\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    struct.get ${[union_name_10]s} $bytes\n    ref.as_non_null\n    i32.const 1\n    array.get_s $do_bytes\n    i32.const 2\n    i32.ne\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    struct.get ${[union_name_11]s} $bytes\n    ref.as_non_null\n    i32.const 2\n    array.get_s $do_bytes\n    i32.const 3\n    i32.ne\n    if unreachable end\n    i32.const 27815)\n)\n", .{ .union_name = union_name, .union_name_2 = union_name, .unit_tag = probe.unit_tag, .union_name_3 = union_name, .function_name = probe.function_name, .union_name_4 = union_name, .unit_tag_2 = probe.unit_tag, .union_name_5 = union_name, .union_name_6 = union_name, .managed_tag = probe.managed_tag, .union_name_7 = union_name, .union_name_8 = union_name, .union_name_9 = union_name, .union_name_10 = union_name, .union_name_11 = union_name });
+    try generated_text.append_fmt_block(allocator, out, 0, "  (func (export \"probe\") (result i32)\n    (local $original (ref ${[union_name]s}))\n    (local $replacement (ref $do_u8))\n    (local $updated (ref null ${[union_name_2]s}))\n    i32.const {[unit_tag]d}\n    ref.null $do_u8\n    struct.new ${[union_name_3]s}\n    local.set $original\n    i32.const 1\n    i32.const 2\n    i32.const 3\n    array.new_fixed $do_u8 3\n    local.set $replacement\n    local.get $original\n    local.get $replacement\n    call ${[function_name]s}\n    local.set $updated\n    local.get $original\n    local.get $updated\n    ref.as_non_null\n    ref.eq\n    if unreachable end\n    local.get $original\n    ref.as_non_null\n    struct.get ${[union_name_4]s} $tag\n    i32.const {[unit_tag_2]d}\n    i32.ne\n    if unreachable end\n    local.get $original\n    ref.as_non_null\n    struct.get ${[union_name_5]s} $bytes\n    ref.is_null\n    i32.eqz\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    struct.get ${[union_name_6]s} $tag\n    i32.const {[managed_tag]d}\n    i32.ne\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    struct.get ${[union_name_7]s} $bytes\n    local.get $replacement\n    ref.eq\n    i32.eqz\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    struct.get ${[union_name_8]s} $bytes\n    ref.as_non_null\n    array.len\n    i32.const 3\n    i32.ne\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    struct.get ${[union_name_9]s} $bytes\n    ref.as_non_null\n    i32.const 0\n    array.get_s $do_u8\n    i32.const 1\n    i32.ne\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    struct.get ${[union_name_10]s} $bytes\n    ref.as_non_null\n    i32.const 1\n    array.get_s $do_u8\n    i32.const 2\n    i32.ne\n    if unreachable end\n    local.get $updated\n    ref.as_non_null\n    struct.get ${[union_name_11]s} $bytes\n    ref.as_non_null\n    i32.const 2\n    array.get_s $do_u8\n    i32.const 3\n    i32.ne\n    if unreachable end\n    i32.const 27815)\n)\n", .{ .union_name = union_name, .union_name_2 = union_name, .unit_tag = probe.unit_tag, .union_name_3 = union_name, .function_name = probe.function_name, .union_name_4 = union_name, .unit_tag_2 = probe.unit_tag, .union_name_5 = union_name, .union_name_6 = union_name, .managed_tag = probe.managed_tag, .union_name_7 = union_name, .union_name_8 = union_name, .union_name_9 = union_name, .union_name_10 = union_name, .union_name_11 = union_name });
 }
 
 fn append_nested_child_checks(
@@ -4798,7 +4798,7 @@ fn append_nested_child_checks(
 ) !void {
     try generated_text.append_fmt_block(allocator, out, 4, "    local.get ${[local_name]s}\n    ref.as_non_null\n    struct.get ${[outer_name]s} ${[outer_field_name]s}\n    ref.as_non_null\n    struct.get ${[inner_name]s} ${[inner_field_name]s}\n    array.len\n    i32.const {[length]d}\n    i32.ne\n    if unreachable end\n", .{ .local_name = local_name, .outer_name = outer_name, .outer_field_name = outer_field_name, .inner_name = inner_name, .inner_field_name = inner_field_name, .length = length });
     for (values, 0..) |value, index| {
-        try generated_text.append_fmt_block(allocator, out, 4, "    local.get ${[local_name]s}\n    ref.as_non_null\n    struct.get ${[outer_name]s} ${[outer_field_name]s}\n    ref.as_non_null\n    struct.get ${[inner_name]s} ${[inner_field_name]s}\n    i32.const {[index]d}\n    array.get_s $do_bytes\n    i32.const {[value]d}\n    i32.ne\n    if unreachable end\n", .{ .local_name = local_name, .outer_name = outer_name, .outer_field_name = outer_field_name, .inner_name = inner_name, .inner_field_name = inner_field_name, .index = index, .value = value });
+        try generated_text.append_fmt_block(allocator, out, 4, "    local.get ${[local_name]s}\n    ref.as_non_null\n    struct.get ${[outer_name]s} ${[outer_field_name]s}\n    ref.as_non_null\n    struct.get ${[inner_name]s} ${[inner_field_name]s}\n    i32.const {[index]d}\n    array.get_s $do_u8\n    i32.const {[value]d}\n    i32.ne\n    if unreachable end\n", .{ .local_name = local_name, .outer_name = outer_name, .outer_field_name = outer_field_name, .inner_name = inner_name, .inner_field_name = inner_field_name, .index = index, .value = value });
     }
 }
 
@@ -4826,7 +4826,7 @@ fn append_managed_field_checks(
 ) !void {
     try generated_text.append_fmt_block(allocator, out, 4, "    local.get ${[local_name]s}\n    ref.as_non_null\n    struct.get ${[struct_name]s} ${[field_name]s}\n    array.len\n    i32.const {[length]d}\n    i32.ne\n    if unreachable end\n", .{ .local_name = local_name, .struct_name = struct_name, .field_name = field_name, .length = length });
     for (values, 0..) |value, index| {
-        try generated_text.append_fmt_block(allocator, out, 4, "    local.get ${[local_name]s}\n    ref.as_non_null\n    struct.get ${[struct_name]s} ${[field_name]s}\n    i32.const {[index]d}\n    array.get_s $do_bytes\n    i32.const {[value]d}\n    i32.ne\n    if unreachable end\n", .{ .local_name = local_name, .struct_name = struct_name, .field_name = field_name, .index = index, .value = value });
+        try generated_text.append_fmt_block(allocator, out, 4, "    local.get ${[local_name]s}\n    ref.as_non_null\n    struct.get ${[struct_name]s} ${[field_name]s}\n    i32.const {[index]d}\n    array.get_s $do_u8\n    i32.const {[value]d}\n    i32.ne\n    if unreachable end\n", .{ .local_name = local_name, .struct_name = struct_name, .field_name = field_name, .index = index, .value = value });
     }
 }
 
@@ -4855,7 +4855,7 @@ fn append_byte_list_put_probe(
     const module_end = std.mem.lastIndexOf(u8, wat, ")\n") orelse return error.InvalidGcSyncProbeWat;
     if (module_end + 2 != wat.len) return error.InvalidGcSyncProbeWat;
     try out.appendSlice(allocator, wat[0..module_end]);
-    try generated_text.append_fmt_block(allocator, out, 0, "  (func (export \"probe\") (result i32)\n    (local $empty (ref $do_bytes))\n    (local $empty_result (ref null $do_bytes))\n    (local $original (ref $do_bytes))\n    (local $first (ref null $do_bytes))\n    (local $second (ref null $do_bytes))\n    i32.const 0\n    array.new_default $do_bytes\n    local.tee $empty\n    i32.const 42\n    call ${[function_name]s}\n    local.set $empty_result\n    local.get $empty\n    array.len\n    i32.const 0\n    i32.ne\n    if unreachable end\n    local.get $empty_result\n    ref.as_non_null\n    array.len\n    i32.const 1\n    i32.ne\n    if unreachable end\n    local.get $empty_result\n    ref.as_non_null\n    i32.const 0\n    array.get_s $do_bytes\n    i32.const 42\n    i32.ne\n    if unreachable end\n    i32.const 1\n    i32.const 2\n    i32.const 3\n    array.new_fixed $do_bytes 3\n    local.tee $original\n    i32.const 65\n    call ${[function_name_2]s}\n    local.set $first\n    local.get $original\n    i32.const 66\n    call ${[function_name_3]s}\n    local.set $second\n    local.get $first\n    local.get $second\n    ref.eq\n    if unreachable end\n    local.get $original\n    array.len\n    i32.const 3\n    i32.ne\n    if unreachable end\n    local.get $original\n    i32.const 0\n    array.get_s $do_bytes\n    i32.const 1\n    i32.ne\n    if unreachable end\n    local.get $original\n    i32.const 1\n    array.get_s $do_bytes\n    i32.const 2\n    i32.ne\n    if unreachable end\n    local.get $original\n    i32.const 2\n    array.get_s $do_bytes\n    i32.const 3\n    i32.ne\n    if unreachable end\n    local.get $first\n    ref.as_non_null\n    array.len\n    i32.const 4\n    i32.ne\n    if unreachable end\n    local.get $first\n    ref.as_non_null\n    i32.const 3\n    array.get_s $do_bytes\n    i32.const 65\n    i32.ne\n    if unreachable end\n    local.get $second\n    ref.as_non_null\n    i32.const 3\n    array.get_s $do_bytes\n    i32.const 66\n    i32.ne\n    if unreachable end\n    i32.const 27815)\n)\n", .{ .function_name = function_name, .function_name_2 = function_name, .function_name_3 = function_name });
+    try generated_text.append_fmt_block(allocator, out, 0, "  (func (export \"probe\") (result i32)\n    (local $empty (ref $do_u8))\n    (local $empty_result (ref null $do_u8))\n    (local $original (ref $do_u8))\n    (local $first (ref null $do_u8))\n    (local $second (ref null $do_u8))\n    i32.const 0\n    array.new_default $do_u8\n    local.tee $empty\n    i32.const 42\n    call ${[function_name]s}\n    local.set $empty_result\n    local.get $empty\n    array.len\n    i32.const 0\n    i32.ne\n    if unreachable end\n    local.get $empty_result\n    ref.as_non_null\n    array.len\n    i32.const 1\n    i32.ne\n    if unreachable end\n    local.get $empty_result\n    ref.as_non_null\n    i32.const 0\n    array.get_s $do_u8\n    i32.const 42\n    i32.ne\n    if unreachable end\n    i32.const 1\n    i32.const 2\n    i32.const 3\n    array.new_fixed $do_u8 3\n    local.tee $original\n    i32.const 65\n    call ${[function_name_2]s}\n    local.set $first\n    local.get $original\n    i32.const 66\n    call ${[function_name_3]s}\n    local.set $second\n    local.get $first\n    local.get $second\n    ref.eq\n    if unreachable end\n    local.get $original\n    array.len\n    i32.const 3\n    i32.ne\n    if unreachable end\n    local.get $original\n    i32.const 0\n    array.get_s $do_u8\n    i32.const 1\n    i32.ne\n    if unreachable end\n    local.get $original\n    i32.const 1\n    array.get_s $do_u8\n    i32.const 2\n    i32.ne\n    if unreachable end\n    local.get $original\n    i32.const 2\n    array.get_s $do_u8\n    i32.const 3\n    i32.ne\n    if unreachable end\n    local.get $first\n    ref.as_non_null\n    array.len\n    i32.const 4\n    i32.ne\n    if unreachable end\n    local.get $first\n    ref.as_non_null\n    i32.const 3\n    array.get_s $do_u8\n    i32.const 65\n    i32.ne\n    if unreachable end\n    local.get $second\n    ref.as_non_null\n    i32.const 3\n    array.get_s $do_u8\n    i32.const 66\n    i32.ne\n    if unreachable end\n    i32.const 27815)\n)\n", .{ .function_name = function_name, .function_name_2 = function_name, .function_name_3 = function_name });
 }
 
 fn append_byte_list_literal_probe(
@@ -4867,7 +4867,7 @@ fn append_byte_list_literal_probe(
     const module_end = std.mem.lastIndexOf(u8, wat, ")\n") orelse return error.InvalidGcSyncProbeWat;
     if (module_end + 2 != wat.len) return error.InvalidGcSyncProbeWat;
     try out.appendSlice(allocator, wat[0..module_end]);
-    try generated_text.append_fmt_block(allocator, out, 0, "  (func (export \"probe\") (result i32)\n    (local $first (ref $do_bytes))\n    (local $second (ref null $do_bytes))\n    call ${[function_name]s}\n    ref.as_non_null\n    local.set $first\n    call ${[function_name_2]s}\n    local.tee $second\n    ref.as_non_null\n    local.get $first\n    ref.eq\n    if unreachable end\n    local.get $first\n    array.len\n    i32.const 3\n    i32.ne\n    if unreachable end\n    local.get $first\n    i32.const 0\n    array.get_s $do_bytes\n    i32.const 7\n    i32.ne\n    if unreachable end\n    local.get $first\n    i32.const 1\n    array.get_s $do_bytes\n    i32.const 12\n    i32.ne\n    if unreachable end\n    local.get $first\n    i32.const 2\n    array.get_s $do_bytes\n    i32.const 17\n    i32.ne\n    if unreachable end\n    i32.const 27815)\n)\n", .{ .function_name = function_name, .function_name_2 = function_name });
+    try generated_text.append_fmt_block(allocator, out, 0, "  (func (export \"probe\") (result i32)\n    (local $first (ref $do_u8))\n    (local $second (ref null $do_u8))\n    call ${[function_name]s}\n    ref.as_non_null\n    local.set $first\n    call ${[function_name_2]s}\n    local.tee $second\n    ref.as_non_null\n    local.get $first\n    ref.eq\n    if unreachable end\n    local.get $first\n    array.len\n    i32.const 3\n    i32.ne\n    if unreachable end\n    local.get $first\n    i32.const 0\n    array.get_s $do_u8\n    i32.const 7\n    i32.ne\n    if unreachable end\n    local.get $first\n    i32.const 1\n    array.get_s $do_u8\n    i32.const 12\n    i32.ne\n    if unreachable end\n    local.get $first\n    i32.const 2\n    array.get_s $do_u8\n    i32.const 17\n    i32.ne\n    if unreachable end\n    i32.const 27815)\n)\n", .{ .function_name = function_name, .function_name_2 = function_name });
 }
 
 fn append_fmt(allocator: std.mem.Allocator, out: *std.ArrayList(u8), comptime format: []const u8, args: anytype) !void {

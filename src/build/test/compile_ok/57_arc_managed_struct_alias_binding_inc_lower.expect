@@ -1,6 +1,6 @@
 ;; backend=gc
 ;; gc-sync source_len=189 token_count=52
-(type $box (struct (field $value (ref null $do_bytes))))
+(type $box (struct (field $value (ref null $do_u8))))
 struct.new $box
 local.set $alias
 ;; gc-root local_bind $alias

@@ -41,7 +41,7 @@ append_byte(input [u8], value u8) -> [u8] {
 start() {}
 ```
 
-Assert the WAT contains `array.new_default $do_bytes`, `array.copy $do_bytes $do_bytes`, `array.set $do_bytes`, and no `__arc_`. Add separate tests asserting `@put(input, 1, 2)`, `@put(input, ...values)`, and a `[u32]` receiver fail with `UnsupportedGcSyncExpression` or `UnsupportedGcSyncType` as defined by the spec.
+Assert the WAT contains `array.new_default $do_u8`, `array.copy $do_u8 $do_u8`, `array.set $do_u8`, and no `__arc_`. Add separate tests asserting `@put(input, 1, 2)`, `@put(input, ...values)`, and a `[u32]` receiver fail with `UnsupportedGcSyncExpression` or `UnsupportedGcSyncType` as defined by the spec.
 
 - [x] **Step 2: Run the focused test to verify RED**
 
@@ -65,7 +65,7 @@ Recognize only `@put(receiver, value)` with an identifier receiver of type `[u8]
 
 - [x] **Step 2: Emit runtime-length copy plus append**
 
-Use the existing temporary locals. Compute `length + 1`, allocate `array.new_default $do_bytes`, copy `length` elements with `array.copy`, then write at index `length` with `array.set`. Return the new list reference and leave the source untouched.
+Use the existing temporary locals. Compute `length + 1`, allocate `array.new_default $do_u8`, copy `length` elements with `array.copy`, then write at index `length` with `array.set`. Return the new list reference and leave the source untouched.
 
 - [x] **Step 3: Run the focused Zig suite**
 

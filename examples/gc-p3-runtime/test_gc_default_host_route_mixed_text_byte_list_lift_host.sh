@@ -38,7 +38,7 @@ fi
 rg -q '\(type \$canonical_lift \(func \(param i32\)\)\)' "$tmp_dir/core.wat"
 rg -q '\(import "demo:marshal-record-mixed-text-byte-list-lift/api@1.0.0" "read"' "$tmp_dir/core.wat"
 rg -q 'call \$read' "$tmp_dir/core.wat"
-rg -q 'array.set \$do_bytes' "$tmp_dir/core.wat"
+rg -q 'array.set \$do_u8' "$tmp_dir/core.wat"
 rg -q 'i32.load8_u' "$tmp_dir/core.wat"
 rg -q 'struct.new \$reading' "$tmp_dir/core.wat"
 if rg -q '^\s*\(import.*\(ref' "$tmp_dir/core.wat"; then

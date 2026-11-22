@@ -1,4 +1,4 @@
-(func $dup (result (ref null $do_bytes) (ref null $do_bytes))
+(func $dup (result (ref null $do_u8) (ref null $do_u8))
 local.get $data
 local.get $data
 return

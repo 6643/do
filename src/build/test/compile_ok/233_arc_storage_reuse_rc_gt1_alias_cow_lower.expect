@@ -1,9 +1,9 @@
 ;; backend=gc
 ;; gc-sync source_len=143 token_count=43
 count=0 __arc_
-count=1 array.new_default $do_bytes
-count=1 array.copy $do_bytes $do_bytes
-count=1 array.set $do_bytes
+count=1 array.new_default $do_u8
+count=1 array.copy $do_u8 $do_u8
+count=1 array.set $do_u8
 local.set $alias
 ;; gc-root local_bind $alias
 local.set $next

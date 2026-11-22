@@ -1,5 +1,5 @@
 ;; gc-sync
-array.new_fixed $do_bytes 3
+array.new_fixed $do_u8 3
 ;; gc-root local_bind $data
 if
 else

@@ -63,7 +63,7 @@ current evidence without reconstructing an unobserved missing-runner failure.
   offsets, capacities, and element kinds fixed in the validator; do not make
   the existing generic list matcher accept arbitrary records.
 - [x] **Step 4: Add the WAT assertions** for the seven-word import,
-  `array.get_s $do_bytes`, `array.get $do_u32`, span guards before loads, and
+  `array.get_s $do_u8`, `array.get $do_u32`, span guards before loads, and
   `values -> bytes -> label` cleanup. The current assertions pass.
 - [x] **Step 5: Implement the fixed emitter and rerun focused operation/WAT
   tests.** The emitter must preserve the existing cleanup-mask trap path.

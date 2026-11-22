@@ -394,7 +394,7 @@ admission.
 `nested-byte-list.do` exercises one `[[u8]]` value through nested literal
 construction, outer `@len`, indexed `@get`, inner `@len`, and a collection loop.
 The `test_do_gc_nested_byte_list.sh` probe validates the outer
-`$do_list_list_u8` and inner `$do_bytes` GC arrays with `wasm-tools 1.255.0`
+`$do_list_list_u8` and inner `$do_u8` GC arrays with `wasm-tools 1.255.0`
 and Wasmtime `-W gc=y`, returning the `27815` oracle after checking all inner
 bytes.
 
@@ -468,7 +468,7 @@ lowering remain outside admission; the migration inventory stays
 
 `gc-payload-union.do` is the bounded G5a union carrier probe. It admits only
 `Unit | Bytes([u8])` payload-enum declarations, lowers the carrier to a typed
-GC struct `(tag i32, bytes (ref null $do_bytes))`, and preserves source-value
+GC struct `(tag i32, bytes (ref null $do_u8))`, and preserves source-value
 immutability by allocating a new union for `Bytes(bytes)`. The parsed GC route
 also supports a typed carrier local and return, while resolved generic `T`
 instances use the same carrier after substitution. Its probe checks
@@ -1263,7 +1263,7 @@ it contains one synchronous `@host_func` returning
 `Reading { code: u32, label: text }`. The manifest-backed emitter uses the
 12-byte result area (`code@0`, `label.ptr@4`, `label.len@8`) and canonical
 `(func (param i32))`; the generated wrapper copies the host string into
-`$do_bytes`/`$do_text` and returns `code + label.length`.
+`$do_u8`/`$do_text` and returns `code + label.length`.
 
 Run the compiler gates with:
 
@@ -1311,7 +1311,7 @@ it contains one synchronous `@host_func` returning
 `Reading { code: u32, label: text, note: text }`. The manifest-backed emitter
 uses the 20-byte result area (`code@0`, `label.ptr@4`, `label.len@8`,
 `note.ptr@12`, `note.len@16`) and canonical `(func (param i32))`; the generated
-wrapper copies both host strings into `$do_bytes`/`$do_text` and returns
+wrapper copies both host strings into `$do_u8`/`$do_text` and returns
 `code + label.length + note.length`.
 
 Run the compiler gates with:
@@ -1395,7 +1395,7 @@ The measured result area is 20 bytes with offsets `code@0`, `label@4`, and
 `payload@12`. The payload has capacity `3`, element size/alignment/stride `4`,
 and the canonical lift import is one scalar `i32` result-area pointer; no GC
 reference crosses that boundary. The generated GC route validates the result
-area and both linear spans, copies the label into `$do_bytes` and the payload
+area and both linear spans, copies the label into `$do_u8` and the payload
 into `$do_u32`, frees payload then label exactly once, and constructs one GC
 record. The host gate observes `code=7`, `label=hello`,
 `payload=[10,20,5]`, `result=47`, `stats=34`, one callback, two allocations,
@@ -1427,7 +1427,7 @@ The measured result area is 20 bytes with offsets `code@0`, `label@4`, and
 `payload@12`. The byte-list has capacity `4`, element size/alignment/stride `1`,
 and the canonical lift import is one scalar `i32` result-area pointer; no GC
 reference crosses that boundary. The generated GC route validates the result
-area and both linear spans, copies the label and payload into `$do_bytes`, frees
+area and both linear spans, copies the label and payload into `$do_u8`, frees
 payload then label exactly once, and constructs one GC record. The host gate
 observes `code=7`, `label=hello`, `payload=[10,20,5]`, `result=47`, `stats=17`,
 one callback, two allocations, and two frees. The paired ARC/GC equivalence gate
@@ -1522,7 +1522,7 @@ The measured result area is 28 bytes with `code@0`, `label.ptr@4`/`label.len@8`,
 have capacities `3` and `2`, element size/alignment/stride `4`, and the
 canonical lift import is one scalar `i32` result-area pointer; no GC reference
 crosses that boundary. The generated GC route validates all three spans before
-copy, constructs `$do_bytes`, `$do_u32`, and `$do_u32`, frees `second`, `first`,
+copy, constructs `$do_u8`, `$do_u32`, and `$do_u32`, frees `second`, `first`,
 then `label` exactly once, and constructs one GC record.
 
 The host gate observes `code=7`, `label=hello`, `first=[10,20,5]`,

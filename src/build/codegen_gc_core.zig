@@ -291,7 +291,7 @@ test "GC managed struct update rebuilds its outer value and changed list field" 
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $box $value") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $box") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_bytes $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_u8 $do_u8") != null);
 }
 
 test "GC managed struct profile retains renamed update data flow" {

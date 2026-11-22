@@ -103,7 +103,7 @@ must:
    callback returns;
 3. load `code`, both text/list pointer-length pairs, and validate each span;
 4. validate both `length * 4` calculations before copying either list;
-5. allocate and copy `label` into `$do_bytes`;
+5. allocate and copy `label` into `$do_u8`;
 6. allocate and copy `first` into `$do_u32`;
 7. allocate and copy `second` into `$do_u32`;
 8. construct and publish one `$do_record` containing all four fields;
@@ -135,7 +135,7 @@ allocation/free counter contract. ARC/GC equivalence must observe `54/54`,
 flowchart LR
     A[canonical callback exactly once] --> B[result area and spans returned]
     B --> C[guard area and three spans]
-    C --> D[copy label to do_bytes]
+    C --> D[copy label to do_u8]
     D --> E[copy first to do_u32]
     E --> F[copy second to do_u32]
     F --> G[construct and publish GC Reading record]

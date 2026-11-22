@@ -40,7 +40,7 @@ if rg -q '^\s*\(import.*\(ref' "$tmp_dir/gc.core.wat" "$arc_core_wat"; then
   printf 'GC reference crossed canonical multi-managed-text lower import\n' >&2
   exit 1
 fi
-test "$(rg -c 'array.get_s \$do_bytes' "$tmp_dir/gc.core.wat")" -eq 2
+test "$(rg -c 'array.get_s \$do_u8' "$tmp_dir/gc.core.wat")" -eq 2
 test "$(rg -c 'call \$cabi_realloc' "$tmp_dir/gc.core.wat")" -eq 4
 gc_call_line=$(rg -n 'call \$canonical_call' "$tmp_dir/gc.core.wat" | tail -1 | cut -d: -f1)
 gc_free_line=$(rg -n 'call \$cabi_realloc' "$tmp_dir/gc.core.wat" | tail -1 | cut -d: -f1)

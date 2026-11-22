@@ -38,7 +38,7 @@ if rg -q '^\s*\(import .*\(ref' "$tmp_dir/core.wat"; then
     printf 'GC reference crossed the mixed text/byte-u32 canonical import\n' >&2
     exit 1
 fi
-test "$(rg -c 'array.get_s \$do_bytes' "$tmp_dir/core.wat")" -eq 2
+test "$(rg -c 'array.get_s \$do_u8' "$tmp_dir/core.wat")" -eq 2
 test "$(rg -c 'array.get \$do_u32' "$tmp_dir/core.wat")" -eq 1
 mapfile -t realloc_lines < <(rg -n 'call \$cabi_realloc' "$tmp_dir/core.wat" | cut -d: -f1)
 test "${#realloc_lines[@]}" -eq 6

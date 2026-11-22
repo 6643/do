@@ -259,11 +259,11 @@ git commit -m "Add GC root and component plans"
 
 - [x] **Step 1: Add output tests that fail against the profile templates.**
 
-Assert that the shared emitter produces a `$do_bytes` array, `$do_text` struct, `array.copy` for immutable list update, and no `__arc_` symbol. Assert a read-only text pass emits only a typed reference transfer, not byte-copy instructions.
+Assert that the shared emitter produces a `$do_u8` array, `$do_text` struct, `array.copy` for immutable list update, and no `__arc_` symbol. Assert a read-only text pass emits only a typed reference transfer, not byte-copy instructions.
 
 ```zig
-try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_bytes (array (mut i8)))") != null);
-try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_bytes $do_bytes") != null);
+try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_u8 (array (mut i8)))") != null);
+try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_u8 $do_u8") != null);
 try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 ```
 

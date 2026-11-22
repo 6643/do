@@ -1,5 +1,5 @@
 ;; gc-sync
-(local $data (ref null $do_bytes))
+(local $data (ref null $do_u8))
 local.get $ok
 if
 return

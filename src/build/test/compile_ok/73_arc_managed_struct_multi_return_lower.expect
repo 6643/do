@@ -1,5 +1,5 @@
 ;; gc-sync source_len=413 token_count=94
-(type $box (struct (field $value (ref null $do_bytes))))
+(type $box (struct (field $value (ref null $do_u8))))
 (func $make_boxes (result (ref null $box) (ref null $box))
 struct.new $box
 local.get $left

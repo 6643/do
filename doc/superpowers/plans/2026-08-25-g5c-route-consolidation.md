@@ -183,7 +183,7 @@ pub fn emit_sync_marshal_module_from_loaded_request(
 
   Build the C20 source fixture through the new entry point and assert that the
   output contains `(type $canonical_lift (func (param i32)))`, the canonical
-  import, `$do_record`, `$do_bytes`, and no `(ref` in the import declaration.
+  import, `$do_record`, `$do_u8`, and no `(ref` in the import declaration.
 
 - [ ] **Step 2: Implement the loaded-request emitter entry point.**
 

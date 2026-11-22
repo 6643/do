@@ -44,7 +44,7 @@ if rg -q '^\s*\(import.*\(ref' "$tmp_dir/core.wat"; then
 fi
 test "$(rg -c 'array.new_default \$do_u32' "$tmp_dir/core.wat")" -eq 2
 test "$(rg -c 'call \$cabi_realloc' "$tmp_dir/core.wat")" -eq 3
-rg -q 'array.set \$do_bytes' "$tmp_dir/core.wat"
+rg -q 'array.set \$do_u8' "$tmp_dir/core.wat"
 test "$(rg -c 'array.set \$do_u32' "$tmp_dir/core.wat")" -eq 2
 rg -q 'struct.new \$reading' "$tmp_dir/core.wat"
 

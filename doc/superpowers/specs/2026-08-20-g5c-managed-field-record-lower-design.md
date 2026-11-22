@@ -63,7 +63,7 @@ canonicalization path.
 1. Load `code` and the `label` GC text from the input `$do_record`.
 2. Guard `label.length <= array.len(label.bytes)`.
 3. Call `$cabi_realloc(0, 0, 1, label.length)` once.
-4. Copy each byte from `$do_bytes` into the allocated linear span.
+4. Copy each byte from `$do_u8` into the allocated linear span.
 5. Call the canonical import with `(code, ptr, label.length)`.
 6. Call `$cabi_realloc(ptr, label.length, 1, 0)` once, after the host call.
 

@@ -163,7 +163,7 @@
 
   ```text
   (type $canonical_lift (func (param i32)))
-  array.new_default $do_bytes
+  array.new_default $do_u8
   array.new_default $do_u32       # first
   array.new_default $do_u32       # second
   struct.new $do_record
@@ -173,7 +173,7 @@
 
 - [x] **Step 2: Add the smallest fixed descriptor branch.**
 
-  Reuse the existing result-area guard, span validator, `$do_bytes` copy, and
+  Reuse the existing result-area guard, span validator, `$do_u8` copy, and
   `$do_u32` copy helpers. Only add the second measured list child and the
   descriptor-specific record construction. Do not add a general loop over
   arbitrary list fields in the emitter.

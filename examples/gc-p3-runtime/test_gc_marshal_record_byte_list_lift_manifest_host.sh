@@ -42,9 +42,9 @@ if rg -q '^\s*\(import.*\(ref' "$tmp_dir/core.wat"; then
   printf 'GC reference crossed canonical byte-list record lift import\n' >&2
   exit 1
 fi
-rg -q 'array.new_default \$do_bytes' "$tmp_dir/core.wat"
+rg -q 'array.new_default \$do_u8' "$tmp_dir/core.wat"
 rg -q 'i32.load8_u' "$tmp_dir/core.wat"
-rg -q 'array.set \$do_bytes' "$tmp_dir/core.wat"
+rg -q 'array.set \$do_u8' "$tmp_dir/core.wat"
 rg -q 'struct.new \$do_record' "$tmp_dir/core.wat"
 test "$(rg -c 'call \$cabi_realloc' "$tmp_dir/core.wat")" -eq 1
 call_line=$(rg -n 'call \$canonical_call' "$tmp_dir/core.wat" | tail -1 | cut -d: -f1)

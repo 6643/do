@@ -31,7 +31,7 @@ if rg -q '^\s*\(import.*\(ref' "$tmp_dir/core.wat"; then
 fi
 rg -q '\(type \$canonical_lift \(func \(param i32\)\)\)' "$tmp_dir/core.wat"
 rg -q '\(field \$field1 \(ref null \$do_text\)\)' "$tmp_dir/core.wat"
-rg -q 'array.set \$do_bytes' "$tmp_dir/core.wat"
+rg -q 'array.set \$do_u8' "$tmp_dir/core.wat"
 "$toolchain_bin" embed-component "$wit" "$tmp_dir/core.wasm" probe --features none -o "$tmp_dir/embedded.wasm"
 "$toolchain_bin" new-component "$tmp_dir/embedded.wasm" -o "$tmp_dir/component.wasm"
 "$toolchain_bin" validate-component "$tmp_dir/component.wasm" --features none

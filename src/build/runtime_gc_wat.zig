@@ -5,8 +5,8 @@ const gc_layout = @import("codegen_gc_layout.zig");
 const codegen_names = @import("codegen_names.zig");
 const payload_wat = @import("wat_payload.zig");
 
-pub fn emit_bytes_type(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
-    try out.appendSlice(allocator, "  (type $do_bytes (array (mut i8)))\n");
+pub fn emit_u8_type(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
+    try out.appendSlice(allocator, "  (type $do_u8 (array (mut i8)))\n");
 }
 
 pub fn emit_scalar_array_type(
@@ -29,7 +29,7 @@ pub fn emit_managed_array_type(
     if (std.mem.eql(u8, elem_ty, "text")) {
         try out.appendSlice(allocator, "do_text");
     } else if (std.mem.eql(u8, elem_ty, "[u8]")) {
-        try out.appendSlice(allocator, "do_bytes");
+        try out.appendSlice(allocator, "do_u8");
     } else if (gc_layout.scalar_array_spec_for_type(elem_ty)) |spec| {
         try out.appendSlice(allocator, spec.array_name[1..]);
     } else {
@@ -68,15 +68,15 @@ pub fn emit_map_type_for_value(
 }
 
 pub fn emit_text_type(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
-    try out.appendSlice(allocator, "  (type $do_text (struct (field $length i32) (field $bytes (ref null $do_bytes))))\n");
+    try out.appendSlice(allocator, "  (type $do_text (struct (field $length i32) (field $bytes (ref null $do_u8))))\n");
 }
 
 pub fn emit_box_type(allocator: std.mem.Allocator, out: *std.ArrayList(u8), has_scalar_field: bool) !void {
     if (has_scalar_field) {
-        try out.appendSlice(allocator, "  (type $box (struct (field $value (ref null $do_bytes)) (field $tag i32)))\n");
+        try out.appendSlice(allocator, "  (type $box (struct (field $value (ref null $do_u8)) (field $tag i32)))\n");
         return;
     }
-    try out.appendSlice(allocator, "  (type $box (struct (field $value (ref null $do_bytes))))\n");
+    try out.appendSlice(allocator, "  (type $box (struct (field $value (ref null $do_u8))))\n");
 }
 
 pub fn emit_managed_struct_type(
@@ -87,10 +87,10 @@ pub fn emit_managed_struct_type(
     scalar_field_name: ?[]const u8,
 ) !void {
     if (scalar_field_name) |field_name| {
-        try append_fmt(allocator, out, "  (type ${[struct_name]s} (struct (field ${[value_field_name]s} (ref null $do_bytes)) (field ${[field_name]s} i32)))\n", .{ .struct_name = struct_name, .value_field_name = value_field_name, .field_name = field_name });
+        try append_fmt(allocator, out, "  (type ${[struct_name]s} (struct (field ${[value_field_name]s} (ref null $do_u8)) (field ${[field_name]s} i32)))\n", .{ .struct_name = struct_name, .value_field_name = value_field_name, .field_name = field_name });
         return;
     }
-    try append_fmt(allocator, out, "  (type ${[struct_name]s} (struct (field ${[value_field_name]s} (ref null $do_bytes))))\n", .{ .struct_name = struct_name, .value_field_name = value_field_name });
+    try append_fmt(allocator, out, "  (type ${[struct_name]s} (struct (field ${[value_field_name]s} (ref null $do_u8))))\n", .{ .struct_name = struct_name, .value_field_name = value_field_name });
 }
 
 pub fn emit_gc_struct_type(
@@ -134,7 +134,7 @@ fn append_gc_field_wasm_type(
         return;
     }
     if (std.mem.eql(u8, field.ty, "[u8]")) {
-        try out.appendSlice(allocator, "(ref null $do_bytes)");
+        try out.appendSlice(allocator, "(ref null $do_u8)");
         return;
     }
     if (gc_layout.scalar_array_spec_for_type(field.ty)) |spec| {
@@ -168,7 +168,7 @@ fn append_lowered_name(allocator: std.mem.Allocator, out: *std.ArrayList(u8), na
 }
 
 pub fn emit_tuple_text_bytes_type(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
-    try out.appendSlice(allocator, "  (type $tuple_text_bytes (struct (field $text (ref null $do_text)) (field $bytes (ref null $do_bytes))))\n");
+    try out.appendSlice(allocator, "  (type $tuple_text_bytes (struct (field $text (ref null $do_text)) (field $bytes (ref null $do_u8))))\n");
 }
 
 pub fn emit_gc_payload_union_type(
@@ -181,7 +181,7 @@ pub fn emit_gc_payload_union_type(
     try out.appendSlice(allocator, " (struct (field $tag i32)");
     for (layout.payload_tys, 0..) |payload_ty, index| {
         if (index == layout.managed_payload_index) {
-            try out.appendSlice(allocator, " (field $bytes (ref null $do_bytes))");
+            try out.appendSlice(allocator, " (field $bytes (ref null $do_u8))");
         } else {
             try append_fmt(allocator, out, " (field $payload_{[index]d} {[i32]s})", .{ .index = index, .i32 = if (gc_layout.leaf_layout_for_type(payload_ty) != null) payload_wat.wasm_type(payload_ty) else "i32" });
         }

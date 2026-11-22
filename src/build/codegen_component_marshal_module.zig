@@ -103,6 +103,9 @@ pub fn emit_sync_marshal_module(
     if (memory_plan.copy_shape == .record_fields) {
         try emit_record_type(allocator, &out, plan);
     }
+    if (memory_plan.copy_shape == .variant) {
+        try emit_variant_type(allocator, &out, plan);
+    }
     try emit_canonical_import_type(allocator, &out, config.direction, &memory_plan, plan, config);
     if (uses_realloc) {
         try out.appendSlice(allocator, "  (type $cabi_realloc_type (func (param i32 i32 i32 i32) (result i32)))\n");
@@ -391,6 +394,46 @@ fn emit_canonical_import_type(
         },
         .variant => return error.UnsupportedMarshalShape,
     }
+}
+
+fn emit_variant_type(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    plan: *const marshal.SyncValuePlan,
+) !void {
+    _ = plan;
+    try out.appendSlice(
+        allocator,
+        "  (type $do_variant_i32 (struct (field $value i32)))\n" ++
+            "  (type $do_variant_i64 (struct (field $value i64)))\n" ++
+            "  (type $do_variant_f32 (struct (field $value f32)))\n" ++
+            "  (type $do_variant_f64 (struct (field $value f64)))\n" ++
+            "  (type $do_variant (struct (field $tag i32) (field $payload (ref null any))))\n",
+    );
+}
+
+fn variant_payload_type(plan: *const marshal.SyncValuePlan) []const u8 {
+    for (plan.root.variant_cases) |case| {
+        if (case.payload_child) |child_index| {
+            const child = &plan.root.children[child_index];
+            return switch (child.kind) {
+                .scalar => switch (child.measured.?.core_type orelse .i32) {
+                    .i32 => "i32",
+                    .i64 => "i64",
+                    .f32 => "f32",
+                    .f64 => "f64",
+                },
+                .text => "(ref null $do_text)",
+                .list => if (child.children.len == 1 and child.children[0].scalar_kind == .u32)
+                    "(ref null $do_u32)"
+                else
+                    "(ref null $do_u8)",
+                .option, .result, .variant => "(ref null $do_variant)",
+                else => "i32",
+            };
+        }
+    }
+    return "i32";
 }
 
 fn emit_variant_import_type(
@@ -1634,6 +1677,16 @@ test "marshal module derives flat option signature from measured variant" {
     });
     try std.testing.expectEqualStrings("  (type $canonical_lower (func (param i32 i32)))\n", out.items);
     try std.testing.expect(std.mem.indexOf(u8, out.items, "(ref") == null);
+
+    const wat = try emit_sync_marshal_module(std.testing.allocator, &plan, .{
+        .direction = .lower,
+        .canonical_import_module = "demo:marshal-option/api@1.0.0",
+        .canonical_import_name = "send",
+    });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_variant (struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(field $payload (ref null any))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_variant_i32") != null);
 }
 
 test "marshal module derives indirect variant signature with lift result area" {
@@ -1703,13 +1756,25 @@ test "marshal module derives flat result signature from both payload cases" {
     defer err_value.deinit();
     var value = try wit_types.AbiType.result(std.testing.allocator, &ok, &err_value);
     defer value.deinit();
-    const plan = try marshal.build_sync_value_plan(std.testing.allocator, .{
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
         .package = "demo:marshal-result@1.0.0",
         .world = "probe",
         .member = "api.send",
         .revision = "wit-resolver-v1",
         .schema_hash = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-    }, &value, .lower);
+    }, &value, .lower, .{ .layout = .{ .variant = .{
+        .tag_offset = 0,
+        .payload_offset = 4,
+        .byte_size = 8,
+        .alignment = 4,
+        .cases = &.{
+            .{ .name = "ok", .tag = 0, .payload_required = true, .payload = .{ .offset = 4, .byte_size = 4, .alignment = 4, .core_type = .i32 } },
+            .{ .name = "err", .tag = 1, .payload_required = true, .payload = .{ .offset = 4, .byte_size = 4, .alignment = 4, .core_type = .i32 } },
+        },
+    } }, .children = &.{
+        .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+        .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+    } });
     defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
 
     try std.testing.expectEqual(@as(usize, 2), plan.canonical_signature.parameters.len);
@@ -1717,6 +1782,51 @@ test "marshal module derives flat result signature from both payload cases" {
     try std.testing.expectEqual(@as(usize, 2), plan.canonical_signature.cases.len);
     try std.testing.expectEqual(@as(usize, 1), plan.canonical_signature.cases[0].payload.?.core_words.len);
     try std.testing.expectEqual(@as(usize, 1), plan.canonical_signature.cases[1].payload.?.core_words.len);
+
+    const wat = try emit_sync_marshal_module(std.testing.allocator, &plan, .{
+        .direction = .lower,
+        .canonical_import_module = "demo:marshal-result/api@1.0.0",
+        .canonical_import_name = "send",
+    });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_variant (struct") != null);
+}
+
+test "marshal module declares variant type for text result payload" {
+    var ok = wit_types.AbiType.text(std.testing.allocator);
+    defer ok.deinit();
+    var err_value = wit_types.AbiType.scalar(std.testing.allocator, .u32);
+    defer err_value.deinit();
+    var value = try wit_types.AbiType.result(std.testing.allocator, &ok, &err_value);
+    defer value.deinit();
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-result-text@1.0.0",
+        .world = "probe",
+        .member = "api.exchange",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    }, &value, .lower, .{ .layout = .{ .variant = .{
+        .tag_offset = 0,
+        .payload_offset = 4,
+        .byte_size = 12,
+        .alignment = 4,
+        .cases = &.{
+            .{ .name = "ok", .tag = 0, .payload_required = true, .payload = .{ .offset = 4, .byte_size = 8, .alignment = 4, .core_type = .i32 } },
+            .{ .name = "err", .tag = 1, .payload_required = true, .payload = .{ .offset = 4, .byte_size = 4, .alignment = 4, .core_type = .i32 } },
+        },
+    } }, .children = &.{
+        .{ .layout = .{ .text = .{ .pointer_offset = 0, .length_offset = 4, .byte_size = 8, .alignment = 4, .allocation = .cabi_realloc, .free = .cabi_realloc } } },
+        .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+    } });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const wat = try emit_sync_marshal_module(std.testing.allocator, &plan, .{
+        .direction = .lower,
+        .canonical_import_module = "demo:marshal-result-text/api@1.0.0",
+        .canonical_import_name = "exchange",
+    });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_variant (struct") != null);
 }
 
 test "marshal module derives nested variant payload words from measured child" {

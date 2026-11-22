@@ -2996,7 +2996,7 @@ test "default pipeline lowers a bounded byte-list branch-local return through GC
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_bytes 3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_u8 3") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-root local_bind $data") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
@@ -3020,7 +3020,7 @@ test "default pipeline lowers a bounded byte-list branch-local fallthrough throu
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_bytes 3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_u8 3") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-root local_bind $data") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
@@ -3166,7 +3166,7 @@ test "default pipeline lowers a bounded managed byte-list alias through GC" {
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_bytes 3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_u8 3") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "local.set $alias") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
@@ -3240,7 +3240,7 @@ test "default pipeline lowers a bounded managed byte-list local overwrite throug
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_bytes 3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_u8 3") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "gc-root overwrite $data") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "local.get $next") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
@@ -3352,7 +3352,7 @@ test "default pipeline lowers a managed argument with a pure scalar struct resul
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $size_point (param $x (ref null $do_bytes)) (result i32 i32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $size_point (param $x (ref null $do_u8)) (result i32 i32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $size_point") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "local.set $p.y") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "local.set $p.x") != null);
@@ -3431,7 +3431,7 @@ test "default pipeline lowers a bounded byte-list loop break through GC" {
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_bytes 3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_u8 3") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-root local_bind $data") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
@@ -3455,7 +3455,7 @@ test "default pipeline lowers a bounded byte-list loop continue through GC" {
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_bytes 3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_u8 3") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-root local_bind $data") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
@@ -3511,7 +3511,7 @@ test "default pipeline lowers a mixed multi-result with an unreturned managed lo
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $make_partial (result (ref null $do_bytes) i32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $make_partial (result (ref null $do_u8) i32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
@@ -3530,8 +3530,8 @@ test "default pipeline lowers nested managed fallthrough through GC" {
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-sync") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $outer (ref null $do_bytes))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $inner (ref null $do_bytes))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $outer (ref null $do_u8))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $inner (ref null $do_u8))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, ";; gc-root branch_join") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
@@ -4179,7 +4179,7 @@ test "default pipeline lowers a synchronous managed defer through GC" {
     ;
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $noop") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
@@ -4510,8 +4510,8 @@ test "default pipeline lowers a standalone body-only byte-list literal through G
     ;
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $values (ref null $do_bytes))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_bytes 2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $values (ref null $do_u8))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_u8 2") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
@@ -4531,7 +4531,7 @@ test "default pipeline lowers a body-only managed struct field read through GC" 
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $box") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $box $value") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $value (ref null $do_bytes))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $value (ref null $do_u8))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
@@ -4545,8 +4545,8 @@ test "default pipeline lowers inferred managed list storage through GC" {
     ;
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $values (ref null $do_bytes))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_bytes $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $values (ref null $do_u8))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_u8 $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "gc-root local_bind $values") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
@@ -4680,7 +4680,7 @@ test "default pipeline lowers a managed parameter with a nil result through GC" 
     ;
     const wat = try emit_default_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $consume (param $bytes (ref null $do_bytes))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $consume (param $bytes (ref null $do_u8))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $__arc_") == null);
 }
 
@@ -5423,13 +5423,13 @@ test "synchronous GC parses renamed parameterized byte-list persistent update" {
     const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(func $replace") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "array.len\n") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_bytes $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_u8 $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "local.get $offset") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "local.get $next") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_u8") != null);
 }
 
 test "synchronous GC reserves byte-list update temporaries away from source bindings" {
@@ -5441,10 +5441,10 @@ test "synchronous GC reserves byte-list update temporaries away from source bind
     ;
     const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(param $__gc_list_next (ref null $do_bytes))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $__gc_list_next_1 (ref null $do_bytes))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(param $__gc_list_next (ref null $do_u8))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $__gc_list_next_1 (ref null $do_u8))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(local $__gc_list_length_1 i32)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_u8") != null);
 }
 
 test "synchronous GC lowers parsed byte-list literal" {
@@ -5456,7 +5456,7 @@ test "synchronous GC lowers parsed byte-list literal" {
     ;
     const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_bytes 3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_u8 3") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 7\n    i32.const 12\n    i32.const 17") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
@@ -5470,7 +5470,7 @@ test "synchronous GC lowers empty parsed byte-list literal" {
     ;
     const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 0\n    array.new_default $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 0\n    array.new_default $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
@@ -5511,9 +5511,9 @@ test "synchronous GC lowers one-value byte-list put" {
     ;
     const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_default $do_bytes") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_bytes $do_bytes") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_default $do_u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_u8 $do_u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "local.get $value") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
@@ -5546,8 +5546,8 @@ test "synchronous GC lowers byte-list multi-value put and rejects spread" {
     ;
     const multiple_wat = try emit_gc_wat_for_source(std.testing.allocator, multiple_source);
     defer std.testing.allocator.free(multiple_wat);
-    try std.testing.expect(std.mem.indexOf(u8, multiple_wat, "array.copy $do_bytes $do_bytes") != null);
-    try std.testing.expect(std.mem.count(u8, multiple_wat, "array.set $do_bytes") == 2);
+    try std.testing.expect(std.mem.indexOf(u8, multiple_wat, "array.copy $do_u8 $do_u8") != null);
+    try std.testing.expect(std.mem.count(u8, multiple_wat, "array.set $do_u8") == 2);
 
     const spread_source =
         \\append_byte(input [u8], values [u8]) -> [u8] {
@@ -5628,7 +5628,7 @@ test "synchronous GC lowers a managed struct identity" {
     ;
     const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $box (struct (field $value (ref null $do_bytes))))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $box (struct (field $value (ref null $do_u8))))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(param $box (ref null $box))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(result (ref null $box))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
@@ -5647,7 +5647,7 @@ test "synchronous GC preserves scalar fields in a managed struct identity" {
     ;
     const wat = try emit_gc_wat_for_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $box (struct (field $value (ref null $do_bytes)) (field $tag i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $box (struct (field $value (ref null $do_u8)) (field $tag i32)))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(param $box (ref null $box))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(result (ref null $box))") != null);
 }

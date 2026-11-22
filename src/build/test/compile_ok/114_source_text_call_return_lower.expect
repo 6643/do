@@ -1,5 +1,5 @@
-(type $do_bytes (array (mut i8)))
-(type $do_text (struct (field $length i32) (field $bytes (ref null $do_bytes))))
+(type $do_u8 (array (mut i8)))
+(type $do_text (struct (field $length i32) (field $bytes (ref null $do_u8))))
 (func $echo (param $value (ref null $do_text)) (result (ref null $do_text))
 ;; gc-root return_value
 (func $make_text (result (ref null $do_text))

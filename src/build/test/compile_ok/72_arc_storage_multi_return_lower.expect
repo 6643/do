@@ -1,7 +1,7 @@
 ;; gc-sync source_len=209 token_count=55
-(func $make_pair (result (ref null $do_bytes) (ref null $do_bytes))
-array.new_fixed $do_bytes 4
-array.new_fixed $do_bytes 5
+(func $make_pair (result (ref null $do_u8) (ref null $do_u8))
+array.new_fixed $do_u8 4
+array.new_fixed $do_u8 5
 local.get $left
 local.get $right
 return

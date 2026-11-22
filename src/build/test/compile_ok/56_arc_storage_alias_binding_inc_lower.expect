@@ -1,6 +1,6 @@
 ;; backend=gc
 ;; gc-sync source_len=96 token_count=26
-array.new_fixed $do_bytes 3
+array.new_fixed $do_u8 3
 local.set $alias
 ;; gc-root local_bind $alias
 array.len

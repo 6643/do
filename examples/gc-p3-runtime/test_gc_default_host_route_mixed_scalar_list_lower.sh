@@ -34,8 +34,8 @@ if rg -q '^\s*\(import "demo:marshal-record-mixed-scalar-list-lower/api@1.0.0" "
     printf '[FAIL] mixed scalar-list lower canonical import carries a GC reference\n' >&2
     exit 1
 fi
-rg -q 'array.get_s \$do_bytes' "$wat_file"
-test "$(rg -c 'array.get_s \$do_bytes' "$wat_file")" -eq 2
+rg -q 'array.get_s \$do_u8' "$wat_file"
+test "$(rg -c 'array.get_s \$do_u8' "$wat_file")" -eq 2
 test "$(rg -c 'i32.store8' "$wat_file")" -eq 2
 rg -q 'block \$__mixed_cleanup' "$wat_file"
 

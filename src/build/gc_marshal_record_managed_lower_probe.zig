@@ -56,7 +56,7 @@ pub fn emit_managed_record_lower_module(
     errdefer out.deinit(allocator);
     try out.appendSlice(allocator, base[0 .. base.len - closing.len]);
     try generated_text.append_block(allocator, &out, 2,
-                \\  (func $run (result i32)
+        \\  (func $run (result i32)
         \\    i32.const 7
         \\    i32.const 5
         \\    i32.const 104
@@ -64,7 +64,7 @@ pub fn emit_managed_record_lower_module(
         \\    i32.const 108
         \\    i32.const 108
         \\    i32.const 111
-        \\    array.new_fixed $do_bytes 5
+        \\    array.new_fixed $do_u8 5
         \\    struct.new $do_text
         \\    struct.new $do_record
         \\    call $marshal
@@ -75,7 +75,7 @@ pub fn emit_managed_record_lower_module(
         \\    i32.add)
         \\  (export "run" (func $run))
         \\
-        );
+    );
     try out.appendSlice(allocator, closing);
     return out.toOwnedSlice(allocator);
 }
@@ -85,7 +85,7 @@ test "manifest-backed managed-field record lower probe emits a flat host entry" 
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-record-managed-lower/api@1.0.0") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lower (func (param i32 i32 i32)))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get_s $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get_s $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $canonical_call") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"run\" (func $run))") != null);
 }

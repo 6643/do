@@ -298,21 +298,21 @@ pub fn emit_module(
             \\    struct.get $do_record $field2
             \\    ref.as_non_null
             \\    i32.const 0
-            \\    array.get_s $do_bytes
+            \\    array.get_s $do_u8
             \\    i32.add
             \\    local.get $reading
             \\    ref.as_non_null
             \\    struct.get $do_record $field2
             \\    ref.as_non_null
             \\    i32.const 1
-            \\    array.get_s $do_bytes
+            \\    array.get_s $do_u8
             \\    i32.add
             \\    local.get $reading
             \\    ref.as_non_null
             \\    struct.get $do_record $field2
             \\    ref.as_non_null
             \\    i32.const 2
-            \\    array.get_s $do_bytes
+            \\    array.get_s $do_u8
             \\    i32.add)
             \\  (func $stats (result i32)
             \\    global.get $__alloc_count
@@ -398,20 +398,20 @@ pub fn emit_module(
             \\    struct.get $do_record $field1
             \\    ref.as_non_null
             \\    i32.const 0
-            \\    array.get_s $do_bytes
+            \\    array.get_s $do_u8
             \\    local.get $reading
             \\    ref.as_non_null
             \\    struct.get $do_record $field1
             \\    ref.as_non_null
             \\    i32.const 1
-            \\    array.get_s $do_bytes
+            \\    array.get_s $do_u8
             \\    i32.add
             \\    local.get $reading
             \\    ref.as_non_null
             \\    struct.get $do_record $field1
             \\    ref.as_non_null
             \\    i32.const 2
-            \\    array.get_s $do_bytes
+            \\    array.get_s $do_u8
             \\    i32.add
             \\    i32.add)
             \\  (func $stats (result i32)
@@ -434,7 +434,7 @@ pub fn emit_module(
             \\    i32.const 108
             \\    i32.const 108
             \\    i32.const 111
-            \\    array.new_fixed $do_bytes 5
+            \\    array.new_fixed $do_u8 5
             \\    struct.new $do_text
             \\    local.set $label
             \\    i32.const 7
@@ -442,7 +442,7 @@ pub fn emit_module(
             \\    i32.const 10
             \\    i32.const 20
             \\    i32.const 5
-            \\    array.new_fixed $do_bytes 3
+            \\    array.new_fixed $do_u8 3
             \\    struct.new $do_record
             \\    call $marshal
             \\    i32.const 42)
@@ -463,7 +463,7 @@ pub fn emit_module(
             \\    i32.const 10
             \\    i32.const 20
             \\    i32.const 5
-            \\    array.new_fixed $do_bytes 3
+            \\    array.new_fixed $do_u8 3
             \\    struct.new $do_record
             \\    call $marshal
             \\    i32.const 42)
@@ -533,7 +533,7 @@ pub fn emit_module(
             \\    i32.const 108
             \\    i32.const 108
             \\    i32.const 111
-            \\    array.new_fixed $do_bytes 5
+            \\    array.new_fixed $do_u8 5
             \\    struct.new $do_text
             \\    local.set $label
             \\    i32.const 5
@@ -542,7 +542,7 @@ pub fn emit_module(
             \\    i32.const 114
             \\    i32.const 108
             \\    i32.const 100
-            \\    array.new_fixed $do_bytes 5
+            \\    array.new_fixed $do_u8 5
             \\    struct.new $do_text
             \\    local.set $note
             \\    i32.const 7
@@ -568,7 +568,7 @@ pub fn emit_module(
             \\    i32.const 108
             \\    i32.const 108
             \\    i32.const 111
-            \\    array.new_fixed $do_bytes 5
+            \\    array.new_fixed $do_u8 5
             \\    struct.new $do_text
             \\    struct.new $do_record
             \\    call $marshal
@@ -610,8 +610,8 @@ test "GC WIT marshal adapter emits the bounded byte-list lower module" {
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-record-byte-list-lower/api@1.0.0") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lower (func (param i32 i32 i32)))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_bytes 3") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get_s $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_u8 3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get_s $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"run\" (func $run))") != null);
 }
 
@@ -629,8 +629,8 @@ test "GC WIT marshal adapter emits the mixed scalar-list lower module" {
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-record-mixed-scalar-list-lower/api@1.0.0") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lower (func (param i32 i32 i32 i32 i32)))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_bytes 5") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_bytes 3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_u8 5") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_u8 3") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"stats\" (func $stats))") != null);
 }
 
@@ -720,7 +720,7 @@ test "GC WIT marshal adapter emits the pinned multi-managed lower module" {
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-record-managed-lower-multi/api@1.0.0") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lower (func (param i32 i32 i32 i32 i32)))") != null);
-    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "array.new_fixed $do_bytes 5"));
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "array.new_fixed $do_u8 5"));
     try std.testing.expect(std.mem.indexOf(u8, wat, "(local $label (ref null $do_text))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(local $note (ref null $do_text))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"run\" (func $run))") != null);
@@ -794,7 +794,7 @@ test "GC WIT map lower run constructs fixed arrays with immediate lengths only" 
     const source =
         \\HashMap = @lib("hash_map.do", HashMap)
         \\write = @host_func("demo:marshal-map-u32-u32/api@1.0.0", "write", (HashMap<u32, u32>) -> nil)
-        ;
+    ;
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     const wat = try emit_module(
@@ -806,13 +806,19 @@ test "GC WIT map lower run constructs fixed arrays with immediate lengths only" 
     );
     defer std.testing.allocator.free(wat);
 
-    try std.testing.expect(std.mem.indexOf(u8, wat,
+    try std.testing.expect(std.mem.indexOf(
+        u8,
+        wat,
         "    i32.const 2\n    i32.const 7\n    i32.const 9\n    array.new_fixed $do_u32 2\n",
     ) != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat,
+    try std.testing.expect(std.mem.indexOf(
+        u8,
+        wat,
         "    array.new_fixed $do_u32 2\n    i32.const 2\n    i32.const 70\n",
     ) == null);
-    try std.testing.expect(std.mem.indexOf(u8, wat,
+    try std.testing.expect(std.mem.indexOf(
+        u8,
+        wat,
         "    i32.const 70\n    i32.const 90\n    array.new_fixed $do_u32 2\n",
     ) != null);
 }
@@ -857,7 +863,7 @@ test "G5c mixed text u32-list lift compiler route emits a module" {
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-record-mixed-text-u32-list-lift/api@1.0.0") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lift (func (param i32)))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_u32") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $do_record") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_u32 3") == null);
@@ -879,9 +885,9 @@ test "G5c mixed text byte-list lift compiler route emits a module" {
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-record-mixed-text-byte-list-lift/api@1.0.0") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lift (func (param i32)))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $do_record") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_bytes 4") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_u8 4") == null);
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "call $cabi_realloc"));
     try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"stats\" (func $stats))") != null);
 }
@@ -902,7 +908,7 @@ test "G5c mixed text and two u32-list lift compiler route emits measured module"
 
     try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-record-mixed-text-two-u32-lists-lift/api@1.0.0") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lift (func (param i32)))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_default $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_default $do_u8") != null);
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "array.new_default $do_u32"));
     try std.testing.expect(std.mem.indexOf(u8, wat, "(global $__marshal_heap (mut i32) (i32.const 28))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $do_record") != null);

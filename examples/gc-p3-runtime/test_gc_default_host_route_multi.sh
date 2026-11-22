@@ -50,7 +50,7 @@ if rg -q '^\s*\(import "demo:marshal-record-managed-lower-multi/api@1.0.0" "writ
   printf 'GC reference crossed the default C15-D canonical import\n' >&2
   exit 1
 fi
-test "$(rg -c 'array.get_s \$do_bytes' "$tmp_dir/core.wat")" -eq 2
+test "$(rg -c 'array.get_s \$do_u8' "$tmp_dir/core.wat")" -eq 2
 test "$(rg -c 'call \$cabi_realloc' "$tmp_dir/core.wat")" -eq 4
 call_line=$(rg -n 'call \$__gc_canonical_call' "$tmp_dir/core.wat" | tail -1 | cut -d: -f1)
 free_line=$(rg -n 'call \$cabi_realloc' "$tmp_dir/core.wat" | tail -1 | cut -d: -f1)
@@ -92,7 +92,7 @@ if rg -q '^\s*\(import "demo:marshal-record-managed-lift-multi/api@1.0.0" "read"
   printf 'GC reference crossed the default C16-D canonical import\n' >&2
   exit 1
 fi
-test "$(rg -c 'array.set \$do_bytes' "$tmp_dir/lift.core.wat")" -eq 2
+test "$(rg -c 'array.set \$do_u8' "$tmp_dir/lift.core.wat")" -eq 2
 test "$(rg -c 'struct.new \$do_text' "$tmp_dir/lift.core.wat")" -eq 2
 rg -q 'struct.new \$reading' "$tmp_dir/lift.core.wat"
 

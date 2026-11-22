@@ -1,6 +1,6 @@
 ;; backend=gc
-(type $do_bytes (array (mut i8)))
+(type $do_u8 (array (mut i8)))
 (func $_start
-(local $data (ref null $do_bytes))
-array.new_fixed $do_bytes 3
+(local $data (ref null $do_u8))
+array.new_fixed $do_u8 3
 ;; gc-root local_bind $data

@@ -83,7 +83,7 @@ cabi_realloc_free
 
 Add the WAT RED assertions for a mixed plan:
 
-- one `array.get_s $do_bytes` and one `i32.store8`;
+- one `array.get_s $do_u8` and one `i32.store8`;
 - two `call $cabi_realloc` occurrences;
 - one canonical call with five scalar arguments;
 - the first free occurs after the canonical call and the second free occurs
@@ -164,11 +164,11 @@ Emit this sequence:
 1. Read `code` from `struct.get` field 0.
 2. Read the text GC array and text length from field 1; guard source span and
    length arithmetic.
-3. Allocate text bytes with `cabi_realloc`, copy with `$do_bytes` and
+3. Allocate text bytes with `cabi_realloc`, copy with `$do_u8` and
    `i32.store8`.
 4. Read the byte-list GC array and list length from field 2; guard source span,
    multiplication by stride 1, and destination range.
-5. Allocate payload bytes with `cabi_realloc`, copy with `$do_bytes` and
+5. Allocate payload bytes with `cabi_realloc`, copy with `$do_u8` and
    `i32.store8`.
 6. Call the canonical import with `code`, text pointer/length, and payload
    pointer/length in that order.

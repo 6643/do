@@ -35,7 +35,7 @@ Interfaces:
 Steps:
 
 - [ ] Write tests that require MemoryPlan.record_managed_scalar_list_lower and managed_scalar_list_field. Assert u8 has kind byte, stride 1, capacity 4; assert u32 has kind u32, stride 4, capacity 3. Assert both operation arrays are read_gc_span, validate_linear_range, cabi_realloc_alloc, copy_to_linear, canonical_call, cabi_realloc_free.
-- [ ] Assert byte WAT contains exactly array.get_s $do_bytes and i32.store8, while u32 WAT contains array.get $do_u32 and i32.store. Assert each has one canonical call and alloc/free ordering.
+- [ ] Assert byte WAT contains exactly array.get_s $do_u8 and i32.store8, while u32 WAT contains array.get $do_u32 and i32.store. Assert each has one canonical call and alloc/free ordering.
 - [ ] Run:
 ~~~~bash
 cd src && zig test build/codegen_component_marshal_ops.zig
@@ -100,7 +100,7 @@ Steps:
 - [ ] Replace ManagedByteListField and ManagedU32ListField and their flags with the shared types above.
 - [ ] Implement managed_scalar_list_field_for_root. Require a two-field direct record, field 0 u32, field 1 one-element scalar list, pointer/length 0/4, container 8 bytes with alignment 4, matching element facts, cabi_realloc actions, and positive capacity. Return null for all other shapes.
 - [ ] Replace duplicate operation constants with one record_managed_scalar_list_lower_operations array preserving read, validation, allocation, copy, call, free order.
-- [ ] Update marshal_module.zig to use the one flag. Emit $do_u32 only when the spec element kind is u32; retain $do_bytes and existing lift behavior.
+- [ ] Update marshal_module.zig to use the one flag. Emit $do_u32 only when the spec element kind is u32; retain $do_u8 and existing lift behavior.
 - [ ] Run:
 ~~~~bash
 cd src && zig test build/codegen_component_marshal_ops.zig
@@ -122,7 +122,7 @@ Interfaces:
 
 Mapping:
 ~~~~text
-byte -> $do_bytes, array.get_s $do_bytes, i32.store8, stride 1
+byte -> $do_u8, array.get_s $do_u8, i32.store8, stride 1
 u32  -> $do_u32,   array.get $do_u32,   i32.store,  stride 4
 ~~~~
 

@@ -1,7 +1,7 @@
 ;; backend=gc
 ;; gc-sync source_len=100 token_count=32
 count=0 __arc_
-count=2 array.new_default $do_bytes
-count=2 array.set $do_bytes
-count=2 array.copy $do_bytes $do_bytes
+count=2 array.new_default $do_u8
+count=2 array.set $do_u8
+count=2 array.copy $do_u8 $do_u8
 ;; gc-root overwrite $data

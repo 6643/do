@@ -40,7 +40,7 @@ if rg -q '^\s*\(import.*\(ref' "$tmp_dir/core.wat"; then
   printf 'GC reference crossed canonical byte-list record lower import\n' >&2
   exit 1
 fi
-rg -q 'array.get_s \$do_bytes' "$tmp_dir/core.wat"
+rg -q 'array.get_s \$do_u8' "$tmp_dir/core.wat"
 rg -q 'i32.store8' "$tmp_dir/core.wat"
 test "$(rg -c 'call \$cabi_realloc' "$tmp_dir/core.wat")" -eq 2
 call_line=$(rg -n 'call \$canonical_call' "$tmp_dir/core.wat" | tail -1 | cut -d: -f1)

@@ -1,5 +1,5 @@
 ;; gc-sync source_len=123 token_count=32
-array.new_fixed $do_bytes 3
+array.new_fixed $do_u8 3
 local.set $bytes
 struct.new $box
 local.set $box

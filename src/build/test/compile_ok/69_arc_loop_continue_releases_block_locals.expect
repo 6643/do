@@ -1,7 +1,7 @@
 ;; gc-sync
 block $__gc_break_0
 loop $__gc_loop_1
-array.new_fixed $do_bytes 3
+array.new_fixed $do_u8 3
 local.set $data
 ;; gc-root local_bind $data
 br $__gc_loop_1

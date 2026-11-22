@@ -65,7 +65,7 @@ pub fn emit_managed_record_lower_multi_module(
     errdefer out.deinit(allocator);
     try out.appendSlice(allocator, base[0 .. base.len - closing.len]);
     try generated_text.append_block(allocator, &out, 2,
-                \\  (func $run (result i32)
+        \\  (func $run (result i32)
         \\    (local $label (ref null $do_text))
         \\    (local $note (ref null $do_text))
         \\    i32.const 5
@@ -74,7 +74,7 @@ pub fn emit_managed_record_lower_multi_module(
         \\    i32.const 108
         \\    i32.const 108
         \\    i32.const 111
-        \\    array.new_fixed $do_bytes 5
+        \\    array.new_fixed $do_u8 5
         \\    struct.new $do_text
         \\    local.set $label
         \\    i32.const 5
@@ -83,7 +83,7 @@ pub fn emit_managed_record_lower_multi_module(
         \\    i32.const 114
         \\    i32.const 108
         \\    i32.const 100
-        \\    array.new_fixed $do_bytes 5
+        \\    array.new_fixed $do_u8 5
         \\    struct.new $do_text
         \\    local.set $note
         \\    i32.const 7
@@ -98,7 +98,7 @@ pub fn emit_managed_record_lower_multi_module(
         \\    i32.add)
         \\  (export "run" (func $run))
         \\
-        );
+    );
     try out.appendSlice(allocator, closing);
     return out.toOwnedSlice(allocator);
 }
@@ -108,7 +108,7 @@ test "multi-managed-text record lower probe emits the five-word host entry" {
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-record-managed-lower-multi/api@1.0.0") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lower (func (param i32 i32 i32 i32 i32)))") != null);
-    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "array.get_s $do_bytes"));
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "array.get_s $do_u8"));
     try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"run\" (func $run))") != null);
 }
 

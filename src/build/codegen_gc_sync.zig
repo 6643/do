@@ -135,9 +135,9 @@ const StructCtorValue = struct {
 };
 
 fn gc_array_get_op(array_name: []const u8) []const u8 {
-    // `$do_bytes` is a packed i8 array. Current Wasm GC syntax requires the
+    // `$do_u8` is a packed i8 array. Current Wasm GC syntax requires the
     // signedness of packed reads to be explicit; Do's byte lists are unsigned.
-    return if (std.mem.eql(u8, array_name, "$do_bytes")) "array.get_u" else "array.get";
+    return if (std.mem.eql(u8, array_name, "$do_u8")) "array.get_u" else "array.get";
 }
 
 fn is_gc_sync_scalar_host_type(tokens: []const lexer.Token, ty: []const u8) bool {
@@ -250,7 +250,7 @@ const BodyEmitter = struct {
     }
 
     fn list_array_name(self: *const BodyEmitter, list_ty: []const u8) ![]const u8 {
-        if (std.mem.eql(u8, list_ty, "[u8]")) return "$do_bytes";
+        if (std.mem.eql(u8, list_ty, "[u8]")) return "$do_u8";
         if (gc_layout.scalar_array_spec_for_type(list_ty)) |spec| return spec.array_name;
         for (self.gc_managed_arrays) |managed_array| {
             if (std.mem.eql(u8, managed_array.list_ty, list_ty)) return managed_array.array_name;
@@ -401,12 +401,12 @@ const BodyEmitter = struct {
         if (value.len == 0) {
             try self.append_block(4,
                 \\i32.const 0
-                \\array.new_default $do_bytes
+                \\array.new_default $do_u8
                 \\
             );
         } else {
             for (value) |byte| try self.append_fmt("    i32.const {[byte]d}\n", .{ .byte = byte });
-            try self.append_fmt("    array.new_fixed $do_bytes {[length]d}\n", .{ .length = value.len });
+            try self.append_fmt("    array.new_fixed $do_u8 {[length]d}\n", .{ .length = value.len });
         }
         try self.append_static("    struct.new $do_text\n");
     }
@@ -763,12 +763,12 @@ const BodyEmitter = struct {
                     if (bytes.len == 0) {
                         try self.append_block(4,
                             \\i32.const 0
-                            \\array.new_default $do_bytes
+                            \\array.new_default $do_u8
                             \\
                         );
                     } else {
                         for (bytes) |byte| try self.append_fmt("    i32.const {[byte]d}\n", .{ .byte = byte });
-                        try self.append_fmt("    array.new_fixed $do_bytes {[length]d}\n", .{ .length = bytes.len });
+                        try self.append_fmt("    array.new_fixed $do_u8 {[length]d}\n", .{ .length = bytes.len });
                     }
                     return "[u8]";
                 }
@@ -776,10 +776,10 @@ const BodyEmitter = struct {
             try self.append_fmt("    i32.const {[length]d}\n", .{ .length = bytes.len });
             if (bytes.len == 0) {
                 try self.append_static("    i32.const 0\n");
-                try self.append_static("    array.new_default $do_bytes\n");
+                try self.append_static("    array.new_default $do_u8\n");
             } else {
                 for (bytes) |byte| try self.append_fmt("    i32.const {[byte]d}\n", .{ .byte = byte });
-                try self.append_fmt("    array.new_fixed $do_bytes {[length]d}\n", .{ .length = bytes.len });
+                try self.append_fmt("    array.new_fixed $do_u8 {[length]d}\n", .{ .length = bytes.len });
             }
             try self.append_static("    struct.new $do_text\n");
             return "text";
@@ -1179,7 +1179,7 @@ const BodyEmitter = struct {
                         .local_name => |name| try self.append_fmt("    local.get ${[name]s}\n", .{ .name = name }),
                     }
                 } else {
-                    try self.append_static("    ref.null $do_bytes\n");
+                    try self.append_static("    ref.null $do_u8\n");
                 }
             } else if (layout.scalar_case != null and index == layout.scalar_payload_index) {
                 if (scalar_source) |source| {
@@ -1564,7 +1564,7 @@ const BodyEmitter = struct {
                 \\local.get ${[offset]s}
                 \\i32.const {[index]d}
                 \\i32.add
-                \\array.get_u $do_bytes
+                \\array.get_u $do_u8
                 \\
             , .{ .bytes = bytes_local, .offset = offset_local, .index = byte_index });
             if (byte_index == 0) {
@@ -2084,7 +2084,7 @@ const BodyEmitter = struct {
         , .{ .length = self.gc_list_temps.length_name });
         try generated_text.append_fmt_block(self.allocator, self.out, 4,
             \\    local.get ${[length]s}
-            \\    array.new_default $do_bytes
+            \\    array.new_default $do_u8
             \\    local.set ${[next]s}
         , .{ .length = self.gc_list_temps.length_name, .next = next_name });
         try generated_text.append_fmt_block(self.allocator, self.out, 4,
@@ -2100,12 +2100,12 @@ const BodyEmitter = struct {
             \\    ref.as_non_null
             \\    i32.const 0
             \\    local.get ${[length]s}
-            \\    array.copy $do_bytes $do_bytes
+            \\    array.copy $do_u8 $do_u8
         , .{ .length = self.gc_list_temps.length_name });
         try self.append_fmt("    local.get ${[name]s}\n", .{ .name = next_name });
         _ = try self.emit_expr(index_start, index_end, "usize");
         _ = try self.emit_expr(value_start, value_end, "u8");
-        try self.append_static("    array.set $do_bytes\n");
+        try self.append_static("    array.set $do_u8\n");
 
         // Keep the old outer object and its other fields untouched.
         for (layout.fields) |field| {
@@ -2174,7 +2174,7 @@ const BodyEmitter = struct {
         , .{ .length = self.gc_list_temps.length_name });
         try generated_text.append_fmt_block(self.allocator, self.out, 4,
             \\    local.get ${[length]s}
-            \\    array.new_default $do_bytes
+            \\    array.new_default $do_u8
             \\    local.set ${[next]s}
         , .{ .length = self.gc_list_temps.length_name, .next = next_name });
         try self.append_fmt_block(4,
@@ -2187,13 +2187,13 @@ const BodyEmitter = struct {
             \\    ref.as_non_null
             \\    i32.const 0
             \\    local.get ${[length]s}
-            \\    array.copy $do_bytes $do_bytes
+            \\    array.copy $do_u8 $do_u8
         , .{ .length = self.gc_list_temps.length_name });
         try self.append_fmt("    local.get ${[name]s}\n", .{ .name = next_name });
         _ = try self.emit_expr(index_start, index_end, "usize");
         _ = try self.emit_expr(value_start, value_end, "u8");
         try self.append_fmt_block(4,
-            \\array.set $do_bytes
+            \\array.set $do_u8
             \\local.get ${[name]s}
             \\
         , .{ .name = next_name });
@@ -2708,8 +2708,7 @@ const BodyEmitter = struct {
             if (std.mem.eql(u8, wasm_ty, "i64")) (if (is_unsigned_scalar(first_ty)) "i64.shr_u" else "i64.shr_s") else (if (is_unsigned_scalar(first_ty)) "i32.shr_u" else "i32.shr_s")
         else if (std.mem.eql(u8, name, "rotl"))
             if (std.mem.eql(u8, wasm_ty, "i64")) "i64.rotl" else "i32.rotl"
-        else
-            if (std.mem.eql(u8, wasm_ty, "i64")) "i64.rotr" else "i32.rotr";
+        else if (std.mem.eql(u8, wasm_ty, "i64")) "i64.rotr" else "i32.rotr";
         try self.append_fmt("    {[op]s}\n", .{ .op = op });
         return first_ty;
     }
@@ -2923,8 +2922,7 @@ const BodyEmitter = struct {
             if (std.mem.eql(u8, wasm_ty, "f32")) "f32.floor" else "f64.floor"
         else if (tok_eq(self.tokens[start_idx + 1], "trunc"))
             if (std.mem.eql(u8, wasm_ty, "f32")) "f32.trunc" else "f64.trunc"
-        else
-            if (std.mem.eql(u8, wasm_ty, "f32")) "f32.nearest" else "f64.nearest";
+        else if (std.mem.eql(u8, wasm_ty, "f32")) "f32.nearest" else "f64.nearest";
         try self.append_fmt("    {[op]s}\n", .{ .op = op });
         return arg_ty;
     }
@@ -3529,7 +3527,6 @@ const BodyEmitter = struct {
         }
         return elements.toOwnedSlice(self.allocator);
     }
-
 
     fn emit_if_value_branch(self: *BodyEmitter, start: usize, end: usize, expected: []const u8) anyerror!void {
         if (!tok_eq(self.tokens[start], "{")) {
@@ -4719,7 +4716,7 @@ fn append_gc_locals(
         try append_lowered_wat_name(allocator, out, layout.name);
         try out.appendSlice(allocator, "))\n");
     }
-    try append_fmt(allocator, out, "    (local ${[bytes_next_name]s} (ref null $do_bytes))\n", .{ .bytes_next_name = gc_list_temps.bytes_next_name });
+    try append_fmt(allocator, out, "    (local ${[bytes_next_name]s} (ref null $do_u8))\n", .{ .bytes_next_name = gc_list_temps.bytes_next_name });
     for (gc_layout.scalar_array_specs, 0..) |spec, index| {
         if (gc_list_temps.has_scalar_arrays[index]) {
             try append_fmt(allocator, out, "    (local ${[index]s} (ref null {[array_name]s}))\n", .{ .index = gc_list_temps.scalar_next_names[index], .array_name = spec.array_name });
@@ -4735,7 +4732,7 @@ fn append_gc_locals(
     while (token_idx + 2 < tokens.len) : (token_idx += 1) {
         if (!tok_eq(tokens[token_idx], "@") or tokens[token_idx + 1].kind != .ident or
             !codegen_names.is_memory_load_name(tokens[token_idx + 1].lexeme)) continue;
-        try append_fmt(allocator, out, "    (local $__gc_load_bytes_{[index]d} (ref null $do_bytes))\n", .{ .index = token_idx });
+        try append_fmt(allocator, out, "    (local $__gc_load_bytes_{[index]d} (ref null $do_u8))\n", .{ .index = token_idx });
         try append_fmt(allocator, out, "    (local $__gc_load_offset_{[index]d} i32)\n", .{ .index = token_idx });
     }
     token_idx = 0;
@@ -5884,10 +5881,10 @@ test "GC sync lowers compiled storage alias set while preserving the old list" {
     defer graph.deinit();
     const wat = try emit_gc_wat_for_supported_tests(allocator, program, tokens, &graph);
     defer allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_bytes $do_bytes") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_bytes") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get_u $do_bytes") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get $do_bytes") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_u8 $do_u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get_u $do_u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get $do_u8") == null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "if (result i32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
@@ -5944,8 +5941,8 @@ test "GC sync lowers compiled managed struct alias set while preserving the old 
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $box $tag") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $box") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $__gc_bytes_eq") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get_u $do_bytes") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get $do_bytes") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get_u $do_u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get $do_u8") == null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "if (result i32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
@@ -5991,7 +5988,7 @@ test "GC sync lowers compiled managed tuple rebuild while preserving old payload
     try std.testing.expect(std.mem.indexOf(u8, wat, "local.set $updated.1") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $tuple_text_bytes") == null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $__gc_bytes_eq") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
@@ -6258,7 +6255,7 @@ test "GC sync lowers a nested byte-list put through typed GC arrays" {
     ;
     const wat = try emit_test_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_list_list_u8 (array (mut (ref null $do_bytes)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_list_list_u8 (array (mut (ref null $do_u8)))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_default $do_list_list_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_list_list_u8 $do_list_list_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_list_list_u8") != null);
@@ -6389,7 +6386,7 @@ test "GC sync lowers a pure payload union through a typed GC carrier" {
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $message (struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(field $tag i32)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(field $bytes (ref null $do_bytes))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(field $bytes (ref null $do_u8))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(param $value (ref null $message))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(result (ref null $message))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $message") != null);
@@ -6413,7 +6410,7 @@ test "GC sync lowers an anonymous managed union call compared with nil" {
     const wat = try emit_test_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_union") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(field $bytes (ref null $do_bytes))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(field $bytes (ref null $do_u8))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $do_union $tag") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 0\n    i32.eq") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
@@ -6498,7 +6495,7 @@ test "GC sync lowers direct text identity and literal rebuild with typed referen
     try std.testing.expect(std.mem.indexOf(u8, wat, "(param $value (ref null $do_text))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(result (ref null $do_text))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $do_text") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 5\n    i32.const 104\n    i32.const 101\n    array.new_fixed $do_bytes 5") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 5\n    i32.const 104\n    i32.const 101\n    array.new_fixed $do_u8 5") == null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
@@ -6802,7 +6799,7 @@ test "GC sync lowers a nested byte-list through typed GC arrays" {
     const wat = try emit_test_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_list_list_u8") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "array.get $do_list_list_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
@@ -6831,7 +6828,7 @@ test "GC sync lowers a pure scalar struct error union" {
     ;
     const wat = try emit_test_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $make (param $data (ref null $do_bytes)) (result i32 i32 i32 i32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(func $make (param $data (ref null $do_u8)) (result i32 i32 i32 i32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $make") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 2\n    i32.eq") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
@@ -6870,8 +6867,8 @@ test "GC sync lowers an exact nested byte-list update inside a struct field" {
     const wat = try emit_test_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $box $value") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_bytes $do_bytes") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_u8 $do_u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $box $tag") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $box") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
@@ -7355,8 +7352,8 @@ test "GC sync lowers a byte-list literal through a typed local" {
     ;
     const wat = try emit_test_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $value (ref null $do_bytes))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_bytes 3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(local $value (ref null $do_u8))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_u8 3") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
@@ -7369,8 +7366,8 @@ test "GC sync lowers a string literal in a byte-list result context" {
     ;
     const wat = try emit_test_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(result (ref null $do_bytes))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_bytes 3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(result (ref null $do_u8))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_u8 3") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $do_text") == null);
 }
 
@@ -7400,7 +7397,7 @@ test "GC sync admits one direct call returning a classified managed value" {
     const wat = try emit_test_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $make") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(result (ref null $do_bytes))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(result (ref null $do_u8))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
 
@@ -7416,7 +7413,7 @@ test "GC sync lowers a Tuple text byte-list persistent update" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "(param $pair (ref null $tuple_text_bytes))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(result (ref null $tuple_text_bytes))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $tuple_text_bytes $text") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_bytes $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_u8 $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $tuple_text_bytes") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "__arc_") == null);
 }
@@ -7865,6 +7862,6 @@ test "GC sync admits a dynamic byte-list put in a managed union producer" {
     ;
     const wat = try emit_test_source(std.testing.allocator, source);
     defer std.testing.allocator.free(wat);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_bytes $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.copy $do_u8 $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $do_union") != null);
 }

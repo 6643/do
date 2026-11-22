@@ -46,14 +46,14 @@ pub fn emit_text_lower_module(
     errdefer out.deinit(allocator);
     try out.appendSlice(allocator, base[0 .. base.len - closing.len]);
     try generated_text.append_block(allocator, &out, 0,
-                \\  (func $run (result i32)
+        \\  (func $run (result i32)
         \\    i32.const 5
         \\    i32.const 104
         \\    i32.const 101
         \\    i32.const 108
         \\    i32.const 108
         \\    i32.const 111
-        \\    array.new_fixed $do_bytes 5
+        \\    array.new_fixed $do_u8 5
         \\    struct.new $do_text
         \\    call $marshal
         \\    global.get $__alloc_count
@@ -64,7 +64,7 @@ pub fn emit_text_lower_module(
         \\  (export "run" (func $run))
         \\)
         \\
-        );
+    );
     return out.toOwnedSlice(allocator);
 }
 

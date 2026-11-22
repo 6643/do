@@ -1,6 +1,6 @@
 ;; gc-sync
 (local $box (ref null $box))
-(local $next (ref null $do_bytes))
+(local $next (ref null $do_u8))
 ;; gc-root overwrite $box
 local.get $next
 local.set $box

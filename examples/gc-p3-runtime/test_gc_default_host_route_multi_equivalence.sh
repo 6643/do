@@ -54,7 +54,7 @@ if rg -q '^\s*\(import "demo:marshal-record-managed-lower-multi/api@1.0.0" "writ
   printf 'GC reference crossed the default C15-D canonical import\n' >&2
   exit 1
 fi
-test "$(rg -c 'array.get_s \$do_bytes' "$tmp_dir/gc.core.wat")" -eq 2
+test "$(rg -c 'array.get_s \$do_u8' "$tmp_dir/gc.core.wat")" -eq 2
 test "$(rg -c 'call \$cabi_realloc' "$tmp_dir/gc.core.wat")" -eq 4
 gc_call_line=$(rg -n 'call \$__gc_canonical_call' "$tmp_dir/gc.core.wat" | tail -1 | cut -d: -f1)
 gc_free_line=$(rg -n 'call \$cabi_realloc' "$tmp_dir/gc.core.wat" | tail -1 | cut -d: -f1)

@@ -1,4 +1,4 @@
 ;; gc-sync
-(local $data (ref null $do_bytes))
-array.new_fixed $do_bytes 3
+(local $data (ref null $do_u8))
+array.new_fixed $do_u8 3
 local.set $data

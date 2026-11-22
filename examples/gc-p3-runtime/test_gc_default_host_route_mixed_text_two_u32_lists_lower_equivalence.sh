@@ -39,7 +39,7 @@ if rg -q '__arc_' "$tmp_dir/gc.core.wat" || rg -q '^\s*\(import .*\(ref' "$tmp_d
     exit 1
 fi
 rg -q '\(type \$canonical_lower \(func \(param i32 i32 i32 i32 i32 i32 i32\)\)\)' "$tmp_dir/gc.core.wat"
-rg -q 'array.get_s \$do_bytes' "$tmp_dir/gc.core.wat"
+rg -q 'array.get_s \$do_u8' "$tmp_dir/gc.core.wat"
 test "$(rg -c 'array.get \$do_u32' "$tmp_dir/gc.core.wat")" -eq 2
 mapfile -t realloc_lines < <(rg -n 'call \$cabi_realloc' "$tmp_dir/gc.core.wat" | cut -d: -f1)
 test "${#realloc_lines[@]}" -eq 6

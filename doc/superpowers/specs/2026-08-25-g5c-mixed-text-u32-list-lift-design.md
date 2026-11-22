@@ -76,7 +76,7 @@ spans. The GC lift must:
 1. validate the 20-byte result-area span;
 2. load `code`, the label pointer/length, and the payload pointer/length;
 3. validate both linear spans and the checked `length * 4` payload byte count;
-4. allocate a GC `$do_bytes` array and copy the label bytes with `load8_u`;
+4. allocate a GC `$do_u8` array and copy the label bytes with `load8_u`;
 5. allocate a GC `$do_u32` array and copy payload elements with `i32.load`;
 6. free the payload span exactly once;
 7. free the label span exactly once;

@@ -54,8 +54,8 @@ the individual G5a/G5b logs under the run directory.
 The printed GC WAT contains these managed layouts:
 
 ```text
-$do_bytes  = (array (mut i8))
-$do_text   = (struct (field $length i32) (field $bytes (ref null $do_bytes)))
+$do_u8  = (array (mut i8))
+$do_text   = (struct (field $length i32) (field $bytes (ref null $do_u8)))
 $do_record = (struct (field $field0 i32) (field $field1 i32))
 ```
 

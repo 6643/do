@@ -12,7 +12,7 @@ test "GC fragments compose in one module with one shared prelude" {
     try module.end();
 
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, out.items, "(module\n"));
-    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, out.items, "(type $do_bytes"));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, out.items, "(type $do_u8"));
     try std.testing.expect(std.mem.indexOf(u8, out.items, "(func $identity") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.items, "(func $relay") != null);
 }
@@ -95,7 +95,7 @@ test "shared GC emitter rebuilds managed tuple and preserves text field" {
     try std.testing.expect(std.mem.indexOf(u8, out.items, "(type $tuple_text_bytes (struct") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.items, "struct.get $tuple_text_bytes $text") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.items, "struct.new $tuple_text_bytes") != null);
-    try std.testing.expect(std.mem.indexOf(u8, out.items, "array.copy $do_bytes $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "array.copy $do_u8 $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.items, "__arc_") == null);
 }
 

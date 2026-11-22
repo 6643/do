@@ -1,7 +1,7 @@
-(type $do_bytes (array (mut i8)))
-(type $do_text (struct (field $length i32) (field $bytes (ref null $do_bytes))))
+(type $do_u8 (array (mut i8)))
+(type $do_text (struct (field $length i32) (field $bytes (ref null $do_u8))))
 (func $_start
 (local $s (ref null $do_text))
 ;; gc-root local_bind $s
-array.new_fixed $do_bytes 3
+array.new_fixed $do_u8 3
 struct.new $do_text

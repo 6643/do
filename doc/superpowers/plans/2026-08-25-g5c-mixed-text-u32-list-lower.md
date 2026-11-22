@@ -136,7 +136,7 @@
 **Interfaces:**
 
 - Consumes: `ManagedMixedScalarListLower.scalar_list` from Task 2.
-- Produces: one mixed emitter that selects `$do_bytes`/`array.get_s`/`i32.store8`
+- Produces: one mixed emitter that selects `$do_u8`/`array.get_s`/`i32.store8`
   for byte lists and `$do_u32`/`array.get`/`i32.store` for u32 lists.
 
 - [ ] **Step 1: Remove the mixed emitter's byte-only guards and locals.**

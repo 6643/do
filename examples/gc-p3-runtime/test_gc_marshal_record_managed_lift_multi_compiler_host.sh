@@ -41,7 +41,7 @@ fi
 rg -q '\(type \$canonical_lift \(func \(param i32\)\)\)' "$tmp_dir/core.wat"
 rg -q '\(import "demo:marshal-record-managed-lift-multi/api@1.0.0" "read"' "$tmp_dir/core.wat"
 rg -q '\(type \$do_record \(struct \(field \$field0 i32\) \(field \$field1 \(ref null \$do_text\)\) \(field \$field2 \(ref null \$do_text\)\)\)\)' "$tmp_dir/core.wat"
-test "$(rg -c 'array.set \$do_bytes' "$tmp_dir/core.wat")" -eq 2
+test "$(rg -c 'array.set \$do_u8' "$tmp_dir/core.wat")" -eq 2
 test "$(rg -c 'struct.new \$do_text' "$tmp_dir/core.wat")" -eq 2
 test "$(rg -c 'struct.get \$do_text \$length' "$tmp_dir/core.wat")" -eq 2
 if rg -q '^\s*\(import.*\(ref' "$tmp_dir/core.wat"; then

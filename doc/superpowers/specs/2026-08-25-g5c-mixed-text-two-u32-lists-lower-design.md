@@ -133,7 +133,7 @@ flowchart LR
     I --> J[Free label]
 ```
 
-The GC record remains the source value. The lowerer uses `$do_text`/`$do_bytes`
+The GC record remains the source value. The lowerer uses `$do_text`/`$do_u8`
 for `label` and `$do_u32` for both lists. Temporary linear allocations are
 released exactly once in reverse acquisition order: `second`, `first`, then
 `label`. If allocation or range validation fails after an earlier allocation,

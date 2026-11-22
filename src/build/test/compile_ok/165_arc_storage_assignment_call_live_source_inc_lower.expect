@@ -1,4 +1,4 @@
 ;; gc-sync
 ;; gc-root
-(type $do_bytes
-array.new_fixed $do_bytes
+(type $do_u8
+array.new_fixed $do_u8

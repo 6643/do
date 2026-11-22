@@ -1,7 +1,7 @@
 ;; backend=gc
 ;; gc-sync source_len=47 token_count=13
-(type $do_bytes (array (mut i8)))
-(type $box (struct (field $value (ref null $do_bytes))))
+(type $do_u8 (array (mut i8)))
+(type $box (struct (field $value (ref null $do_u8))))
 (func $__gc_bytes_eq
 (func $__gc_text_eq
 (func $_start

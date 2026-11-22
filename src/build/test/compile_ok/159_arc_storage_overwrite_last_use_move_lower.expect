@@ -1,5 +1,5 @@
 ;; gc-sync source_len=83 token_count=21
-count=2 array.new_fixed $do_bytes 3
+count=2 array.new_fixed $do_u8 3
 local.set $data
 local.set $next
 ;; gc-root overwrite $data

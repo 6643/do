@@ -33,7 +33,7 @@ Measured result-area layout:
 | `reading` | 0 | 12 | 4 |
 
 The canonical import remains `(i32) ->` through a single result-area pointer.
-The pointer/length payload is copied into a GC `do_bytes` array and then a
+The pointer/length payload is copied into a GC `do_u8` array and then a
 `do_text` struct. No GC reference crosses the canonical Component boundary.
 
 ## Implementation boundary

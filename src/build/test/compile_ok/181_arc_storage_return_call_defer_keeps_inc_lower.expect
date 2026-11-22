@@ -1,4 +1,4 @@
-(type $do_bytes
+(type $do_u8
 count=1 call $nop
 count=1 call $make
 count=2 ;; gc-root return_value

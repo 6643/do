@@ -165,7 +165,7 @@ or claim full G5c cutover.
 **Interfaces:**
 
 - Consumes: Task 2 descriptor and manifest-backed `SyncValuePlan`.
-- Produces: explicit marshal dispatch, a generated Core module with `$do_bytes`
+- Produces: explicit marshal dispatch, a generated Core module with `$do_u8`
   for both text and payload, and a `$run`/`$stats` probe.
 
 - [x] **Step 1: Add explicit descriptor dispatch.**
@@ -180,9 +180,9 @@ or claim full G5c cutover.
 
   ```text
   (type $canonical_lift (func (param i32)))
-  array.new_default $do_bytes
+  array.new_default $do_u8
   i32.load8_u
-  array.set $do_bytes
+  array.set $do_u8
   struct.new $do_record
   ```
 
@@ -194,7 +194,7 @@ or claim full G5c cutover.
 
   Construct the manifest-owned route, export `run` returning `47`, export
   `stats` returning `34`, and make the wrapper validate the result area, both
-  `$do_bytes` arrays, and exactly-once free order before emitting WAT.
+  `$do_u8` arrays, and exactly-once free order before emitting WAT.
 
 - [x] **Step 4: Run focused WAT and parser verification.**
 

@@ -152,7 +152,7 @@
 
 - [ ] **Step 3: Lower tag/payload construction and direct replacement.**
 
-  Emit a typed GC union struct containing the tag and nullable `$do_bytes` payload. Construct `Empty` with a null payload and `Bytes(bytes)` with the direct GC reference. `rewrite` must allocate a new union object and leave the input union unchanged.
+  Emit a typed GC union struct containing the tag and nullable `$do_u8` payload. Construct `Empty` with a null payload and `Bytes(bytes)` with the direct GC reference. `rewrite` must allocate a new union object and leave the input union unchanged.
 
 - [ ] **Step 4: Add and run the Wasmtime probe.**
 

@@ -39,7 +39,7 @@ if rg -q '^\s*\(import.*\(ref' "$tmp_dir/gc.core.wat" "$arc_core_wat"; then
   printf 'GC reference crossed canonical mixed text/u32-list record lift import\n' >&2
   exit 1
 fi
-rg -q 'array.set \$do_bytes' "$tmp_dir/gc.core.wat"
+rg -q 'array.set \$do_u8' "$tmp_dir/gc.core.wat"
 rg -q 'array.set \$do_u32' "$tmp_dir/gc.core.wat"
 rg -q 'struct.new \$do_record' "$tmp_dir/gc.core.wat"
 test "$(rg -c 'call \$cabi_realloc' "$tmp_dir/gc.core.wat")" -eq 2

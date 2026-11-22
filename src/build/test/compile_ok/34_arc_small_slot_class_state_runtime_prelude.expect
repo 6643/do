@@ -1,6 +1,6 @@
 ;; backend=gc
 ;; gc-sync source_len=23 token_count=6
-(type $do_bytes (array (mut i8)))
+(type $do_u8 (array (mut i8)))
 (func $__gc_bytes_eq
 (func $__gc_text_eq
 (func $_start

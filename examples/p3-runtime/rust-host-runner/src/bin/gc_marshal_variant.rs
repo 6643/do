@@ -20,7 +20,9 @@ fn run_component(engine: &Engine, component_path: &str, mode: &str) -> Result<()
     if mode == "option" {
         map_wasmtime(api.func_new("send", |mut store, _ty, params, results| {
             if params != [Val::Option(Some(Box::new(Val::U32(7))))] || !results.is_empty() {
-                return Err(wasmtime::Error::msg(format!("unexpected option call: {params:?}")));
+                return Err(wasmtime::Error::msg(format!(
+                    "unexpected option call: {params:?}"
+                )));
             }
             store.data_mut().received.push(params[0].clone());
             Ok(())
@@ -28,7 +30,9 @@ fn run_component(engine: &Engine, component_path: &str, mode: &str) -> Result<()
     } else if mode == "variant-none" {
         map_wasmtime(api.func_new("send", |mut store, _ty, params, results| {
             if params != [Val::Variant("none".to_string(), None)] || !results.is_empty() {
-                return Err(wasmtime::Error::msg(format!("unexpected unit variant call: {params:?}")));
+                return Err(wasmtime::Error::msg(format!(
+                    "unexpected unit variant call: {params:?}"
+                )));
             }
             store.data_mut().received.push(params[0].clone());
             Ok(())
@@ -39,13 +43,17 @@ fn run_component(engine: &Engine, component_path: &str, mode: &str) -> Result<()
         } else {
             Val::Result(Err(Some(Box::new(Val::U32(7)))))
         };
-        map_wasmtime(api.func_new("send", move |mut store, _ty, params, results| {
-            if params.len() != 1 || params[0] != expected || !results.is_empty() {
-                return Err(wasmtime::Error::msg(format!("unexpected result call: {params:?}")));
-            }
-            store.data_mut().received.push(params[0].clone());
-            Ok(())
-        }))?;
+        map_wasmtime(
+            api.func_new("send", move |mut store, _ty, params, results| {
+                if params.len() != 1 || params[0] != expected || !results.is_empty() {
+                    return Err(wasmtime::Error::msg(format!(
+                        "unexpected result call: {params:?}"
+                    )));
+                }
+                store.data_mut().received.push(params[0].clone());
+                Ok(())
+            }),
+        )?;
     } else if mode == "result-text-lift" || mode == "result-scalar-lift" {
         let value = if mode == "result-text-lift" {
             Val::Result(Ok(Some(Box::new(Val::String("hello".to_string())))))
@@ -83,7 +91,9 @@ fn run_component(engine: &Engine, component_path: &str, mode: &str) -> Result<()
         let expected = match mode {
             "option" => Val::Option(Some(Box::new(Val::U32(7)))),
             "variant-none" => Val::Variant("none".to_string(), None),
-            "result-text-lower" => Val::Result(Ok(Some(Box::new(Val::String("hello".to_string()))))),
+            "result-text-lower" => {
+                Val::Result(Ok(Some(Box::new(Val::String("hello".to_string())))))
+            }
             "result-scalar-lower" => Val::Result(Err(Some(Box::new(Val::U32(7))))),
             _ => unreachable!(),
         };
@@ -115,9 +125,9 @@ fn run_component(engine: &Engine, component_path: &str, mode: &str) -> Result<()
 
 fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
-    let component_path = args.next().context(
-        "usage: do-p3-gc-marshal-variant <component.wasm> <mode>",
-    )?;
+    let component_path = args
+        .next()
+        .context("usage: do-p3-gc-marshal-variant <component.wasm> <mode>")?;
     let mode = args.next().context("missing variant marshal mode")?;
     if args.next().is_some() {
         bail!("expected one component path and one mode");

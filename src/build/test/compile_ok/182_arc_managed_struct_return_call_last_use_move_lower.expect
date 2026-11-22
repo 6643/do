@@ -1,4 +1,4 @@
 ;; gc-sync
 ;; gc-root
 (type $box
-(type $do_bytes
+(type $do_u8

@@ -26,11 +26,11 @@ if rg -q '__arc_|__storage_|__struct_literal_tmp' "$wat_path"; then
   printf 'inferred list storage output contains legacy compiler markers\n' >&2
   exit 1
 fi
-if ! rg -q '\(local \$values \(ref null \$do_bytes\)\)' "$wat_path"; then
+if ! rg -q '\(local \$values \(ref null \$do_u8\)\)' "$wat_path"; then
   printf 'inferred list storage output lacks typed values local\n' >&2
   exit 1
 fi
-if ! rg -q 'array.copy \$do_bytes \$do_bytes' "$wat_path" || ! rg -q 'array.set \$do_bytes' "$wat_path"; then
+if ! rg -q 'array.copy \$do_u8 \$do_u8' "$wat_path" || ! rg -q 'array.set \$do_u8' "$wat_path"; then
   printf 'inferred list storage output lacks copy/set lowering\n' >&2
   exit 1
 fi

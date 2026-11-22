@@ -38,7 +38,7 @@ host declarations, and unknown descriptors before any WAT is returned.
 The manifest and measured layout remain authoritative. The root result area is
 12 bytes aligned to 4 with `code@0`, `label.ptr@4`, and `label.len@8`.
 The canonical import is `(func (param i32))`: the host writes the result area,
-the GC lift copies the text bytes into `$do_bytes`, constructs `$do_text` and
+the GC lift copies the text bytes into `$do_u8`, constructs `$do_text` and
 the record, and the private `run` export returns `code + label.length` for the
 fixed host gate. No GC reference crosses the canonical import.
 

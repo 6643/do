@@ -345,7 +345,7 @@ fn nested_record_lift_deep_measurement() marshal.MeasuredNode {
                     .{ .name = "code", .offset = 0, .byte_size = 4, .alignment = 4, .indirect = null },
                     .{ .name = "count", .offset = 8, .byte_size = 8, .alignment = 8, .indirect = null },
                 },
-            } }, .children = &. {
+            } }, .children = &.{
                 .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
                 .{ .layout = .{ .scalar = .{ .offset = 8, .byte_size = 8, .alignment = 8, .core_type = .i64 } } },
             } },
@@ -661,8 +661,8 @@ test "manifest route emits the pinned mixed text byte-list record lift" {
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-record-mixed-text-byte-list-lift/api@1.0.0") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lift (func (param i32)))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "(ref null $do_bytes)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(ref null $do_u8)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "i32.load8_u") != null);
 }
 
@@ -921,7 +921,7 @@ test "manifest route emits the pinned managed-field record lower" {
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-record-managed-lower/api@1.0.0") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lower (func (param i32 i32 i32)))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get_s $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get_s $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $canonical_call") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(memory (export \"memory\")") != null);
 }
@@ -939,7 +939,7 @@ test "manifest route admits the pinned multi-managed-text record lower" {
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-record-managed-lower-multi/api@1.0.0") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lower (func (param i32 i32 i32 i32 i32)))") != null);
-    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "array.get_s $do_bytes"));
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "array.get_s $do_u8"));
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $canonical_call") != null);
 }
 

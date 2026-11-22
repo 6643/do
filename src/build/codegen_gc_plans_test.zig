@@ -97,7 +97,7 @@ test "marshal module wrapper emits bounded lower text module" {
     });
     defer std.testing.allocator.free(module_wat);
 
-    try std.testing.expect(std.mem.indexOf(u8, module_wat, "(type $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, module_wat, "(type $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, module_wat, "(type $do_text") != null);
     try std.testing.expect(std.mem.indexOf(u8, module_wat, "(memory (export \"memory\") 1)") != null);
     try std.testing.expect(std.mem.indexOf(u8, module_wat, "(type $cabi_realloc") != null);
@@ -1670,7 +1670,7 @@ test "canonical marshal module emits scalar ABI without linear allocation" {
     });
     defer std.testing.allocator.free(module_wat);
     try std.testing.expect(std.mem.indexOf(u8, module_wat, "(type $canonical_lower (func (param i32)))") != null);
-    try std.testing.expect(std.mem.indexOf(u8, module_wat, "(type $do_bytes") == null);
+    try std.testing.expect(std.mem.indexOf(u8, module_wat, "(type $do_u8") == null);
     try std.testing.expect(std.mem.indexOf(u8, module_wat, "cabi_realloc") == null);
     try std.testing.expect(std.mem.indexOf(u8, module_wat, "(ref") == null);
 }

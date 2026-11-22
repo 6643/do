@@ -1,5 +1,5 @@
 ;; gc-sync
-(local $data (ref null $do_bytes))
+(local $data (ref null $do_u8))
 ;; gc-root overwrite $data
-array.new_fixed $do_bytes 3
+array.new_fixed $do_u8 3
 local.set $data

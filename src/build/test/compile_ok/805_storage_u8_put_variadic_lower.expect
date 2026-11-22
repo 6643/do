@@ -1,7 +1,7 @@
 ;; gc-sync
-array.new_default $do_bytes
-array.copy $do_bytes $do_bytes
+array.new_default $do_u8
+array.copy $do_u8 $do_u8
 i32.const 0
-array.set $do_bytes
+array.set $do_u8
 i32.const 1
-array.set $do_bytes
+array.set $do_u8

@@ -119,7 +119,7 @@
 
 - [x] **Step 2: Add the probe with measured layout.**
 
-  Load the manifest-owned descriptor, emit the marshal function, build a `$run` that sums code, label length, and the first three `$do_u32` elements, and export `run`. Add an emitter test for `(type $canonical_lift (func (param i32)))`, `$do_bytes`, `$do_u32`, `struct.new $do_record`, and exactly two realloc frees.
+  Load the manifest-owned descriptor, emit the marshal function, build a `$run` that sums code, label length, and the first three `$do_u32` elements, and export `run`. Add an emitter test for `(type $canonical_lift (func (param i32)))`, `$do_u8`, `$do_u32`, `struct.new $do_record`, and exactly two realloc frees.
 
 - [x] **Step 3: Run focused GREEN tests.**
 

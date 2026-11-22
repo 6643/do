@@ -47,7 +47,7 @@ note.len@16
 
 The canonical import remains `(func (param i32))`: the host receives a pointer
 to the result area, the GC lift checks both spans, copies both text payloads
-into `$do_bytes`, constructs two `$do_text` values and the enclosing record,
+into `$do_u8`, constructs two `$do_text` values and the enclosing record,
 and publishes the result without crossing a GC reference through the import.
 The private `run` wrapper returns `code + label.length + note.length`, which is
 `17` for the fixed host values `7`, `hello`, and `world`.

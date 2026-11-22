@@ -2,8 +2,8 @@ local.get $__gc_load_bytes_
 array.len
 count=18 i32.lt_u
 count=0 i32.gt_u
-array.get_u $do_bytes
+array.get_u $do_u8
 i32.shr_s
 i64.const 56
 i64.or
-(func $read_u16 (param $data (ref null $do_bytes)) (param $offset i32) (result i32)
+(func $read_u16 (param $data (ref null $do_u8)) (param $offset i32) (result i32)

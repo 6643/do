@@ -49,7 +49,7 @@ pub fn emit_random_bytes_lift_module(
     try out.appendSlice(allocator, base[0 .. base.len - 2]);
     try generated_text.append_block(allocator, &out, 0,
         \\  (func $run (result i32)
-        \\    (local $bytes (ref null $do_bytes))
+        \\    (local $bytes (ref null $do_u8))
         \\    call $marshal
         \\    local.set $bytes
         \\    local.get $bytes
@@ -58,7 +58,7 @@ pub fn emit_random_bytes_lift_module(
         \\  (export "run" (func $run))
         \\)
         \\
-        );
+    );
     return out.toOwnedSlice(allocator);
 }
 

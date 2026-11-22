@@ -9,7 +9,7 @@ test "synchronous GC adapter admits only emitted managed leaf layouts" {
 
     const bytes = try adapter.classify_admitted_type("[u8]", &.{});
     try std.testing.expectEqual(representation.ValueRep.gc_managed, bytes.rep);
-    try std.testing.expectEqualStrings("(ref null $do_bytes)", bytes.wasm_type);
+    try std.testing.expectEqualStrings("(ref null $do_u8)", bytes.wasm_type);
 }
 
 test "synchronous GC adapter admits the registered tuple carrier and rejects other unregistered aggregates" {

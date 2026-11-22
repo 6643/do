@@ -34,7 +34,7 @@
 
 - [x] **Step 1: Add a failing structural test.**
 
-  Build a parser-backed lower text plan and assert that the emitted module contains the `$do_bytes` and `$do_text` GC types, exported memory, a typed `cabi_realloc`, the descriptor-derived canonical import, and no canonical parameter containing `(ref`.
+  Build a parser-backed lower text plan and assert that the emitted module contains the `$do_u8` and `$do_text` GC types, exported memory, a typed `cabi_realloc`, the descriptor-derived canonical import, and no canonical parameter containing `(ref`.
 
 - [x] **Step 2: Run the focused test and capture the missing-entry failure.**
 

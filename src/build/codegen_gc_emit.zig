@@ -85,9 +85,7 @@ pub fn emit_text_identity(
 ) !void {
     try out.appendSlice(allocator, "(module\n");
     try runtime_gc_prelude.emit_text_prelude(allocator, out);
-    try generated_text.append_fmt(allocator, out,
-        "  (func ${[function_name]s} (param ${[value_name]s} (ref null $do_text)) (result (ref null $do_text))\n",
-        .{ .function_name = plan.function_name, .value_name = plan.value_name });
+    try generated_text.append_fmt(allocator, out, "  (func ${[function_name]s} (param ${[value_name]s} (ref null $do_text)) (result (ref null $do_text))\n", .{ .function_name = plan.function_name, .value_name = plan.value_name });
     try generated_text.append_fmt(allocator, out, "    local.get ${[value_name]s})\n", .{ .value_name = plan.value_name });
     try generated_text.append_block(
         allocator,
@@ -96,7 +94,7 @@ pub fn emit_text_identity(
         \\  (func (export "probe") (result i32)
         \\    (local $value (ref null $do_text))
         \\    i32.const 27815
-        \\    ref.null $do_bytes
+        \\    ref.null $do_u8
         \\    struct.new $do_text
         \\
         ,
@@ -121,9 +119,7 @@ fn emit_text_identity_fragment(
     out: *std.ArrayList(u8),
     plan: TextIdentityPlan,
 ) !void {
-    try generated_text.append_fmt(allocator, out,
-        "  (func ${[function_name]s} (param ${[value_name]s} (ref null $do_text)) (result (ref null $do_text))\n",
-        .{ .function_name = plan.function_name, .value_name = plan.value_name });
+    try generated_text.append_fmt(allocator, out, "  (func ${[function_name]s} (param ${[value_name]s} (ref null $do_text)) (result (ref null $do_text))\n", .{ .function_name = plan.function_name, .value_name = plan.value_name });
     try generated_text.append_fmt(allocator, out, "    local.get ${[value_name]s})\n", .{ .value_name = plan.value_name });
 }
 
@@ -146,8 +142,8 @@ pub fn emit_managed_struct_set(
         allocator,
         out,
         2,
-        \\  (func $__gc_copy_set (param $input (ref null $do_bytes)) (result (ref $do_bytes))
-        \\    (local $__gc_next (ref $do_bytes))
+        \\  (func $__gc_copy_set (param $input (ref null $do_u8)) (result (ref $do_u8))
+        \\    (local $__gc_next (ref $do_u8))
         \\    (local $__gc_length i32)
         \\    local.get $input
         \\    ref.as_non_null
@@ -157,7 +153,7 @@ pub fn emit_managed_struct_set(
         \\    i32.eqz
         \\    if unreachable end
         \\    local.get $__gc_length
-        \\    array.new_default $do_bytes
+        \\    array.new_default $do_u8
         \\    local.set $__gc_next
         \\    local.get $__gc_next
         \\    i32.const 0
@@ -165,18 +161,16 @@ pub fn emit_managed_struct_set(
         \\    ref.as_non_null
         \\    i32.const 0
         \\    local.get $__gc_length
-        \\    array.copy $do_bytes $do_bytes
+        \\    array.copy $do_u8 $do_u8
         \\    local.get $__gc_next
         \\    i32.const 0
         \\    i32.const 65
-        \\    array.set $do_bytes
+        \\    array.set $do_u8
         \\    local.get $__gc_next)
         \\
         ,
     );
-    try generated_text.append_fmt(allocator, out,
-        "  (func ${[function_name]s} (param ${[receiver_name]s} (ref null ${[struct_name]s})) (result (ref null ${[struct_name]s}))\n",
-        .{ .function_name = source_function_name, .receiver_name = source_receiver_name, .struct_name = struct_name });
+    try generated_text.append_fmt(allocator, out, "  (func ${[function_name]s} (param ${[receiver_name]s} (ref null ${[struct_name]s})) (result (ref null ${[struct_name]s}))\n", .{ .function_name = source_function_name, .receiver_name = source_receiver_name, .struct_name = struct_name });
     if (has_scalar_field) {
         try out.appendSlice(allocator, "    (local $__gc_scalar i32)\n");
         try generated_text.append_fmt_block(allocator, out, 4,
@@ -218,7 +212,7 @@ pub fn emit_managed_struct_set(
         \\    i32.const 1
         \\    i32.const 2
         \\    i32.const 3
-        \\    array.new_fixed $do_bytes 3
+        \\    array.new_fixed $do_u8 3
         \\
         ,
     );
@@ -238,7 +232,7 @@ pub fn emit_managed_struct_set(
         4,
         \\    ref.as_non_null
         \\    i32.const 0
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.const 1
         \\    i32.ne
         \\    if unreachable end
@@ -267,7 +261,7 @@ pub fn emit_managed_struct_set(
         4,
         \\    ref.as_non_null
         \\    i32.const 0
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.const 65
         \\    i32.ne
         \\    if unreachable end
@@ -309,7 +303,7 @@ pub fn emit_managed_tuple_set(
         out,
         0,
         \\  (func $update (param $input (ref null $tuple_text_bytes)) (result (ref null $tuple_text_bytes))
-        \\    (local $__gc_next (ref $do_bytes))
+        \\    (local $__gc_next (ref $do_u8))
         \\    (local $__gc_length i32)
         \\    (local $text (ref null $do_text))
         \\    local.get $input
@@ -326,7 +320,7 @@ pub fn emit_managed_tuple_set(
         \\    i32.eqz
         \\    if unreachable end
         \\    local.get $__gc_length
-        \\    array.new_default $do_bytes
+        \\    array.new_default $do_u8
         \\    local.set $__gc_next
         \\    local.get $__gc_next
         \\    i32.const 0
@@ -336,11 +330,11 @@ pub fn emit_managed_tuple_set(
         \\    ref.as_non_null
         \\    i32.const 0
         \\    local.get $__gc_length
-        \\    array.copy $do_bytes $do_bytes
+        \\    array.copy $do_u8 $do_u8
         \\    local.get $__gc_next
         \\    i32.const 0
         \\    i32.const 65
-        \\    array.set $do_bytes
+        \\    array.set $do_u8
         \\    local.get $text
         \\    local.get $__gc_next
         \\    struct.new $tuple_text_bytes)
@@ -348,12 +342,12 @@ pub fn emit_managed_tuple_set(
         \\    (local $original (ref $tuple_text_bytes))
         \\    (local $updated (ref null $tuple_text_bytes))
         \\    i32.const 27815
-        \\    ref.null $do_bytes
+        \\    ref.null $do_u8
         \\    struct.new $do_text
         \\    i32.const 1
         \\    i32.const 2
         \\    i32.const 3
-        \\    array.new_fixed $do_bytes 3
+        \\    array.new_fixed $do_u8 3
         \\    struct.new $tuple_text_bytes
         \\    local.tee $original
         \\    call $update
@@ -369,7 +363,7 @@ pub fn emit_managed_tuple_set(
         \\    struct.get $tuple_text_bytes $bytes
         \\    ref.as_non_null
         \\    i32.const 0
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.const 1
         \\    i32.ne
         \\    if unreachable end
@@ -386,7 +380,7 @@ pub fn emit_managed_tuple_set(
         \\    struct.get $tuple_text_bytes $bytes
         \\    ref.as_non_null
         \\    i32.const 0
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.const 65
         \\    i32.ne
         \\    if unreachable end

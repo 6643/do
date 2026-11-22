@@ -71,7 +71,7 @@ pub fn classify_admitted_type_with_layouts_and_unions_and_arrays(
 
     const wasm_type = if (leaf_layout) |leaf| switch (leaf) {
         .text => "(ref null $do_text)",
-        .byte_array => "(ref null $do_bytes)",
+        .byte_array => "(ref null $do_u8)",
         .scalar_array => try scalar_array_wasm_type(ty),
     } else if (is_gc_sync_tuple_text_bytes(ty)) "(ref null $tuple_text_bytes)" else if (aggregate_layout != null) "(ref null $gc_struct)" else if (is_managed_array) "" else try scalar_wasm_type(ty);
     return .{ .rep = rep, .layout = leaf_layout, .aggregate_layout = aggregate_layout, .wasm_type = wasm_type };

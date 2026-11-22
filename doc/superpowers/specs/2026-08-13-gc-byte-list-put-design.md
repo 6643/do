@@ -55,7 +55,7 @@ local.set $length
 local.get $length
 i32.const 1
 i32.add
-array.new_default $do_bytes
+array.new_default $do_u8
 local.set $next
 
 local.get $next
@@ -64,12 +64,12 @@ local.get $source
 ref.as_non_null
 i32.const 0
 local.get $length
-array.copy $do_bytes $do_bytes
+array.copy $do_u8 $do_u8
 
 local.get $next
 local.get $length
 ;; emit the one checked u8 value
-array.set $do_bytes
+array.set $do_u8
 local.get $next
 ```
 

@@ -39,8 +39,8 @@ if rg -q '^\s*\(import.*\(ref' "$tmp_dir/gc.core.wat" "$arc_core_wat"; then
   printf 'GC reference crossed canonical mixed text/byte-list record lift import\n' >&2
   exit 1
 fi
-test "$(rg -c 'array.new_default \$do_bytes' "$tmp_dir/gc.core.wat")" -eq 2
-rg -q 'array.set \$do_bytes' "$tmp_dir/gc.core.wat"
+test "$(rg -c 'array.new_default \$do_u8' "$tmp_dir/gc.core.wat")" -eq 2
+rg -q 'array.set \$do_u8' "$tmp_dir/gc.core.wat"
 rg -q 'i32.load8_u' "$tmp_dir/gc.core.wat"
 rg -q 'struct.new \$do_record' "$tmp_dir/gc.core.wat"
 test "$(rg -c 'call \$cabi_realloc' "$tmp_dir/gc.core.wat")" -eq 2

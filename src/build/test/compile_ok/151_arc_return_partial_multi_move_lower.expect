@@ -1,9 +1,9 @@
 ;; gc-sync source_len=195 token_count=51
-(func $make_partial (result (ref null $do_bytes) i32)
-array.new_fixed $do_bytes 4
+(func $make_partial (result (ref null $do_u8) i32)
+array.new_fixed $do_u8 4
 local.set $keep
 ;; gc-root local_bind $keep
-array.new_fixed $do_bytes 4
+array.new_fixed $do_u8 4
 local.set $drop
 ;; gc-root local_bind $drop
 local.get $keep

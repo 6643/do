@@ -1,12 +1,12 @@
-(type $do_bytes (array (mut i8)))
+(type $do_u8 (array (mut i8)))
 (func $_start
-(local $xs (ref null $do_bytes))
+(local $xs (ref null $do_u8))
 (local $n i32)
 (local $b i32)
-array.new_fixed $do_bytes 3
+array.new_fixed $do_u8 3
 local.set $xs
 ;; gc-root local_bind $xs
 array.len
 local.set $n
-array.get_u $do_bytes
+array.get_u $do_u8
 local.set $b

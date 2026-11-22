@@ -1,5 +1,5 @@
 ;; gc-sync source_len=67 token_count=18
-array.new_fixed $do_bytes 3
+array.new_fixed $do_u8 3
 local.set $data
 local.get $data
 local.set $alias

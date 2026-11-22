@@ -5,11 +5,11 @@ const gc_layout = @import("codegen_gc_layout.zig");
 const type_name = @import("type_name.zig");
 
 pub fn emit_bytes_prelude(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
-    try runtime_gc_wat.emit_bytes_type(allocator, out);
+    try runtime_gc_wat.emit_u8_type(allocator, out);
 }
 
 pub fn emit_text_prelude(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
-    try runtime_gc_wat.emit_bytes_type(allocator, out);
+    try runtime_gc_wat.emit_u8_type(allocator, out);
     try runtime_gc_wat.emit_text_type(allocator, out);
 }
 
@@ -18,7 +18,7 @@ pub fn emit_managed_struct_prelude(
     out: *std.ArrayList(u8),
     has_scalar_field: bool,
 ) !void {
-    try runtime_gc_wat.emit_bytes_type(allocator, out);
+    try runtime_gc_wat.emit_u8_type(allocator, out);
     try runtime_gc_wat.emit_box_type(allocator, out, has_scalar_field);
 }
 
@@ -119,7 +119,7 @@ pub fn emit_gc_sync_helpers(allocator: std.mem.Allocator, out: *std.ArrayList(u8
 
 fn emit_bytes_eq_helper(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
     try out.appendSlice(allocator,
-        \\  (func $__gc_bytes_eq (param $left (ref null $do_bytes)) (param $right (ref null $do_bytes)) (result i32)
+        \\  (func $__gc_bytes_eq (param $left (ref null $do_u8)) (param $right (ref null $do_u8)) (result i32)
         \\    (local $length i32)
         \\    (local $index i32)
         \\    local.get $left
@@ -159,11 +159,11 @@ fn emit_bytes_eq_helper(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !
         \\        local.get $left
         \\        ref.as_non_null
         \\        local.get $index
-        \\        array.get_u $do_bytes
+        \\        array.get_u $do_u8
         \\        local.get $right
         \\        ref.as_non_null
         \\        local.get $index
-        \\        array.get_u $do_bytes
+        \\        array.get_u $do_u8
         \\        i32.ne
         \\        if
         \\          i32.const 0
@@ -185,8 +185,8 @@ fn emit_bytes_eq_helper(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !
 fn emit_text_eq_helper(allocator: std.mem.Allocator, out: *std.ArrayList(u8)) !void {
     try out.appendSlice(allocator,
         \\  (func $__gc_text_eq (param $left (ref null $do_text)) (param $right (ref null $do_text)) (result i32)
-        \\    (local $left_bytes (ref null $do_bytes))
-        \\    (local $right_bytes (ref null $do_bytes))
+        \\    (local $left_bytes (ref null $do_u8))
+        \\    (local $right_bytes (ref null $do_u8))
         \\    local.get $left
         \\    ref.is_null
         \\    if

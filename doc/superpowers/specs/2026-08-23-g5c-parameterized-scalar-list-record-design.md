@@ -46,7 +46,7 @@ ScalarListSpec {
 
 | kind | GC array | load | store | stride |
 | --- | --- | --- | --- | ---: |
-| `byte` | `$do_bytes` | `array.get_s $do_bytes` | `i32.store8` | 1 |
+| `byte` | `$do_u8` | `array.get_s $do_u8` | `i32.store8` | 1 |
 | `u32` | `$do_u32` | `array.get $do_u32` | `i32.store` | 4 |
 
 `capacity`、pointer/length offset 和 allocation/free 事实来自 manifest 的

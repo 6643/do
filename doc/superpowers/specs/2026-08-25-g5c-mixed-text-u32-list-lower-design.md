@@ -118,7 +118,7 @@ flowchart LR
     I --> J[Free label exactly once]
 ```
 
-The text uses the existing `$do_text`/`$do_bytes` representation. The list
+The text uses the existing `$do_text`/`$do_u8` representation. The list
 uses `$do_u32`, `array.get $do_u32`, and `i32.store`; the element kind, stride,
 size, alignment, and capacity come from the existing measured
 `ManagedScalarListField` rather than emitter-local constants. Empty text and

@@ -1,6 +1,6 @@
 ;; gc-sync
-(type $box (struct (field $value (ref null $do_bytes))))
-(local $out (ref null $do_bytes))
+(type $box (struct (field $value (ref null $do_u8))))
+(local $out (ref null $do_u8))
 local.get $box
 ref.as_non_null
 struct.get $box $value

@@ -92,7 +92,7 @@ the existing ARC fallback.
    `codegen_component_marshal_wat.zig`. It must:
    - load `payload` from the compiler root by numeric field index;
    - compute `array.len`, guard the maximum span, and allocate `len` bytes;
-   - loop over `$do_bytes` with `array.get_s` and `i32.store8`;
+   - loop over `$do_u8` with `array.get_s` and `i32.store8`;
    - load `code`, pointer, and length in canonical order;
    - call the canonical import;
    - call `cabi_realloc(ptr, len, 1, 0)` exactly once after the call;
@@ -101,7 +101,7 @@ the existing ARC fallback.
    do not reuse the text emitter in a way that reads `$do_text` or its length
    field.
 3. Add emitter unit tests asserting the `(i32 i32 i32)` canonical type, one
-   byte-copy loop, `array.get_s $do_bytes`, numeric root field access, and one
+   byte-copy loop, `array.get_s $do_u8`, numeric root field access, and one
    post-call free. Assert that an unsupported list record returns
    `UnsupportedMarshalShape`.
 4. Add a standalone Zig probe module and `src/main.zig` import. Its fixed GC

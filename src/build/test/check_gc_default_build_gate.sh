@@ -300,7 +300,7 @@ for fixture in "${fixtures[@]}"; do
     if [[ "$name" == ordinary-host-c16d-call ]]; then
         rg -q '\(import "demo:marshal-record-managed-lift-multi/api@1.0.0" "read"' "$wat_file"
         rg -q '\(type \$canonical_lift \(func \(param i32\)\)\)' "$wat_file"
-        test "$(rg -c 'array.set \$do_bytes' "$wat_file")" -eq 2
+        test "$(rg -c 'array.set \$do_u8' "$wat_file")" -eq 2
         test "$(rg -c 'struct.new \$do_text' "$wat_file")" -eq 2
         rg -q 'struct.new \$reading' "$wat_file"
     fi
@@ -323,7 +323,7 @@ for fixture in "${fixtures[@]}"; do
             printf 'ordinary mixed scalar-list lower route still contains ARC symbols: %s\n' "$wat_file" >&2
             exit 1
         fi
-        test "$(rg -c 'array.get_s \$do_bytes' "$wat_file")" -eq 2
+        test "$(rg -c 'array.get_s \$do_u8' "$wat_file")" -eq 2
         test "$(rg -c 'i32.store8' "$wat_file")" -eq 2
         mapfile -t realloc_lines < <(rg -n 'call \$cabi_realloc' "$wat_file" | cut -d: -f1)
         test "${#realloc_lines[@]}" -eq 4
@@ -344,7 +344,7 @@ for fixture in "${fixtures[@]}"; do
             printf 'ordinary mixed text/u32-list lower route still contains ARC symbols: %s\n' "$wat_file" >&2
             exit 1
         fi
-        test "$(rg -c 'array.get_s \$do_bytes' "$wat_file")" -eq 1
+        test "$(rg -c 'array.get_s \$do_u8' "$wat_file")" -eq 1
         test "$(rg -c 'i32.store8' "$wat_file")" -eq 1
         test "$(rg -c 'array.get \$do_u32' "$wat_file")" -eq 1
         test "$(rg -c 'i32\.store$' "$wat_file")" -eq 1
@@ -367,7 +367,7 @@ for fixture in "${fixtures[@]}"; do
             printf 'ordinary byte-list record lower route still contains ARC symbols: %s\n' "$wat_file" >&2
             exit 1
         fi
-        rg -q 'array.get_s \$do_bytes' "$wat_file"
+        rg -q 'array.get_s \$do_u8' "$wat_file"
         rg -q 'i32.store8' "$wat_file"
         test "$(rg -c 'call \$cabi_realloc' "$wat_file")" -eq 2
         call_line=$(rg -n 'call \$__gc_canonical_call' "$wat_file" | tail -1 | cut -d: -f1)
@@ -436,7 +436,7 @@ for fixture in "${fixtures[@]}"; do
             printf 'ordinary mixed text/two-u32-list lower route still contains ARC symbols: %s\n' "$wat_file" >&2
             exit 1
         fi
-        test "$(rg -c 'array.get_s \$do_bytes' "$wat_file")" -eq 1
+        test "$(rg -c 'array.get_s \$do_u8' "$wat_file")" -eq 1
         test "$(rg -c 'i32.store8' "$wat_file")" -eq 1
         test "$(rg -c 'array.get \$do_u32' "$wat_file")" -eq 2
         test "$(rg -c 'i32\.store$' "$wat_file")" -eq 2
@@ -465,7 +465,7 @@ for fixture in "${fixtures[@]}"; do
             printf 'ordinary mixed text/byte-u32-list record lower route still contains ARC symbols: %s\n' "$wat_file"
             exit 1
         fi
-        test "$(rg -c 'array.get_s \$do_bytes' "$wat_file")" -eq 2
+        test "$(rg -c 'array.get_s \$do_u8' "$wat_file")" -eq 2
         test "$(rg -c 'i32.store8' "$wat_file")" -eq 2
         test "$(rg -c 'array.get \$do_u32' "$wat_file")" -eq 1
         test "$(rg -c 'i32\.store$' "$wat_file")" -eq 1
@@ -516,9 +516,9 @@ for fixture in "${fixtures[@]}"; do
             printf 'ordinary byte-list record lift route still contains ARC symbols: %s\n' "$wat_file" >&2
             exit 1
         fi
-        rg -q 'array.new_default \$do_bytes' "$wat_file"
+        rg -q 'array.new_default \$do_u8' "$wat_file"
         rg -q 'i32.load8_u' "$wat_file"
-        rg -q 'array.set \$do_bytes' "$wat_file"
+        rg -q 'array.set \$do_u8' "$wat_file"
         rg -q 'struct.new \$reading' "$wat_file"
         test "$(rg -c 'call \$cabi_realloc' "$wat_file")" -eq 1
         call_line=$(rg -n 'call \$__gc_canonical_call' "$wat_file" | tail -1 | cut -d: -f1)
@@ -539,8 +539,8 @@ for fixture in "${fixtures[@]}"; do
             printf 'ordinary mixed text/u32-list record lift route still contains ARC symbols: %s\n' "$wat_file" >&2
             exit 1
         fi
-        rg -q 'array.new_default \$do_bytes' "$wat_file"
-        rg -q 'array.set \$do_bytes' "$wat_file"
+        rg -q 'array.new_default \$do_u8' "$wat_file"
+        rg -q 'array.set \$do_u8' "$wat_file"
         rg -q 'array.new_default \$do_u32' "$wat_file"
         rg -q 'array.set \$do_u32' "$wat_file"
         rg -q 'struct.new \$reading' "$wat_file"
@@ -563,8 +563,8 @@ for fixture in "${fixtures[@]}"; do
             printf 'ordinary mixed text/byte-list record lift route still contains ARC symbols: %s\n' "$wat_file" >&2
             exit 1
         fi
-        rg -q 'array.new_default \$do_bytes' "$wat_file"
-        rg -q 'array.set \$do_bytes' "$wat_file"
+        rg -q 'array.new_default \$do_u8' "$wat_file"
+        rg -q 'array.set \$do_u8' "$wat_file"
         rg -q 'i32.load8_u' "$wat_file"
         rg -q 'struct.new \$reading' "$wat_file"
         test "$(rg -c 'call \$cabi_realloc' "$wat_file")" -eq 2

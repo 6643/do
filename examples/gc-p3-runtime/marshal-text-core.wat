@@ -2,8 +2,8 @@
 ;; It mirrors codegen_component_marshal_module.zig output. This is an
 ;; assembly/validation fixture only; it has no host implementation.
 (module
-  (type $do_bytes (array (mut i8)))
-  (type $do_text (struct (field $length i32) (field $bytes (ref null $do_bytes))))
+  (type $do_u8 (array (mut i8)))
+  (type $do_text (struct (field $length i32) (field $bytes (ref null $do_u8))))
   (type $canonical_lower (func (param i32 i32)))
   (type $cabi_realloc_type (func (param i32 i32 i32 i32) (result i32)))
   (import "demo:marshal/api@1.0.0" "send" (func $canonical_call (type $canonical_lower)))
@@ -86,7 +86,7 @@
         struct.get $do_text $bytes
         ref.as_non_null
         local.get $__gc_index
-        array.get_s $do_bytes
+        array.get_s $do_u8
         i32.store8
         local.get $__gc_index
         i32.const 1

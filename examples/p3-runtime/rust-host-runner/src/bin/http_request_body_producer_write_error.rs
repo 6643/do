@@ -6,7 +6,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context as TaskContext, Poll};
 use wasmtime::component::{
-    Component, FutureReader, Func, Linker, Resource, ResourceTable, ResourceType, StreamConsumer,
+    Component, Func, FutureReader, Linker, Resource, ResourceTable, ResourceType, StreamConsumer,
     StreamReader, StreamResult, Val,
 };
 use wasmtime::{Config, Engine, Store, StoreContextMut};
@@ -159,9 +159,9 @@ fn map_wasmtime<T>(result: wasmtime::Result<T>) -> Result<T> {
 }
 
 fn main() -> Result<()> {
-    let component_path = std::env::args()
-        .nth(1)
-        .context("usage: do-p3-http-request-body-producer-write-error-host-runner <component.wasm>")?;
+    let component_path = std::env::args().nth(1).context(
+        "usage: do-p3-http-request-body-producer-write-error-host-runner <component.wasm>",
+    )?;
     futures::executor::block_on(run(Path::new(&component_path)))
 }
 
@@ -192,27 +192,65 @@ async fn run(component_path: &Path) -> Result<()> {
     ))?;
 
     let mut types = map_wasmtime(linker.instance(HTTP_TYPES_INSTANCE))?;
-    map_wasmtime(types.resource("fields", ResourceType::host::<Fields>(), |mut store, rep| {
-        store.data_mut().table.delete(Resource::<Fields>::new_own(rep))?;
-        store.data_mut().stats.lock().expect("stats mutex poisoned").fields_drops += 1;
-        Ok(())
-    }))?;
-    map_wasmtime(types.resource("request", ResourceType::host::<Request>(), |mut store, rep| {
-        let mut request = store.data_mut().table.delete(Resource::<Request>::new_own(rep))?;
-        if let Some(mut body) = request.body.take() {
-            body.close(&mut store)?;
-        }
-        Ok(())
-    }))?;
-    map_wasmtime(types.resource("request-options", ResourceType::host::<RequestOptions>(), |mut store, rep| {
-        store.data_mut().table.delete(Resource::<RequestOptions>::new_own(rep))?;
-        Ok(())
-    }))?;
-    map_wasmtime(types.resource("response", ResourceType::host::<Response>(), |mut store, rep| {
-        store.data_mut().table.delete(Resource::<Response>::new_own(rep))?;
-        store.data_mut().stats.lock().expect("stats mutex poisoned").responses += 1;
-        Ok(())
-    }))?;
+    map_wasmtime(types.resource(
+        "fields",
+        ResourceType::host::<Fields>(),
+        |mut store, rep| {
+            store
+                .data_mut()
+                .table
+                .delete(Resource::<Fields>::new_own(rep))?;
+            store
+                .data_mut()
+                .stats
+                .lock()
+                .expect("stats mutex poisoned")
+                .fields_drops += 1;
+            Ok(())
+        },
+    ))?;
+    map_wasmtime(types.resource(
+        "request",
+        ResourceType::host::<Request>(),
+        |mut store, rep| {
+            let mut request = store
+                .data_mut()
+                .table
+                .delete(Resource::<Request>::new_own(rep))?;
+            if let Some(mut body) = request.body.take() {
+                body.close(&mut store)?;
+            }
+            Ok(())
+        },
+    ))?;
+    map_wasmtime(types.resource(
+        "request-options",
+        ResourceType::host::<RequestOptions>(),
+        |mut store, rep| {
+            store
+                .data_mut()
+                .table
+                .delete(Resource::<RequestOptions>::new_own(rep))?;
+            Ok(())
+        },
+    ))?;
+    map_wasmtime(types.resource(
+        "response",
+        ResourceType::host::<Response>(),
+        |mut store, rep| {
+            store
+                .data_mut()
+                .table
+                .delete(Resource::<Response>::new_own(rep))?;
+            store
+                .data_mut()
+                .stats
+                .lock()
+                .expect("stats mutex poisoned")
+                .responses += 1;
+            Ok(())
+        },
+    ))?;
     map_wasmtime(types.func_wrap("[constructor]fields", |mut store, ()| {
         Ok((store.data_mut().table.push(Fields)?,))
     }))?;
@@ -224,7 +262,9 @@ async fn run(component_path: &Path) -> Result<()> {
               (headers, contents, mut trailers, options): (
             Resource<Fields>,
             Option<StreamReader<u8>>,
-            FutureReader<std::result::Result<Option<Resource<Fields>>, wasi::http::types::ErrorCode>>,
+            FutureReader<
+                std::result::Result<Option<Resource<Fields>>, wasi::http::types::ErrorCode>,
+            >,
             Option<Resource<RequestOptions>>,
         )| {
             let body = contents.ok_or_else(|| wasmtime::Error::msg("request body is missing"))?;
@@ -243,7 +283,9 @@ async fn run(component_path: &Path) -> Result<()> {
             let request = store.data_mut().table.push(Request { body: Some(body) })?;
             let transmission = FutureReader::new(
                 &mut store,
-                TransmissionCompletion { stats: Arc::clone(&transmission_stats) },
+                TransmissionCompletion {
+                    stats: Arc::clone(&transmission_stats),
+                },
             )?;
             Ok(((request, transmission),))
         },
@@ -254,24 +296,34 @@ async fn run(component_path: &Path) -> Result<()> {
     map_wasmtime(client.func_wrap_concurrent(
         "send",
         move |accessor, (request,): (Resource<Request>,)| {
-            let mut request = match accessor.with(|mut store| store.data_mut().table.delete(request)) {
+            let mut request = match accessor
+                .with(|mut store| store.data_mut().table.delete(request))
+            {
                 Ok(request) => request,
-                Err(error) => return Box::pin(async move { Err(wasmtime::Error::msg(error.to_string())) }),
+                Err(error) => {
+                    return Box::pin(async move { Err(wasmtime::Error::msg(error.to_string())) });
+                }
             };
             let body = match request.body.take() {
                 Some(body) => body,
-                None => return Box::pin(async { Err(wasmtime::Error::msg("request body already moved")) }),
+                None => {
+                    return Box::pin(async {
+                        Err(wasmtime::Error::msg("request body already moved"))
+                    });
+                }
             };
             let (dropped_sender, dropped_receiver) = oneshot::channel();
-            if let Err(error) = accessor.with(|mut store| body.pipe(
-                &mut store,
-                CloseAfterFirstConsumer {
-                    stats: Arc::clone(&send_stats),
-                    body: Vec::new(),
-                    dropped: Some(dropped_sender),
-                    finish_seen: false,
-                },
-            )) {
+            if let Err(error) = accessor.with(|mut store| {
+                body.pipe(
+                    &mut store,
+                    CloseAfterFirstConsumer {
+                        stats: Arc::clone(&send_stats),
+                        body: Vec::new(),
+                        dropped: Some(dropped_sender),
+                        finish_seen: false,
+                    },
+                )
+            }) {
                 return Box::pin(async move { Err(error) });
             }
             let stats = Arc::clone(&send_stats);
@@ -280,15 +332,23 @@ async fn run(component_path: &Path) -> Result<()> {
                 dropped_receiver
                     .await
                     .map_err(|_| wasmtime::Error::msg("body consumer dropped before first byte"))?;
-                std::future::pending::<wasmtime::Result<(
-                    std::result::Result<Resource<Response>, wasi::http::types::ErrorCode>,
-                )>>()
+                std::future::pending::<
+                    wasmtime::Result<(
+                        std::result::Result<Resource<Response>, wasi::http::types::ErrorCode>,
+                    )>,
+                >()
                 .await
             })
         },
     ))?;
 
-    let mut store = Store::new(&engine, State { table: ResourceTable::new(), stats: Arc::clone(&stats) });
+    let mut store = Store::new(
+        &engine,
+        State {
+            table: ResourceTable::new(),
+            stats: Arc::clone(&stats),
+        },
+    );
     let instance = map_wasmtime(linker.instantiate_async(&mut store, &component).await)?;
     let probe = instance
         .get_export_index(&mut store, None, HTTP_PROBE_INSTANCE)
@@ -296,14 +356,17 @@ async fn run(component_path: &Path) -> Result<()> {
     let run = instance
         .get_export_index(&mut store, Some(&probe), "run")
         .context("missing wasi:http/probe.run export")?;
-    let run: Func = instance.get_func(&mut store, &run).context("probe.run is not a function")?;
+    let run: Func = instance
+        .get_func(&mut store, &run)
+        .context("probe.run is not a function")?;
     let mut results = [Val::Result(Err(Some(Box::new(Val::Variant(
         "http-failure".to_string(),
         None,
     )))))];
     map_wasmtime(run.call_async(&mut store, &[], &mut results).await)?;
     match &results[0] {
-        Val::Result(Err(Some(error))) if matches!(error.as_ref(), Val::Variant(name, None) if name == "stream-closed") => {}
+        Val::Result(Err(Some(error))) if matches!(error.as_ref(), Val::Variant(name, None) if name == "stream-closed") =>
+            {}
         other => bail!("expected Err(stream-closed), got {other:?}"),
     }
 
@@ -336,7 +399,10 @@ async fn run(component_path: &Path) -> Result<()> {
     println!("body-payload={:?}", snapshot.body_payloads[0]);
     println!("send-cancellations={}", snapshot.send_cancellations);
     println!("body-stream-drops={}", snapshot.body_stream_drops);
-    println!("transmission-future-drops={}", snapshot.transmission_future_drops);
+    println!(
+        "transmission-future-drops={}",
+        snapshot.transmission_future_drops
+    );
     println!("trailers-future-drops={}", snapshot.trailers_future_drops);
     println!("responses={}", snapshot.responses);
     println!("table-empty={}", store.data().table.is_empty());

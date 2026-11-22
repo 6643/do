@@ -36,6 +36,19 @@ host trap + Store disposal，early-drop 在 Store disposal 后不再访问 Store
 bounded private route 已关闭，但不开放通用 filesystem async、真实 OS 文件修改、
 外部写入回滚或 public ownership syntax。
 
+## 0.7 2026-11-22 synchronous scalar list canonical marshal
+
+同步、value-only 的 canonical marshal route 已从既有 `list<u8>` / `list<u32>`
+扩展到 measured `list<bool>`、`list<u16>`、`list<i32>`、`list<i64>`、
+`list<u64>`、`list<f32>` 和 `list<f64>`。实现按元素类型选择 GC typed array、线性
+内存 load/store、自然宽度/对齐/stride，并在 WAT emission 前校验 measured facts；
+canonical ABI 仍是 `(ptr, len)`，零长度和现有 `cabi_realloc`/free 顺序保持不变。
+
+该项只关闭同步 scalar list 的 bounded route，不表示任意 `list<T>`、text/record/
+resource 元素、nested list、async/stream payload 或任意 tuple/map lowering 已完成。
+`i8/i16` 仍 fail-closed。focused marshal tests 与 `zig build test --summary all`
+已通过。
+
 ## 0.0 2026-09-16 G5c final verification and G6.2 pilot closeout
 
 单 route private pilot 的 Task 6 artifact、default-route parity、rollback 与

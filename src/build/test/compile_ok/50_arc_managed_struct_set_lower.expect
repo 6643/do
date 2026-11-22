@@ -1,5 +1,5 @@
 ;; gc-sync
-(type $box (struct (field $value (ref null $do_bytes))))
+(type $box (struct (field $value (ref null $do_u8))))
 (local $box (ref null $box))
 ;; gc-root overwrite $box
 local.get $next
