@@ -2,6 +2,67 @@
 const std = @import("std");
 
 pub const SlotDirection = enum { lift, lower };
+pub const CanonicalWord = enum { i32, i64, f32, f64 };
+
+pub const CanonicalSpan = struct {
+    offset: u32,
+    byte_size: u32,
+    alignment: u32,
+};
+
+pub const CanonicalPayload = struct {
+    offset: u32,
+    byte_size: u32,
+    alignment: u32,
+    core_words: []CanonicalWord,
+};
+
+pub const CanonicalCase = struct {
+    tag: u32,
+    payload: ?CanonicalPayload,
+};
+
+pub const CanonicalSignature = struct {
+    direction: SlotDirection,
+    parameters: []CanonicalWord,
+    results: []CanonicalWord,
+    indirect: bool,
+    result_area: ?CanonicalSpan,
+    discriminant: ?CanonicalSpan,
+    cases: []CanonicalCase,
+
+    pub fn deinit(self: *CanonicalSignature, allocator: std.mem.Allocator) void {
+        allocator.free(self.parameters);
+        allocator.free(self.results);
+        for (self.cases) |*case| {
+            if (case.payload) |*payload| allocator.free(payload.core_words);
+        }
+        allocator.free(self.cases);
+        self.parameters = &.{};
+        self.results = &.{};
+        self.cases = &.{};
+    }
+};
+
+pub fn validate_canonical_signature(signature: CanonicalSignature) !void {
+    if (signature.indirect and (signature.parameters.len != 1 or signature.parameters[0] != .i32)) {
+        return error.InvalidCanonicalSignature;
+    }
+    for (signature.parameters) |word| validate_canonical_word(word);
+    for (signature.results) |word| validate_canonical_word(word);
+    for (signature.cases) |case| {
+        if (case.payload) |payload| {
+            for (payload.core_words) |word| validate_canonical_word(word);
+        }
+    }
+}
+
+fn validate_canonical_word(word: CanonicalWord) void {
+    switch (word) {
+        .i32, .i64, .f32, .f64 => {},
+    }
+}
+
 pub const CanonicalSlot = struct {
     source_type: []const u8,
     canonical_type: []const u8,

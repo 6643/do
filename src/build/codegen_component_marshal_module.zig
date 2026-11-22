@@ -5,6 +5,7 @@
 //! infer arbitrary WIT names, or expose GC references at the component ABI.
 const std = @import("std");
 const generated_text = @import("codegen_text.zig");
+const component_abi = @import("codegen_component_abi_plan.zig");
 const marshal = @import("codegen_component_marshal_plan.zig");
 const marshal_wat = @import("codegen_component_marshal_wat.zig");
 const marshal_ops = @import("codegen_component_marshal_ops.zig");
@@ -342,6 +343,9 @@ fn emit_canonical_import_type(
     plan: *const marshal.SyncValuePlan,
     config: EmitConfig,
 ) !void {
+    if (plan.root.kind == .option or plan.root.kind == .result or plan.root.kind == .variant) {
+        return emit_variant_import_type(allocator, out, direction, &plan.canonical_signature);
+    }
     if (memory_plan.copy_shape == .scalar) {
         const core_type = memory_plan.scalar_core_type orelse return error.MeasuredScalarCoreTypeMissing;
         const core_name = switch (core_type) {
@@ -379,6 +383,42 @@ fn emit_canonical_import_type(
                 try out.appendSlice(allocator, "  (type $canonical_lift (func (param i32)))\n"),
         },
     }
+}
+
+fn emit_variant_import_type(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    direction: marshal.Direction,
+    signature: *const component_abi.CanonicalSignature,
+) !void {
+    const words = if (direction == .lower) signature.parameters else signature.results;
+    const name = if (direction == .lower) "$canonical_lower" else "$canonical_lift";
+    try generated_text.append_fmt(allocator, out, "  (type {[name]s} (func", .{ .name = name });
+    if (signature.parameters.len != 0) {
+        try out.appendSlice(allocator, " (param");
+        for (signature.parameters) |word| try append_canonical_word(allocator, out, word);
+        try out.appendSlice(allocator, ")");
+    }
+    if (signature.results.len != 0) {
+        try out.appendSlice(allocator, " (result");
+        for (words) |word| try append_canonical_word(allocator, out, word);
+        try out.appendSlice(allocator, ")");
+    }
+    try out.appendSlice(allocator, "))\n");
+}
+
+fn append_canonical_word(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    word: component_abi.CanonicalWord,
+) !void {
+    try out.append(allocator, ' ');
+    try out.appendSlice(allocator, switch (word) {
+        .i32 => "i32",
+        .i64 => "i64",
+        .f32 => "f32",
+        .f64 => "f64",
+    });
 }
 
 fn emit_record_lower_import_type(
@@ -1525,4 +1565,223 @@ test "WASI random list<u8> lift passes a bounded u64 length to the canonical imp
     const arg = std.mem.indexOf(u8, wat, "i64.const 16") orelse return error.TestExpectedEqual;
     const result_area = std.mem.indexOf(u8, wat, "local.get $__result_area") orelse return error.TestExpectedEqual;
     try std.testing.expect(arg < result_area);
+}
+
+test "marshal module derives flat option signature from measured variant" {
+    var payload = wit_types.AbiType.scalar(std.testing.allocator, .u32);
+    defer payload.deinit();
+    var value = try wit_types.AbiType.option(std.testing.allocator, &payload);
+    defer value.deinit();
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-option@1.0.0",
+        .world = "probe",
+        .member = "api.send",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    }, &value, .lower, .{ .layout = .{ .variant = .{
+        .tag_offset = 0,
+        .payload_offset = 4,
+        .byte_size = 8,
+        .alignment = 4,
+        .cases = &.{
+            .{ .name = "none", .tag = 0, .payload_required = false, .payload = null },
+            .{ .name = "some", .tag = 1, .payload_required = true, .payload = .{
+                .offset = 4,
+                .byte_size = 4,
+                .alignment = 4,
+                .core_type = .i32,
+            } },
+        },
+    } }, .children = &.{.{ .layout = .{ .scalar = .{
+        .offset = 0,
+        .byte_size = 4,
+        .alignment = 4,
+        .core_type = .i32,
+    } } }} });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const signature = plan.canonical_signature;
+    try std.testing.expectEqual(@as(usize, 2), signature.parameters.len);
+    try std.testing.expectEqual(@as(usize, 0), signature.results.len);
+    try std.testing.expectEqual(component_abi.CanonicalWord.i32, signature.parameters[0]);
+    try std.testing.expectEqual(component_abi.CanonicalWord.i32, signature.parameters[1]);
+    try std.testing.expectEqual(@as(u32, 0), signature.discriminant.?.offset);
+    try std.testing.expectEqual(@as(usize, 2), signature.cases.len);
+    try std.testing.expectEqual(@as(?u32, 4), signature.cases[1].payload.?.offset);
+    try std.testing.expectEqual(@as(usize, 1), signature.cases[1].payload.?.core_words.len);
+
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(std.testing.allocator);
+    const memory_plan = marshal_ops.MemoryPlan{
+        .direction = .lower,
+        .copy_shape = .scalar,
+        .element_stride = 0,
+        .scalar_core_type = .i32,
+        .operations = &.{},
+    };
+    try emit_canonical_import_type(std.testing.allocator, &out, .lower, &memory_plan, &plan, .{
+        .direction = .lower,
+        .canonical_import_module = "demo:marshal-option/api@1.0.0",
+        .canonical_import_name = "send",
+    });
+    try std.testing.expectEqualStrings("  (type $canonical_lower (func (param i32 i32)))\n", out.items);
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "(ref") == null);
+}
+
+test "marshal module derives indirect variant signature with lift result area" {
+    var payload = wit_types.AbiType.scalar(std.testing.allocator, .u32);
+    defer payload.deinit();
+    var value = try wit_types.AbiType.option(std.testing.allocator, &payload);
+    defer value.deinit();
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-option-indirect@1.0.0",
+        .world = "probe",
+        .member = "api.receive",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    }, &value, .lift, .{ .layout = .{ .variant = .{
+        .tag_offset = 0,
+        .payload_offset = 4,
+        .byte_size = 8,
+        .alignment = 4,
+        .indirect = .{ .core_words = &.{.i32}, .allocation = .cabi_realloc, .free = .cabi_realloc },
+        .cases = &.{
+            .{ .name = "none", .tag = 0, .payload_required = false, .payload = null },
+            .{ .name = "some", .tag = 1, .payload_required = true, .payload = .{
+                .offset = 4,
+                .byte_size = 4,
+                .alignment = 4,
+                .core_type = .i32,
+            } },
+        },
+    } }, .children = &.{.{ .layout = .{ .scalar = .{
+        .offset = 0,
+        .byte_size = 4,
+        .alignment = 4,
+        .core_type = .i32,
+    } } }} });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const signature = plan.canonical_signature;
+    try std.testing.expect(signature.indirect);
+    try std.testing.expectEqual(@as(usize, 1), signature.parameters.len);
+    try std.testing.expectEqual(@as(usize, 0), signature.results.len);
+    try std.testing.expectEqual(component_abi.CanonicalWord.i32, signature.parameters[0]);
+    try std.testing.expect(signature.result_area != null);
+    try std.testing.expectEqual(@as(u32, 8), signature.result_area.?.byte_size);
+
+    var out = std.ArrayList(u8).empty;
+    defer out.deinit(std.testing.allocator);
+    const memory_plan = marshal_ops.MemoryPlan{
+        .direction = .lift,
+        .copy_shape = .scalar,
+        .element_stride = 0,
+        .scalar_core_type = .i32,
+        .operations = &.{},
+    };
+    try emit_canonical_import_type(std.testing.allocator, &out, .lift, &memory_plan, &plan, .{
+        .direction = .lift,
+        .canonical_import_module = "demo:marshal-option-indirect/api@1.0.0",
+        .canonical_import_name = "receive",
+    });
+    try std.testing.expectEqualStrings("  (type $canonical_lift (func (param i32)))\n", out.items);
+    try std.testing.expect(std.mem.indexOf(u8, out.items, "(ref") == null);
+}
+
+test "marshal module derives flat result signature from both payload cases" {
+    var ok = wit_types.AbiType.scalar(std.testing.allocator, .u32);
+    defer ok.deinit();
+    var err_value = wit_types.AbiType.scalar(std.testing.allocator, .u32);
+    defer err_value.deinit();
+    var value = try wit_types.AbiType.result(std.testing.allocator, &ok, &err_value);
+    defer value.deinit();
+    const plan = try marshal.build_sync_value_plan(std.testing.allocator, .{
+        .package = "demo:marshal-result@1.0.0",
+        .world = "probe",
+        .member = "api.send",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    }, &value, .lower);
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    try std.testing.expectEqual(@as(usize, 2), plan.canonical_signature.parameters.len);
+    try std.testing.expectEqual(@as(usize, 0), plan.canonical_signature.results.len);
+    try std.testing.expectEqual(@as(usize, 2), plan.canonical_signature.cases.len);
+    try std.testing.expectEqual(@as(usize, 1), plan.canonical_signature.cases[0].payload.?.core_words.len);
+    try std.testing.expectEqual(@as(usize, 1), plan.canonical_signature.cases[1].payload.?.core_words.len);
+}
+
+test "marshal module derives nested variant payload words from measured child" {
+    var inner_payload = wit_types.AbiType.scalar(std.testing.allocator, .u32);
+    defer inner_payload.deinit();
+    var inner = try wit_types.AbiType.option(std.testing.allocator, &inner_payload);
+    defer inner.deinit();
+    var text = wit_types.AbiType.text(std.testing.allocator);
+    defer text.deinit();
+    var value = try wit_types.AbiType.result(std.testing.allocator, &inner, &text);
+    defer value.deinit();
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-nested@1.0.0",
+        .world = "probe",
+        .member = "api.send",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    }, &value, .lower, .{ .layout = .{ .variant = .{
+        .tag_offset = 0,
+        .payload_offset = 4,
+        .byte_size = 16,
+        .alignment = 4,
+        .cases = &.{
+            .{ .name = "ok", .tag = 0, .payload_required = true, .payload = .{
+                .offset = 4,
+                .byte_size = 8,
+                .alignment = 4,
+                .core_type = .i32,
+            } },
+            .{ .name = "err", .tag = 1, .payload_required = true, .payload = .{
+                .offset = 4,
+                .byte_size = 8,
+                .alignment = 4,
+                .core_type = .i32,
+            } },
+        },
+    } }, .children = &.{
+        .{ .layout = .{ .variant = .{
+            .tag_offset = 0,
+            .payload_offset = 4,
+            .byte_size = 8,
+            .alignment = 4,
+            .cases = &.{
+                .{ .name = "none", .tag = 0, .payload_required = false, .payload = null },
+                .{ .name = "some", .tag = 1, .payload_required = true, .payload = .{
+                    .offset = 4,
+                    .byte_size = 4,
+                    .alignment = 4,
+                    .core_type = .i32,
+                } },
+            },
+        } }, .children = &.{.{ .layout = .{ .scalar = .{
+            .offset = 0,
+            .byte_size = 4,
+            .alignment = 4,
+            .core_type = .i32,
+        } } }} },
+        .{ .layout = .{ .text = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .byte_size = 8,
+            .alignment = 4,
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } } },
+    } });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const signature = plan.canonical_signature;
+    try std.testing.expectEqual(@as(usize, 3), signature.parameters.len);
+    try std.testing.expectEqual(component_abi.CanonicalWord.i32, signature.parameters[0]);
+    try std.testing.expectEqual(component_abi.CanonicalWord.i32, signature.parameters[1]);
+    try std.testing.expectEqual(component_abi.CanonicalWord.i32, signature.parameters[2]);
+    try std.testing.expectEqual(@as(usize, 2), signature.cases[0].payload.?.core_words.len);
+    try std.testing.expectEqual(@as(u32, 4), signature.cases[0].payload.?.offset);
 }

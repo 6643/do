@@ -50,6 +50,7 @@ pub const VariantMeasurement = struct {
     payload_offset: u32,
     byte_size: u32,
     alignment: u32,
+    indirect: ?IndirectMeasurement = null,
     cases: []const VariantCaseMeasurement,
 };
 
@@ -465,6 +466,11 @@ pub const LayoutPlan = struct {
         if (value.kind() != .variant and value.kind() != .option and value.kind() != .result) return error.WrongRootKind;
         try value.validate();
         try validate_container(measured.byte_size, measured.alignment);
+        if (measured.indirect) |indirect| {
+            if (indirect.core_words.len == 0 or indirect.allocation == .none or indirect.free == .none) {
+                return error.MissingIndirectMetadata;
+            }
+        }
         if (!is_aligned(measured.tag_offset, @min(measured.alignment, 4))) return error.MisalignedOffset;
         try check_region(measured.tag_offset, 4, measured.byte_size);
         if (measured.cases.len == 0) return error.MissingPayloadMetadata;
@@ -520,7 +526,7 @@ pub const LayoutPlan = struct {
             .byte_size = measured.byte_size,
             .alignment = measured.alignment,
             .scalar_measurement = null,
-            .indirect = null,
+            .indirect = measured.indirect,
             .variant_cases = cases,
             .record_fields = &.{},
         };

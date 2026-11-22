@@ -99,6 +99,7 @@ pub const SyncValuePlan = struct {
     direction: Direction,
     root: MarshalNode,
     abi: component_abi.AbiPlan,
+    canonical_signature: component_abi.CanonicalSignature,
     contains_gc_reference: bool,
 };
 
@@ -131,6 +132,8 @@ pub fn build_sync_value_plan(
     });
     errdefer component_abi.deinit_abi_plan(allocator, abi_plan);
     try component_abi.validate_abi_plan(abi_plan);
+    var canonical_signature = try build_canonical_signature(allocator, &root, direction);
+    errdefer canonical_signature.deinit(allocator);
 
     const package = try allocator.dupe(u8, descriptor.package);
     errdefer allocator.free(package);
@@ -154,6 +157,7 @@ pub fn build_sync_value_plan(
         .direction = direction,
         .root = root,
         .abi = abi_plan,
+        .canonical_signature = canonical_signature,
         .contains_gc_reference = false,
     };
 }
@@ -219,6 +223,8 @@ pub fn build_sync_value_plan_with_layout(
     });
     errdefer component_abi.deinit_abi_plan(allocator, abi_plan);
     try component_abi.validate_abi_plan(abi_plan);
+    var canonical_signature = try build_canonical_signature(allocator, &root, direction);
+    errdefer canonical_signature.deinit(allocator);
 
     const package = try allocator.dupe(u8, descriptor.package);
     errdefer allocator.free(package);
@@ -242,6 +248,7 @@ pub fn build_sync_value_plan_with_layout(
         .direction = direction,
         .root = root,
         .abi = abi_plan,
+        .canonical_signature = canonical_signature,
         .contains_gc_reference = false,
     };
 }
@@ -249,6 +256,8 @@ pub fn build_sync_value_plan_with_layout(
 pub fn deinit_sync_value_plan(allocator: std.mem.Allocator, plan: SyncValuePlan) void {
     deinit_node(allocator, plan.root);
     component_abi.deinit_abi_plan(allocator, plan.abi);
+    var canonical_signature = plan.canonical_signature;
+    canonical_signature.deinit(allocator);
     allocator.free(plan.descriptor.package);
     allocator.free(plan.descriptor.world);
     allocator.free(plan.descriptor.member);
@@ -261,6 +270,7 @@ pub fn validate_sync_value_plan(plan: *const SyncValuePlan) !void {
         return error.GcReferenceCannotCrossCanonicalAbi;
     }
     try component_abi.validate_abi_plan(plan.abi);
+    try component_abi.validate_canonical_signature(plan.canonical_signature);
 }
 
 fn node_contains_gc_reference(node: *const MarshalNode) bool {
@@ -315,6 +325,144 @@ fn canonical_type_name(source: *const wit_types.AbiType) ![]const u8 {
         .option, .result, .variant => "memory",
         .resource => error.ResourceBoundaryUnsupported,
         .unit, .tuple => error.UnsupportedMarshalShape,
+    };
+}
+
+fn build_canonical_signature(
+    allocator: std.mem.Allocator,
+    node: *const MarshalNode,
+    direction: Direction,
+) !component_abi.CanonicalSignature {
+    var parameters = std.ArrayList(component_abi.CanonicalWord).empty;
+    errdefer parameters.deinit(allocator);
+    var results = std.ArrayList(component_abi.CanonicalWord).empty;
+    errdefer results.deinit(allocator);
+    const case_count = if (node.kind == .option or node.kind == .result or node.kind == .variant)
+        node.variant_cases.len
+    else
+        0;
+    var cases = try allocator.alloc(component_abi.CanonicalCase, case_count);
+    var initialized_cases: usize = 0;
+    errdefer {
+        for (cases[0..initialized_cases]) |*case| {
+            if (case.payload) |*payload| allocator.free(payload.core_words);
+        }
+        allocator.free(cases);
+    }
+
+    const indirect = node.measured != null and node.measured.?.indirect != null;
+    var discriminant: ?component_abi.CanonicalSpan = null;
+    var result_area: ?component_abi.CanonicalSpan = null;
+    if (case_count != 0) {
+        discriminant = .{
+            .offset = node.variant_tag_offset orelse 0,
+            .byte_size = 4,
+            .alignment = 4,
+        };
+        if (indirect) {
+            const facts = node.measured.?;
+            result_area = .{
+                .offset = facts.offset,
+                .byte_size = facts.byte_size,
+                .alignment = facts.alignment,
+            };
+        }
+        for (node.variant_cases, 0..) |case, index| {
+            var payload: ?component_abi.CanonicalPayload = null;
+            if (case.payload_child) |child_index| {
+                var payload_words = std.ArrayList(component_abi.CanonicalWord).empty;
+                defer payload_words.deinit(allocator);
+                try append_node_core_words(allocator, &payload_words, &node.children[child_index]);
+                const words = try allocator.dupe(component_abi.CanonicalWord, payload_words.items);
+                const child = &node.children[child_index];
+                payload = .{
+                    .offset = case.payload_offset orelse child.provisional_offset,
+                    .byte_size = case.payload_byte_size orelse child.provisional_size,
+                    .alignment = case.payload_alignment orelse child.provisional_alignment,
+                    .core_words = words,
+                };
+            }
+            cases[index] = .{ .tag = case.tag, .payload = payload };
+            initialized_cases += 1;
+        }
+    }
+
+    if (indirect) {
+        try parameters.append(allocator, .i32);
+    } else {
+        var root_words = std.ArrayList(component_abi.CanonicalWord).empty;
+        defer root_words.deinit(allocator);
+        try append_node_core_words(allocator, &root_words, node);
+        switch (direction) {
+            .lower => try parameters.appendSlice(allocator, root_words.items),
+            .lift => try results.appendSlice(allocator, root_words.items),
+        }
+    }
+    if (direction == .lift and indirect and result_area == null) return error.MeasuredRootMissing;
+
+    return .{
+        .direction = switch (direction) {
+            .lower => .lower,
+            .lift => .lift,
+        },
+        .parameters = try parameters.toOwnedSlice(allocator),
+        .results = try results.toOwnedSlice(allocator),
+        .indirect = indirect,
+        .result_area = result_area,
+        .discriminant = discriminant,
+        .cases = cases,
+    };
+}
+
+fn append_node_core_words(
+    allocator: std.mem.Allocator,
+    words: *std.ArrayList(component_abi.CanonicalWord),
+    node: *const MarshalNode,
+) anyerror!void {
+    if (node.measured) |facts| {
+        if (facts.indirect != null) {
+            try words.append(allocator, .i32);
+            return;
+        }
+    }
+    switch (node.kind) {
+        .scalar => try words.append(allocator, core_word_for_scalar(node.scalar_kind orelse return error.UnsupportedMarshalShape)),
+        .text, .list, .map => try words.appendSlice(allocator, &.{ .i32, .i32 }),
+        .record => for (node.children) |*child| try append_node_core_words(allocator, words, child),
+        .option, .result, .variant => try append_variant_core_words(allocator, words, node),
+    }
+}
+
+fn append_variant_core_words(
+    allocator: std.mem.Allocator,
+    words: *std.ArrayList(component_abi.CanonicalWord),
+    node: *const MarshalNode,
+) anyerror!void {
+    try words.append(allocator, .i32);
+    var selected_child: ?usize = null;
+    var selected_count: usize = 0;
+    for (node.variant_cases) |case| {
+        if (case.payload_child) |child_index| {
+            var payload_words = std.ArrayList(component_abi.CanonicalWord).empty;
+            defer payload_words.deinit(allocator);
+            try append_node_core_words(allocator, &payload_words, &node.children[child_index]);
+            if (payload_words.items.len > selected_count) {
+                selected_count = payload_words.items.len;
+                selected_child = child_index;
+            }
+        }
+    }
+    if (selected_child) |child_index| {
+        try append_node_core_words(allocator, words, &node.children[child_index]);
+    }
+}
+
+fn core_word_for_scalar(kind: wit_types.ScalarKind) component_abi.CanonicalWord {
+    return switch (kind) {
+        .u64, .i64 => .i64,
+        .f32 => .f32,
+        .f64 => .f64,
+        else => .i32,
     };
 }
 
@@ -671,6 +819,7 @@ fn bind_measured_node(
                 .offset = placement_offset orelse 0,
                 .byte_size = facts.byte_size,
                 .alignment = facts.alignment,
+                .indirect = facts.indirect,
             };
         },
     }
