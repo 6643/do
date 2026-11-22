@@ -63,9 +63,135 @@ pub fn emit_sync_marshal_function(
             .lower => try emit_record_lower(allocator, &out, plan, &memory_plan, config),
             .lift => try emit_record_lift(allocator, &out, plan, &memory_plan, config),
         },
+        .variant => switch (memory_plan.direction) {
+            .lower => try emit_variant_lower(allocator, &out, plan, config),
+            .lift => try emit_variant_lift(allocator, &out, plan, config),
+        },
     }
     const body = try out.toOwnedSlice(allocator);
     return prepend_linear_temp_marker(allocator, body, config.realloc_name);
+}
+
+fn emit_variant_lower(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    plan: *const marshal.SyncValuePlan,
+    config: EmitConfig,
+) !void {
+    const has_payload = plan.canonical_signature.parameters.len > 1;
+    const payload_type = variant_payload_wat_type(plan);
+    try generated_text.append_fmt_block(allocator, out, 2,
+        \\  (func ${[function_name]s} (param ${[input_local]s} (ref null $do_variant))
+        \\    (local $__tag i32)
+    , .{ .function_name = config.function_name, .input_local = config.input_local });
+    if (has_payload) {
+        try generated_text.append_fmt(allocator, out, "    (local $__payload {[payload_type]s})\n", .{ .payload_type = payload_type });
+        try append_variant_payload_zero(allocator, out, payload_type);
+        try out.appendSlice(allocator, "    local.set $__payload\n");
+    }
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\    ;; measured variant tag offset is {[tag_offset]d}
+        \\    local.get ${[input_local]s}
+        \\    ref.as_non_null
+        \\    struct.get $do_variant $tag
+        \\    local.set $__tag
+        \\    block $__variant_done
+        \\      block $__variant_value
+        \\        local.get $__tag
+        \\        i32.const 1
+        \\        i32.eq
+        \\        br_if $__variant_value
+        \\        local.get $__tag
+        \\        i32.eqz
+        \\        br_if $__variant_done
+        \\        unreachable
+        \\      end
+    , .{
+        .tag_offset = plan.root.variant_tag_offset orelse 0,
+        .input_local = config.input_local,
+    });
+    if (has_payload) {
+        try generated_text.append_fmt_block(allocator, out, 8,
+            \\        local.get ${[input_local]s}
+            \\        ref.as_non_null
+            \\        struct.get $do_variant $payload
+            \\        local.set $__payload
+            \\
+        , .{ .input_local = config.input_local });
+    }
+    try generated_text.append_block(allocator, out, 6,
+        \\      end
+        \\    end
+        \\    local.get $__tag
+        \\
+    );
+    if (has_payload) try out.appendSlice(allocator, "    local.get $__payload\n");
+    try append_named_call(allocator, out, config.canonical_call_name);
+    try out.appendSlice(allocator, "  )\n");
+}
+
+fn emit_variant_lift(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    plan: *const marshal.SyncValuePlan,
+    config: EmitConfig,
+) !void {
+    const has_payload = plan.canonical_signature.results.len > 1;
+    const payload_type = variant_payload_wat_type(plan);
+    try generated_text.append_fmt_block(allocator, out, 2,
+        \\  (func ${[function_name]s} (result (ref null $do_variant))
+        \\    (local $__tag i32)
+    , .{ .function_name = config.function_name });
+    if (has_payload) {
+        try generated_text.append_fmt(allocator, out, "    (local $__payload {[payload_type]s})\n", .{ .payload_type = payload_type });
+        try append_named_call(allocator, out, config.canonical_call_name);
+        try out.appendSlice(allocator, "    local.set $__payload\n    local.set $__tag\n");
+    } else {
+        try append_named_call(allocator, out, config.canonical_call_name);
+        try out.appendSlice(allocator, "    local.set $__tag\n");
+    }
+    try generated_text.append_block(allocator, out, 4,
+        \\    block $__variant_done
+        \\      block $__variant_value
+        \\        local.get $__tag
+        \\        i32.const 1
+        \\        i32.eq
+        \\        br_if $__variant_value
+        \\        local.get $__tag
+        \\        i32.eqz
+        \\        br_if $__variant_done
+        \\        unreachable
+        \\      end
+        \\      local.get $__tag
+    );
+    if (has_payload) try out.appendSlice(allocator, "      local.get $__payload\n");
+    try out.appendSlice(allocator, "      struct.new $do_variant\n      return\n    end\n    local.get $__tag\n");
+    if (has_payload) try append_variant_payload_zero(allocator, out, payload_type);
+    try out.appendSlice(allocator, "    struct.new $do_variant\n  )\n");
+}
+
+fn variant_payload_wat_type(plan: *const marshal.SyncValuePlan) []const u8 {
+    for (plan.root.variant_cases) |case| {
+        if (case.payload_child) |child_index| {
+            const child = &plan.root.children[child_index];
+            const facts = child.measured orelse continue;
+            return switch (facts.core_type orelse .i32) {
+                .i32 => "i32",
+                .i64 => "i64",
+                .f32 => "f32",
+                .f64 => "f64",
+            };
+        }
+    }
+    return "i32";
+}
+
+fn append_variant_payload_zero(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    payload_type: []const u8,
+) !void {
+    try generated_text.append_fmt(allocator, out, "    {[payload_type]s}.const 0\n", .{ .payload_type = payload_type });
 }
 
 /// Return the scalar leaf count for a measured record whose entire tree is
@@ -363,6 +489,7 @@ fn emit_lower(
         .list_elements => canonical_scalar_list_ref_type(element_kind),
         .map_entries => return error.UnsupportedMarshalShape,
         .record_fields => return error.UnsupportedMarshalShape,
+        .variant => return error.UnsupportedMarshalShape,
     };
     try generated_text.append_fmt_block(
         allocator,
@@ -469,6 +596,7 @@ fn emit_lift(
         .list_elements => canonical_scalar_list_ref_type(element_kind),
         .map_entries => return error.UnsupportedMarshalShape,
         .record_fields => return error.UnsupportedMarshalShape,
+        .variant => return error.UnsupportedMarshalShape,
     };
     const array_type = canonical_scalar_list_gc_type(element_kind);
     try generated_text.append_fmt_block(
@@ -589,6 +717,7 @@ fn emit_lift(
         ),
         .map_entries => return error.UnsupportedMarshalShape,
         .record_fields => return error.UnsupportedMarshalShape,
+        .variant => return error.UnsupportedMarshalShape,
     }
     try generated_text.append_fmt_block(allocator, out, 4,
         \\local.get $__cabi_ptr
@@ -3163,6 +3292,7 @@ fn append_source_length(
         , .{ .input_local = input_local }),
         .map_entries => return error.UnsupportedMarshalShape,
         .record_fields => return error.UnsupportedMarshalShape,
+        .variant => return error.UnsupportedMarshalShape,
     }
 }
 
@@ -3212,6 +3342,7 @@ fn append_source_byte(
         , .{ .input_local = input_local }),
         .map_entries => return error.UnsupportedMarshalShape,
         .record_fields => return error.UnsupportedMarshalShape,
+        .variant => return error.UnsupportedMarshalShape,
     }
 }
 
@@ -4976,4 +5107,72 @@ test "canonical marshal WAT keeps unsupported shapes rejected" {
         .revision = "wasm-tools-1.255.0",
         .schema_hash = "sha256:tuple-v1",
     }, &tuple, .lower));
+}
+
+test "canonical marshal WAT dispatches scalar variant lower and lift" {
+    var payload = wit_abi_types.AbiType.scalar(std.testing.allocator, .u32);
+    defer payload.deinit();
+    var value = try wit_abi_types.AbiType.variant(std.testing.allocator, &.{
+        .{ .tag = 0, .name = "none", .payload = null },
+        .{ .tag = 1, .name = "value", .payload = &payload },
+    });
+    defer value.deinit();
+    const measured = marshal.MeasuredNode{
+        .layout = .{ .variant = .{
+            .tag_offset = 0,
+            .payload_offset = 4,
+            .byte_size = 8,
+            .alignment = 4,
+            .cases = &.{
+                .{ .name = "none", .tag = 0, .payload_required = false, .payload = null },
+                .{ .name = "value", .tag = 1, .payload_required = true, .payload = .{
+                    .offset = 4,
+                    .byte_size = 4,
+                    .alignment = 4,
+                    .core_type = .i32,
+                } },
+            },
+        } },
+        .children = &.{.{ .layout = .{ .scalar = .{
+            .offset = 0,
+            .byte_size = 4,
+            .alignment = 4,
+            .core_type = .i32,
+        } } }},
+    };
+    const lower_plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-variant@1.0.0",
+        .world = "probe",
+        .member = "api.send",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    }, &value, .lower, measured);
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, lower_plan);
+    const lower_wat = try emit_sync_marshal_function(std.testing.allocator, &lower_plan, .{});
+    defer std.testing.allocator.free(lower_wat);
+    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "struct.get $do_variant $tag") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "i32.const 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "i32.eq") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "struct.get $do_variant $payload") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "call $canonical_call") != null);
+    const invalid_lower = std.mem.indexOf(u8, lower_wat, "unreachable") orelse unreachable;
+    const call_lower = std.mem.indexOf(u8, lower_wat, "call $canonical_call") orelse unreachable;
+    try std.testing.expect(invalid_lower < call_lower);
+
+    const lift_plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-variant@1.0.0",
+        .world = "probe",
+        .member = "api.receive",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    }, &value, .lift, measured);
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, lift_plan);
+    const lift_wat = try emit_sync_marshal_function(std.testing.allocator, &lift_plan, .{ .function_name = "lift_variant" });
+    defer std.testing.allocator.free(lift_wat);
+    try std.testing.expect(std.mem.indexOf(u8, lift_wat, "local.set $__tag") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lift_wat, "struct.new $do_variant") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lift_wat, "call $canonical_call") != null);
+    const invalid_lift = std.mem.indexOf(u8, lift_wat, "unreachable") orelse unreachable;
+    const call_lift = std.mem.indexOf(u8, lift_wat, "call $canonical_call") orelse unreachable;
+    try std.testing.expect(invalid_lift > call_lift);
 }

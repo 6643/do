@@ -28,6 +28,7 @@ pub const CopyShape = enum {
     list_elements,
     map_entries,
     record_fields,
+    variant,
 };
 
 pub const ManagedTextField = struct {
@@ -83,6 +84,7 @@ pub const MemoryPlan = struct {
     element_scalar_kind: ?wit_types.ScalarKind = null,
     result_area_pointer_offset: ?u32 = null,
     result_area_length_offset: ?u32 = null,
+    variant_tag_offset: ?u32 = null,
     record_field_count: u32 = 0,
     record_indirect: ?wit_layout.IndirectMeasurement = null,
     record_managed_text_lower: bool = false,
@@ -180,6 +182,30 @@ pub fn build_sync_memory_plan(plan: *const marshal.SyncValuePlan) !MemoryPlan {
                 .map_key_offset = map_measured.map_key_offset,
                 .map_value_offset = map_measured.map_value_offset,
                 .operations = map_operations_for(plan.direction),
+            };
+        },
+        .option, .result, .variant => {
+            const variant = measured;
+            if (variant.indirect != null or plan.root.variant_tag_offset == null) {
+                return error.UnsupportedMarshalShape;
+            }
+            for (plan.root.variant_cases) |case| {
+                if (case.payload_child) |child_index| {
+                    const child = &plan.root.children[child_index];
+                    if (child.kind != .scalar or child.measured == null or child.measured.?.core_type == null) {
+                        return error.UnsupportedMarshalShape;
+                    }
+                }
+            }
+            return .{
+                .direction = plan.direction,
+                .copy_shape = .variant,
+                .element_stride = 0,
+                .variant_tag_offset = plan.root.variant_tag_offset,
+                .operations = if (plan.direction == .lower)
+                    &variant_lower_operations
+                else
+                    &variant_lift_operations,
             };
         },
         .record => {
@@ -280,9 +306,18 @@ pub fn build_sync_memory_plan(plan: *const marshal.SyncValuePlan) !MemoryPlan {
                     &record_lift_operations,
             };
         },
-        .option, .result, .variant => return error.UnsupportedMarshalShape,
     }
 }
+
+const variant_lower_operations = [_]MemoryOperation{
+    .read_gc_span,
+    .canonical_call,
+};
+
+const variant_lift_operations = [_]MemoryOperation{
+    .canonical_call,
+    .construct_gc_value,
+};
 
 fn scalar_list_element_layout(kind: wit_types.ScalarKind) ?wit_layout.PayloadMeasurement {
     return switch (kind) {

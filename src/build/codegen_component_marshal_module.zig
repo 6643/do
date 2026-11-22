@@ -46,6 +46,7 @@ pub fn emit_sync_marshal_module(
             memory_plan.record_managed_text_scalar_list_pair_lower or
             memory_plan.record_managed_text_byte_u32_list_lower or
             memory_plan.record_managed_mixed_scalar_list_lower,
+        .variant => false,
     };
     const uses_realloc = switch (memory_plan.copy_shape) {
         .text_bytes, .list_elements, .map_entries => true,
@@ -59,6 +60,7 @@ pub fn emit_sync_marshal_module(
             (memory_plan.direction == .lift and
                 (marshal_ops.record_contains_text(&plan.root) or marshal_ops.record_contains_list(&plan.root))),
         .scalar => false,
+        .variant => false,
     };
 
     var out = std.ArrayList(u8).empty;
@@ -199,6 +201,7 @@ pub fn emit_sync_marshal_gc_support(
             memory_plan.record_managed_text_scalar_list_pair_lower or
             memory_plan.record_managed_text_byte_u32_list_lower or
             memory_plan.record_managed_mixed_scalar_list_lower,
+        .variant => false,
     };
     const uses_realloc = switch (memory_plan.copy_shape) {
         .text_bytes, .list_elements, .map_entries => true,
@@ -212,6 +215,7 @@ pub fn emit_sync_marshal_gc_support(
             (memory_plan.direction == .lift and
                 (marshal_ops.record_contains_text(&plan.root) or marshal_ops.record_contains_list(&plan.root))),
         .scalar => false,
+        .variant => false,
     };
 
     try emit_canonical_import_type(allocator, out, config.direction, &memory_plan, plan, config);
@@ -382,6 +386,7 @@ fn emit_canonical_import_type(
             else
                 try out.appendSlice(allocator, "  (type $canonical_lift (func (param i32)))\n"),
         },
+        .variant => return error.UnsupportedMarshalShape,
     }
 }
 
