@@ -185,8 +185,7 @@ pub fn build_sync_memory_plan(plan: *const marshal.SyncValuePlan) !MemoryPlan {
             };
         },
         .option, .result, .variant => {
-            const variant = measured;
-            if (variant.indirect != null or plan.root.variant_tag_offset == null) {
+            if (plan.root.variant_tag_offset == null) {
                 return error.UnsupportedMarshalShape;
             }
             for (plan.root.variant_cases) |case| {

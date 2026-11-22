@@ -1,0 +1,15 @@
+package demo:marshal-variant-gate@1.0.0;
+
+interface api {
+  variant event {
+    none,
+    value(u32),
+  }
+
+  send: func(value: event);
+}
+
+world probe {
+  import api;
+  export run: func() -> u32;
+}

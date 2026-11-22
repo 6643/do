@@ -2769,18 +2769,34 @@ fn run_gc_backend_firewall(init: std.process.Init, repo_root: []const u8) !void 
 }
 
 fn run_gc_component_boundary(init: std.process.Init, repo_root: []const u8) !void {
-    const script = try join(init.gpa, repo_root, "src/build/test/check_gc_component_boundary.sh");
-    defer init.gpa.free(script);
-    const argv = [_][]const u8{ "bash", script };
-    var result = try process.run_checked(init.gpa, init.io, .{
-        .argv = &argv,
-        .environ = init.environ_map,
-        .cwd = repo_root,
-        .timeout_ms = 600_000,
-    });
-    defer result.deinit(init.gpa);
-    try expect_success(init, &result);
-    try process.assert_stdout_contains(result, "GC Component boundary and resource cleanup gate passed");
+    {
+        const script = try join(init.gpa, repo_root, "src/build/test/check_gc_component_boundary.sh");
+        defer init.gpa.free(script);
+        const argv = [_][]const u8{ "bash", script };
+        var result = try process.run_checked(init.gpa, init.io, .{
+            .argv = &argv,
+            .environ = init.environ_map,
+            .cwd = repo_root,
+            .timeout_ms = 600_000,
+        });
+        defer result.deinit(init.gpa);
+        try expect_success(init, &result);
+        try process.assert_stdout_contains(result, "GC Component boundary and resource cleanup gate passed");
+    }
+    {
+        const script = try join(init.gpa, repo_root, "examples/gc-p3-runtime/test_gc_component_sync_variant_gate.sh");
+        defer init.gpa.free(script);
+        const argv = [_][]const u8{ "bash", script };
+        var result = try process.run_checked(init.gpa, init.io, .{
+            .argv = &argv,
+            .environ = init.environ_map,
+            .cwd = repo_root,
+            .timeout_ms = 600_000,
+        });
+        defer result.deinit(init.gpa);
+        try expect_success(init, &result);
+        try process.assert_stdout_contains(result, "synchronous option/result/variant Component gate passed");
+    }
 }
 
 fn run_gc_core_oracle(init: std.process.Init, repo_root: []const u8, temp_path: []const u8) !void {

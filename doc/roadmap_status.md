@@ -6,6 +6,35 @@
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
 G5b async/resource coverage ledger: `doc/g5b_async_resource_coverage.md`。
 
+## 2026-11-22 synchronous recursive variant canonical marshal
+
+同步 value-only canonical marshal 已完成 measured `option<T>`, `result<T,E>` 和
+无 payload `variant` 的 bounded Component route。当前证据覆盖 scalar option、
+`result<string,u32>` 的 lower 两个 active payload 分支、lift 两个 active payload
+分支，以及 no-payload variant。canonical import 只使用线性 ABI words；GC
+`anyref` payload 只在 Core wrapper 内部完成 box/unbox。text active case 的线性
+临时内存执行一次分配和一次反向释放，scalar active case 为 `0/0`。
+
+独立 gate 已通过 `wasm-tools` parse/validate、Component embed/new/validate 和
+Wasmtime host execution，并接入完整 harness 的 GC Component boundary case。
+descriptor case-name/tag drift、tuple payload 和未准入形状仍在 WAT 前 fail-closed。
+任意 nested aggregate、resource、future、stream、async 和通用 tuple/map
+lowering 仍未开放，不能据此宣称任意 WIT variant 或任意 list/map/tuple lowering
+已完成。
+
+## 2026-11-22 synchronous scalar list canonical marshal
+
+同步 value-only canonical marshal 已支持 measured `list<T>` 的 scalar 子集:
+`bool`, `u8`, `u16`, `u32`, `u64`, `i32`, `i64`, `f32`, `f64`。lower/lift 仍固定
+使用 `(ptr, len)`，GC 侧按元素类型发出 typed array，线性内存按自然宽度读写，
+并在 WAT emission 前校验元素大小, 对齐, stride 和 core word。零长度仍沿用
+`cabi_realloc`、canonical call 和 reverse free 顺序。focused Zig tests 与完整
+`zig build test --summary all` 已通过。
+
+这只关闭同步 scalar list 的 bounded route。`i8/i16`, text/record/resource 元素,
+nested list, async/stream payload, 以及任意 tuple/map lowering 仍 fail-closed,
+不能据此宣称任意 list/map/tuple 的 WASI lowering 已完成。
+
 ## 2026-11-21 D2 private `descriptor.advise` bounded promotion
 
 The pinned `descriptor.advise` method now has exact private source admission,
@@ -532,7 +561,7 @@ async/resource、ownership 与 full G5c cutover 继续 pending。
 descriptor。它只接受同步 `@host_func` 与
 `Reading { code: u32, payload: [u8] }`，使用 12-byte result area、payload
 capacity `3`、accepted lengths `0..3` 和 canonical `(i32)` result-area
-pointer。lift 将线性 byte payload 复制到 `$do_bytes`，只释放一次并构造 GC
+pointer。lift 将线性 byte payload 复制到 `$do_u8`，只释放一次并构造 GC
 record；canonical import 不携带 GC reference。普通 default route、显式 route、
 Component host、ARC/GC equivalence 和 616-621 六个负例均通过 pinned
 `wasm-tools 1.255.0`；host 观察 `code=7`、`payload=[10,20,30]`、`result=67`、
@@ -595,7 +624,7 @@ async/resource、ownership 或 full G5c cutover；inventory 仍为
 测得 result area 为 20 bytes，字段偏移为 `0/4/12`，`list<u32>` capacity 为
 `3`、stride 为 `4`，canonical lift ABI 为单个 `(i32)` result-area pointer，
 且没有 GC reference 跨边界。lift 校验 result area 与两条线性 span，将 label
-复制为 `$do_bytes`、payload 复制为 `$do_u32`，按 payload -> label 顺序各释放
+复制为 `$do_u8`、payload 复制为 `$do_u32`，按 payload -> label 顺序各释放
 一次并构造 `Reading`。Host 观察 `code=7`、`label=hello`、
 `payload=[10,20,5]`、`result=47`、`stats=34`、`read-calls=1`、
 `allocations=2/frees=2`；ARC/GC equivalence 观察 `47/47`、`34/34`、
@@ -612,7 +641,7 @@ aggregate、list、async/resource、ownership 或 full G5c cutover；inventory
 20 bytes，字段偏移为 `0/4/12`，`list<u8>` capacity 为 `4`、stride 为 `1`，
 canonical lift ABI 为单个 `(i32)` result-area pointer，且没有 GC reference
 跨边界。lift 校验 result area 与两条线性 span，将 label 和 payload 都复制
-为 `$do_bytes`，按 payload -> label 顺序各释放一次并构造 `Reading`。Host
+为 `$do_u8`，按 payload -> label 顺序各释放一次并构造 `Reading`。Host
 观察 `code=7`、`label=hello`、`payload=[10,20,5]`、`result=47`、`stats=17`、
 `read-calls=1`、`allocations=2/frees=2`；ARC/GC equivalence 观察 `47/47`、
 `17/17`、`1/1`。负例 `649–656` 在 WAT 前拒绝，default GC build/parse gate
@@ -659,7 +688,7 @@ inventory 仍为 `complete_rows=15 pending_rows=15`、exit 1。
 result area 为 28 bytes，字段偏移为 `0/4/12/20`，两个 `list<u32>` capacity
 为 `3/2`、stride 为 `4`，canonical lift ABI 为单个 `(i32)` result-area pointer，
 且没有 GC reference 跨边界。lift 校验 result area 与三条线性 span，将 label
-复制为 `$do_bytes`、两个 payload 复制为 `$do_u32`，按
+复制为 `$do_u8`、两个 payload 复制为 `$do_u32`，按
 `second -> first -> label` 顺序各释放一次并构造 `Reading`。Host 观察
 `code=7`、`label=hello`、`first=[10,20,5]`、`second=[3,4]`、`result=54`、
 `stats=51`、`read-calls=1`、`allocations=3/frees=3`；ARC/GC equivalence
@@ -679,7 +708,7 @@ aggregate/list、async/resource 或 ownership/borrowed 契约，则记录阻断�
 2026-08-23 增量: G5c bounded record lower 的内部实现已收敛为一个
 `ManagedScalarListField` route。外部 manifest 仍保留 `byte_list` 与 `list`
 两种输入 kind，内部只按 measured element kind、stride 和 capacity 选择
-`$do_bytes`/`$do_u32` 及对应 load/store；当前固定事实为 `u8` capacity `4`
+`$do_u8`/`$do_u32` 及对应 load/store；当前固定事实为 `u8` capacity `4`
 和 stride `1`、`u32` capacity `3` 和 stride `4`。length/multiplication/span
 guard、`cabi_realloc`、canonical call 与 exactly-once free 顺序保持不变，
 canonical ABI 未变化；这是同步 bounded lower 的内部去重，不新增 descriptor
@@ -1120,7 +1149,7 @@ remain pending.
 
 The parsed synchronous GC entry now admits one nested `[[u8]]` shape. The
 `nested-byte-list.do` fixture constructs an outer typed GC array containing the
-inner `$do_bytes` array, reads both levels, and iterates the outer collection.
+inner `$do_u8` array, reads both levels, and iterates the outer collection.
 Its Wasmtime/`wasm-tools 1.255.0` probe returns the `27815` oracle and checks
 the three inner bytes. The type-name encoder uses `$do_list_list_u8`, and the
 prelude emits the inner array before the outer array.
@@ -2770,7 +2799,7 @@ The descriptor manifest now pins
 source hash and the measured 12-byte result-area layout: `code@0`,
 `label.ptr@4`, and `label.len@8`, all aligned to 4. The canonical import remains
 one `(i32)` result-area pointer. The GC emitter copies the temporary text bytes
-into `$do_bytes`, constructs `$do_text`, then constructs the enclosing record;
+into `$do_u8`, constructs `$do_text`, then constructs the enclosing record;
 no GC reference crosses the Component boundary.
 
 `test_gc_marshal_record_managed_lift_manifest_host.sh` verifies pinned Core and

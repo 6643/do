@@ -1,0 +1,12 @@
+package demo:marshal-variant-gate@1.0.0;
+
+interface api {
+  send: func(value: result<string, u32>);
+}
+
+world probe {
+  import api;
+  export run: func() -> u32;
+  export allocs: func() -> u32;
+  export frees: func() -> u32;
+}

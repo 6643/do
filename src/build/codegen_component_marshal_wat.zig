@@ -104,36 +104,27 @@ fn emit_variant_lower(
         \\    ref.as_non_null
         \\    struct.get $do_variant $tag
         \\    local.set $__tag
-        \\    block $__variant_done
-        \\      block $__variant_value
-        \\        local.get $__tag
-        \\        i32.const 1
-        \\        i32.eq
-        \\        br_if $__variant_value
-        \\        local.get $__tag
-        \\        i32.eqz
-        \\        br_if $__variant_done
-        \\        unreachable
-        \\      end
     , .{
         .tag_offset = plan.root.variant_tag_offset orelse 0,
         .input_local = config.input_local,
     });
+    try emit_variant_tag_guard(allocator, out, plan, "__tag", 4);
     if (has_payload) {
-        try generated_text.append_fmt_block(allocator, out, 8,
-            \\        local.get ${[input_local]s}
-            \\        ref.as_non_null
-            \\        struct.get $do_variant $payload
-            \\        local.set $__payload
-            \\
-        , .{ .input_local = config.input_local });
+        for (plan.root.variant_cases) |case| {
+            const child_index = case.payload_child orelse continue;
+            const child = &plan.root.children[child_index];
+            try generated_text.append_fmt_block(allocator, out, 4,
+                \\    local.get $__tag
+                \\    i32.const {[tag]d}
+                \\    i32.eq
+                \\    if
+                \\
+            , .{ .tag = case.tag });
+            try append_variant_payload_get(allocator, out, config.input_local, child);
+            try out.appendSlice(allocator, "      local.set $__payload\n    end\n");
+        }
     }
-    try generated_text.append_block(allocator, out, 6,
-        \\      end
-        \\    end
-        \\    local.get $__tag
-        \\
-    );
+    try out.appendSlice(allocator, "    local.get $__tag\n");
     if (has_payload) try out.appendSlice(allocator, "    local.get $__payload\n");
     try append_named_call(allocator, out, config.canonical_call_name);
     try out.appendSlice(allocator, "  )\n");
@@ -189,18 +180,16 @@ fn emit_variant_linear_lower(
         \\    i32.const {[linear_tag]d}
         \\    i32.eq
         \\    if
-        \\      local.get ${[input_local]s}
-        \\      ref.as_non_null
-        \\      struct.get $do_variant $payload
-        \\      local.set $__variant_payload
-        \\      local.get $__variant_payload
-        \\      ref.as_non_null
-    , .{ .linear_tag = linear.tag, .input_local = config.input_local });
+    , .{ .linear_tag = linear.tag });
+    try out.append(allocator, '\n');
+    try append_variant_payload_get(allocator, out, config.input_local, linear_node);
+    try out.appendSlice(allocator, "      local.set $__variant_payload\n      local.get $__variant_payload\n      ref.as_non_null\n");
     if (linear.kind == .text) {
         try generated_text.append_block(allocator, out, 6,
             \\struct.get $do_text $bytes
             \\ref.as_non_null
         );
+        try out.append(allocator, '\n');
     }
     try generated_text.append_block(allocator, out, 6,
         \\array.len
@@ -265,12 +254,11 @@ fn emit_variant_linear_lower(
             \\      i32.const {[scalar_tag]d}
             \\      i32.eq
             \\      if
-            \\        local.get ${[input_local]s}
-            \\        ref.as_non_null
-            \\        struct.get $do_variant $payload
-            \\        local.set $__variant_payload_0
-            \\      end
-        , .{ .scalar_tag = scalar_tag, .input_local = config.input_local });
+        , .{ .scalar_tag = scalar_tag });
+        const scalar_node = variant_node_for_kind(plan, .scalar) orelse return error.UnsupportedMarshalShape;
+        try out.append(allocator, '\n');
+        try append_variant_payload_get(allocator, out, config.input_local, scalar_node);
+        try out.appendSlice(allocator, "        local.set $__variant_payload_0\n      end\n");
     }
     if (variant_nested_payload(plan)) |nested| {
         try generated_text.append_fmt_block(allocator, out, 6,
@@ -361,6 +349,15 @@ fn variant_tag_for_kind(plan: *const marshal.SyncValuePlan, kind: marshal.NodeKi
     return null;
 }
 
+fn variant_node_for_kind(plan: *const marshal.SyncValuePlan, kind: marshal.NodeKind) ?*const marshal.MarshalNode {
+    for (plan.root.variant_cases) |case| {
+        if (case.payload_child) |child_index| {
+            if (plan.root.children[child_index].kind == kind) return &plan.root.children[child_index];
+        }
+    }
+    return null;
+}
+
 fn variant_list_gc_type(node: *const marshal.MarshalNode) ![]const u8 {
     if (node.kind != .list or node.children.len != 1) return error.UnsupportedMarshalShape;
     return switch (node.children[0].scalar_kind orelse return error.UnsupportedMarshalShape) {
@@ -389,6 +386,59 @@ fn variant_list_store_instruction(node: *const marshal.MarshalNode) ![]const u8 
     if (node.children[0].scalar_kind == .u8) return "i32.store8";
     if (node.children[0].scalar_kind == .u32) return "i32.store";
     return error.UnsupportedMarshalShape;
+}
+
+fn append_variant_payload_get(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    input_local: []const u8,
+    node: *const marshal.MarshalNode,
+) !void {
+    try generated_text.append_fmt_block(allocator, out, 0,
+        "local.get ${[input_local]s}\nref.as_non_null\nstruct.get $do_variant $payload\nref.as_non_null\n",
+        .{ .input_local = input_local },
+    );
+    switch (node.kind) {
+        .scalar => {
+            const core_type = node.measured.?.core_type orelse return error.MeasuredScalarCoreTypeMissing;
+            const box_type = switch (core_type) {
+                .i32 => "$do_variant_i32",
+                .i64 => "$do_variant_i64",
+                .f32 => "$do_variant_f32",
+                .f64 => "$do_variant_f64",
+            };
+            try generated_text.append_fmt_block(allocator, out, 0,
+                "ref.cast (ref null {[box_type]s})\nref.as_non_null\nstruct.get {[box_type]s} $value\n",
+                .{ .box_type = box_type },
+            );
+        },
+        .text => try out.appendSlice(allocator, "ref.cast (ref null $do_text)\n"),
+        .list => try generated_text.append_fmt(allocator, out, "ref.cast {[array_type]s}\n", .{ .array_type = try variant_list_gc_type(node) }),
+        .option, .result, .variant => try out.appendSlice(allocator, "ref.cast (ref null $do_variant)\n"),
+        else => return error.UnsupportedMarshalShape,
+    }
+}
+
+fn append_variant_payload_box(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    payload_local: []const u8,
+    node: *const marshal.MarshalNode,
+) !void {
+    try generated_text.append_fmt(allocator, out, "local.get ${[payload_local]s}\n", .{ .payload_local = payload_local });
+    if (node.kind != .scalar) return;
+    const core_type = node.measured.?.core_type orelse return error.MeasuredScalarCoreTypeMissing;
+    const box_type = switch (core_type) {
+        .i32 => "$do_variant_i32",
+        .i64 => "$do_variant_i64",
+        .f32 => "$do_variant_f32",
+        .f64 => "$do_variant_f64",
+    };
+    try generated_text.append_fmt(allocator, out, "struct.new {[box_type]s}\n", .{ .box_type = box_type });
+}
+
+fn append_variant_null_payload(out: *std.ArrayList(u8), allocator: std.mem.Allocator) !void {
+    try out.appendSlice(allocator, "ref.null any\n");
 }
 
 fn emit_variant_lift(
@@ -426,14 +476,21 @@ fn emit_variant_lift(
         \\    if
         \\      local.get $__tag
     , .{ .scalar_tag = scalar_tag orelse return error.UnsupportedMarshalShape });
-    if (has_payload) try out.appendSlice(allocator, "      local.get $__payload\n");
+    try out.appendSlice(allocator, "      local.get $__tag\n");
+    if (has_payload) {
+        const scalar_node = variant_node_for_kind(plan, .scalar) orelse return error.UnsupportedMarshalShape;
+        try append_variant_payload_box(allocator, out, "__payload", scalar_node);
+    } else {
+        try append_variant_null_payload(out, allocator);
+    }
     try generated_text.append_block(allocator, out, 6,
         \\struct.new $do_variant
         \\return
         \\end
         \\local.get $__tag
     );
-    if (has_payload) try append_variant_payload_zero(allocator, out, payload_type);
+    try out.append(allocator, '\n');
+    try append_variant_null_payload(out, allocator);
     try generated_text.append_block(allocator, out, 4,
         \\struct.new $do_variant
         \\)
@@ -447,6 +504,9 @@ fn emit_variant_linear_lift(
     plan: *const marshal.SyncValuePlan,
     config: EmitConfig,
 ) !void {
+    if (plan.canonical_signature.indirect) {
+        return emit_variant_indirect_lift(allocator, out, plan, config);
+    }
     const linear = try variant_linear_payload(plan);
     const linear_node = &plan.root.children[linear.child_index];
     const linear_is_list = linear.kind == .list;
@@ -554,16 +614,11 @@ fn emit_variant_linear_lift(
     try out.appendSlice(allocator, "    else\n");
     if (variant_tag_for_kind(plan, .scalar)) |scalar_tag| {
         try generated_text.append_fmt_block(allocator, out, 6,
+            \\      ;; scalar sibling tag {[scalar_tag]d}
             \\      local.get $__tag
-            \\      i32.const {[scalar_tag]d}
-            \\      i32.eq
-            \\      if
-            \\        local.get $__tag
-            \\        local.get $__variant_payload_0
-            \\        struct.new $do_variant
-            \\        local.set $__variant_result
-            \\      else
+            \\      local.get $__variant_payload_0
         , .{ .scalar_tag = scalar_tag });
+        try out.appendSlice(allocator, "      struct.new $do_variant_i32\n      struct.new $do_variant\n      local.set $__variant_result\n");
     }
     if (nested_case) |nested| {
         try generated_text.append_fmt_block(allocator, out, 6,
@@ -583,14 +638,16 @@ fn emit_variant_linear_lift(
             \\      else
         , .{ .nested_tag = nested.tag });
     }
-    try generated_text.append_block(allocator, out, 8,
-        \\local.get $__tag
-        \\i32.const 0
-        \\struct.new $do_variant
-        \\local.set $__variant_result
-    );
+    if (variant_tag_for_kind(plan, .scalar) == null and nested_case == null) {
+        try generated_text.append_block(allocator, out, 8,
+            \\local.get $__tag
+            \\i32.const 0
+            \\ref.null any
+            \\struct.new $do_variant
+            \\local.set $__variant_result
+        );
+    }
     if (nested_case != null) try out.appendSlice(allocator, "      end\n");
-    if (variant_tag_for_kind(plan, .scalar) != null) try out.appendSlice(allocator, "      end\n");
     try out.appendSlice(allocator, "    end\n");
     try generated_text.append_fmt_block(allocator, out, 4,
         \\    local.get $__tag
@@ -608,6 +665,199 @@ fn emit_variant_linear_lift(
         \\  )
         \\
     , .{ .linear_tag = linear.tag, .realloc_name = config.realloc_name, .alignment = element_alignment });
+}
+
+fn emit_variant_indirect_lift(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    plan: *const marshal.SyncValuePlan,
+    config: EmitConfig,
+) !void {
+    const linear = try variant_linear_payload(plan);
+    const linear_node = &plan.root.children[linear.child_index];
+    const linear_facts = linear_node.measured orelse return error.MeasuredChildMissing;
+    const linear_case = for (plan.root.variant_cases) |case| {
+        if (case.tag == linear.tag) break case;
+    } else return error.MeasuredVariantCaseMissing;
+    const payload_offset = linear_case.payload_offset orelse return error.MeasuredPayloadOffsetMissing;
+    const pointer_offset = linear_facts.pointer_offset orelse return error.MeasuredPointerOffsetMissing;
+    const length_offset = linear_facts.length_offset orelse return error.MeasuredLengthOffsetMissing;
+    const element_stride = if (linear.kind == .list)
+        linear_facts.element_stride orelse return error.MeasuredElementStrideMissing
+    else
+        1;
+    const element_alignment = if (linear.kind == .list)
+        linear_facts.element_alignment orelse return error.MeasuredElementAlignmentMissing
+    else
+        1;
+    const array_type = if (linear.kind == .text) "$do_u8" else try variant_list_array_type(linear_node);
+    const load_instruction = if (linear.kind == .text) "i32.load8_u" else try variant_list_load_instruction(linear_node);
+    const scalar_tag = variant_tag_for_kind(plan, .scalar);
+    const scalar_case = if (scalar_tag) |tag| for (plan.root.variant_cases) |case| {
+        if (case.tag == tag) break case;
+    } else null else null;
+
+    try generated_text.append_fmt_block(allocator, out, 2,
+        \\  (func ${[function_name]s} (result (ref null $do_variant))
+        \\    (local $__result_area i32)
+        \\    (local $__tag i32)
+        \\    (local $__variant_ptr i32)
+        \\    (local $__variant_len i32)
+        \\    (local $__variant_copy_bytes i32)
+        \\    (local $__variant_copy_bytes64 i64)
+        \\    (local $__memory_bytes i64)
+        \\    (local $__variant_index i32)
+        \\    (local $__variant_list (ref null {[array_type]s}))
+        \\    (local $__variant_text (ref null $do_text))
+        \\    (local $__variant_result (ref null $do_variant))
+        \\    i32.const 0
+        \\    local.set $__result_area
+        \\    local.get $__result_area
+        \\
+    , .{ .function_name = config.function_name, .array_type = array_type });
+    try append_named_call(allocator, out, config.canonical_call_name);
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\    local.get $__result_area
+        \\    i32.const {[tag_offset]d}
+        \\    i32.add
+        \\    i32.load
+        \\    local.set $__tag
+        \\
+    , .{ .tag_offset = plan.root.variant_tag_offset orelse return error.MeasuredTagOffsetMissing });
+    try emit_variant_tag_guard(allocator, out, plan, "__tag", 4);
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\    local.get $__tag
+        \\    i32.const {[linear_tag]d}
+        \\    i32.eq
+        \\    if
+        \\      local.get $__result_area
+        \\      i32.const {[pointer_offset]d}
+        \\      i32.add
+        \\      i32.load
+        \\      local.set $__variant_ptr
+        \\      local.get $__result_area
+        \\      i32.const {[length_offset]d}
+        \\      i32.add
+        \\      i32.load
+        \\      local.set $__variant_len
+        \\
+    , .{
+        .linear_tag = linear.tag,
+        .pointer_offset = payload_offset + pointer_offset,
+        .length_offset = payload_offset + length_offset,
+    });
+    try append_copy_byte_count_for_locals(allocator, out, "__variant_len", "__variant_copy_bytes", "__variant_copy_bytes64", element_stride);
+    try emit_span_guard(allocator, out, "__variant_ptr", "__variant_copy_bytes");
+    try generated_text.append_fmt_block(allocator, out, 6,
+        \\      local.get $__variant_len
+        \\      array.new_default {[array_type]s}
+        \\      local.set $__variant_list
+        \\      i32.const 0
+        \\      local.set $__variant_index
+        \\      block $__variant_lift_copy_done
+        \\        loop $__variant_lift_copy
+        \\          local.get $__variant_index
+        \\          local.get $__variant_len
+        \\          i32.ge_u
+        \\          br_if $__variant_lift_copy_done
+        \\          local.get $__variant_list
+        \\          local.get $__variant_index
+        \\          local.get $__variant_ptr
+        \\          local.get $__variant_index
+    , .{ .array_type = array_type });
+    if (element_stride != 1) {
+        try generated_text.append_fmt_block(allocator, out, 10, "          i32.const {[stride]d}\n          i32.mul\n", .{ .stride = element_stride });
+    }
+    try generated_text.append_fmt_block(allocator, out, 10, "          i32.add\n          {[load]s}\n          array.set {[array_type]s}\n", .{ .load = load_instruction, .array_type = array_type });
+    try generated_text.append_block(allocator, out, 10,
+        \\          local.get $__variant_index
+        \\          i32.const 1
+        \\          i32.add
+        \\          local.set $__variant_index
+        \\          br $__variant_lift_copy
+        \\        end
+        \\      end
+    );
+    if (linear.kind == .text) {
+        try generated_text.append_block(allocator, out, 6,
+            \\      local.get $__variant_len
+            \\      local.get $__variant_list
+            \\      struct.new $do_text
+            \\      local.set $__variant_text
+            \\      local.get $__tag
+            \\      local.get $__variant_text
+            \\      struct.new $do_variant
+            \\      local.set $__variant_result
+        );
+    } else {
+        try generated_text.append_block(allocator, out, 6,
+            \\      local.get $__tag
+            \\      local.get $__variant_list
+            \\      struct.new $do_variant
+            \\      local.set $__variant_result
+        );
+    }
+    try out.appendSlice(allocator, "    else\n");
+    if (scalar_tag) |tag| {
+        const case = scalar_case orelse return error.MeasuredVariantCaseMissing;
+        const offset = case.payload_offset orelse return error.MeasuredPayloadOffsetMissing;
+        const scalar_node = variant_node_for_kind(plan, .scalar) orelse return error.UnsupportedMarshalShape;
+        const core_type = scalar_node.measured.?.core_type orelse return error.MeasuredScalarCoreTypeMissing;
+        const box_type = switch (core_type) {
+            .i32 => "$do_variant_i32",
+            .i64 => "$do_variant_i64",
+            .f32 => "$do_variant_f32",
+            .f64 => "$do_variant_f64",
+        };
+        try generated_text.append_fmt_block(allocator, out, 6,
+            \\      local.get $__tag
+            \\      i32.const {[tag]d}
+            \\      i32.eq
+            \\      if
+            \\        local.get $__tag
+            \\        local.get $__result_area
+            \\        i32.const {[offset]d}
+            \\        i32.add
+            \\        {[load]s}
+            \\        struct.new {[box_type]s}
+            \\        struct.new $do_variant
+            \\        local.set $__variant_result
+            \\      else
+        , .{ .tag = tag, .offset = offset, .load = scalar_load_instruction(core_type), .box_type = box_type });
+    }
+    try generated_text.append_block(allocator, out, 8,
+        \\        local.get $__tag
+        \\        ref.null any
+        \\        struct.new $do_variant
+        \\        local.set $__variant_result
+    );
+    if (scalar_tag != null) try out.appendSlice(allocator, "      end\n");
+    try out.appendSlice(allocator, "    end\n");
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\    local.get $__tag
+        \\    i32.const {[linear_tag]d}
+        \\    i32.eq
+        \\    if
+        \\      local.get $__variant_ptr
+        \\      local.get $__variant_copy_bytes
+        \\      i32.const {[alignment]d}
+        \\      i32.const 0
+        \\      call ${[realloc_name]s}
+        \\      drop
+        \\    end
+        \\    local.get $__variant_result
+        \\  )
+        \\
+    , .{ .linear_tag = linear.tag, .realloc_name = config.realloc_name, .alignment = element_alignment });
+}
+
+fn scalar_load_instruction(core_type: wit_layout.CoreWord) []const u8 {
+    return switch (core_type) {
+        .i32 => "i32.load",
+        .i64 => "i64.load",
+        .f32 => "f32.load",
+        .f64 => "f64.load",
+    };
 }
 
 fn variant_nested_payload(plan: *const marshal.SyncValuePlan) ?struct { tag: u32, child_index: usize } {

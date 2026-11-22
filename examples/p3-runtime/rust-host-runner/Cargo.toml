@@ -198,6 +198,10 @@ name = "do-p3-gc-marshal-u32-lift-host-runner"
 path = "src/bin/gc_marshal_u32_lift.rs"
 
 [[bin]]
+name = "do-p3-gc-marshal-variant"
+path = "src/bin/gc_marshal_variant.rs"
+
+[[bin]]
 name = "do-p3-gc-marshal-map-u32-u32"
 path = "src/bin/gc_marshal_map_u32_u32.rs"
 
