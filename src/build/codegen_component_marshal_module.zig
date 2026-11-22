@@ -46,7 +46,7 @@ pub fn emit_sync_marshal_module(
             memory_plan.record_managed_text_scalar_list_pair_lower or
             memory_plan.record_managed_text_byte_u32_list_lower or
             memory_plan.record_managed_mixed_scalar_list_lower,
-        .variant => false,
+        .variant => marshal_ops.variant_contains_linear_payload(&plan.root),
     };
     const uses_realloc = switch (memory_plan.copy_shape) {
         .text_bytes, .list_elements, .map_entries => true,
@@ -60,7 +60,7 @@ pub fn emit_sync_marshal_module(
             (memory_plan.direction == .lift and
                 (marshal_ops.record_contains_text(&plan.root) or marshal_ops.record_contains_list(&plan.root))),
         .scalar => false,
-        .variant => false,
+        .variant => marshal_ops.variant_contains_linear_payload(&plan.root),
     };
 
     var out = std.ArrayList(u8).empty;
@@ -77,6 +77,9 @@ pub fn emit_sync_marshal_module(
             memory_plan.managed_text_byte_u32_list_lower != null or
             (memory_plan.direction == .lift and marshal_ops.record_contains_u32_list(&plan.root)))
         {
+            try runtime_gc_wat.emit_u32_type(allocator, &out);
+        }
+        if (memory_plan.copy_shape == .variant and marshal_ops.variant_contains_u32_list(&plan.root)) {
             try runtime_gc_wat.emit_u32_type(allocator, &out);
         }
         if (memory_plan.element_scalar_kind) |kind| {
@@ -201,7 +204,7 @@ pub fn emit_sync_marshal_gc_support(
             memory_plan.record_managed_text_scalar_list_pair_lower or
             memory_plan.record_managed_text_byte_u32_list_lower or
             memory_plan.record_managed_mixed_scalar_list_lower,
-        .variant => false,
+        .variant => marshal_ops.variant_contains_linear_payload(&plan.root),
     };
     const uses_realloc = switch (memory_plan.copy_shape) {
         .text_bytes, .list_elements, .map_entries => true,
@@ -215,7 +218,7 @@ pub fn emit_sync_marshal_gc_support(
             (memory_plan.direction == .lift and
                 (marshal_ops.record_contains_text(&plan.root) or marshal_ops.record_contains_list(&plan.root))),
         .scalar => false,
-        .variant => false,
+        .variant => marshal_ops.variant_contains_linear_payload(&plan.root),
     };
 
     try emit_canonical_import_type(allocator, out, config.direction, &memory_plan, plan, config);

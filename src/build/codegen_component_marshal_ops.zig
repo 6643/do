@@ -191,10 +191,7 @@ pub fn build_sync_memory_plan(plan: *const marshal.SyncValuePlan) !MemoryPlan {
             }
             for (plan.root.variant_cases) |case| {
                 if (case.payload_child) |child_index| {
-                    const child = &plan.root.children[child_index];
-                    if (child.kind != .scalar or child.measured == null or child.measured.?.core_type == null) {
-                        return error.UnsupportedMarshalShape;
-                    }
+                    try validate_variant_payload_node(&plan.root.children[child_index]);
                 }
             }
             return .{
@@ -309,6 +306,37 @@ pub fn build_sync_memory_plan(plan: *const marshal.SyncValuePlan) !MemoryPlan {
     }
 }
 
+fn validate_variant_payload_node(node: *const marshal.MarshalNode) !void {
+    switch (node.kind) {
+        .scalar => {
+            const facts = node.measured orelse return error.MeasuredChildMissing;
+            _ = facts.core_type orelse return error.MeasuredScalarCoreTypeMissing;
+        },
+        .text => {
+            const facts = node.measured orelse return error.MeasuredChildMissing;
+            if (facts.pointer_offset == null or facts.length_offset == null) return error.UnsupportedMarshalShape;
+        },
+        .list => {
+            if (node.children.len != 1 or node.children[0].kind != .scalar) return error.UnsupportedMarshalShape;
+            const facts = node.measured orelse return error.MeasuredChildMissing;
+            if (facts.element_stride == null or facts.pointer_offset == null or facts.length_offset == null) {
+                return error.UnsupportedMarshalShape;
+            }
+            try validate_variant_payload_node(&node.children[0]);
+        },
+        .option, .result, .variant => {
+            const facts = node.measured orelse return error.MeasuredChildMissing;
+            if (facts.indirect != null or node.variant_tag_offset == null) return error.UnsupportedMarshalShape;
+            for (node.variant_cases) |case| {
+                if (case.payload_child) |child_index| {
+                    try validate_variant_payload_node(&node.children[child_index]);
+                }
+            }
+        },
+        else => return error.UnsupportedMarshalShape,
+    }
+}
+
 const variant_lower_operations = [_]MemoryOperation{
     .read_gc_span,
     .canonical_call,
@@ -354,6 +382,28 @@ pub fn record_contains_byte_list(node: *const marshal.MarshalNode) bool {
     if (node.kind == .list and node.children.len == 1 and node.children[0].scalar_kind == .u8) return true;
     for (node.children) |*child| {
         if (record_contains_byte_list(child)) return true;
+    }
+    return false;
+}
+
+pub fn variant_contains_linear_payload(node: *const marshal.MarshalNode) bool {
+    if (node.kind != .option and node.kind != .result and node.kind != .variant) return false;
+    for (node.variant_cases) |case| {
+        if (case.payload_child) |child_index| {
+            const child = &node.children[child_index];
+            if (child.kind == .text or child.kind == .list or variant_contains_linear_payload(child)) return true;
+        }
+    }
+    return false;
+}
+
+pub fn variant_contains_u32_list(node: *const marshal.MarshalNode) bool {
+    if (node.kind == .list and node.children.len == 1 and node.children[0].scalar_kind == .u32) return true;
+    if (node.kind != .option and node.kind != .result and node.kind != .variant) return false;
+    for (node.variant_cases) |case| {
+        if (case.payload_child) |child_index| {
+            if (variant_contains_u32_list(&node.children[child_index])) return true;
+        }
     }
     return false;
 }
