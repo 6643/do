@@ -356,10 +356,11 @@ fn emit_lower(
     memory_plan: *const marshal_ops.MemoryPlan,
     config: EmitConfig,
 ) !void {
+    const element_kind = memory_plan.element_scalar_kind orelse .u8;
     const source_type = switch (memory_plan.copy_shape) {
         .scalar => return error.UnsupportedMarshalShape,
         .text_bytes => "(ref null $do_text)",
-        .list_elements => if (memory_plan.element_core_type != null) "(ref null $do_u32)" else "(ref null $do_bytes)",
+        .list_elements => canonical_scalar_list_ref_type(element_kind),
         .map_entries => return error.UnsupportedMarshalShape,
         .record_fields => return error.UnsupportedMarshalShape,
     };
@@ -426,11 +427,9 @@ fn emit_lower(
     }
     try out.appendSlice(allocator, "        i32.add\n");
     try append_source_element(allocator, out, memory_plan, config.input_local);
-    if (memory_plan.element_stride == 1) {
-        try out.appendSlice(allocator, "        i32.store8\n");
-    } else {
-        try out.appendSlice(allocator, "        i32.store\n");
-    }
+    try out.appendSlice(allocator, "        ");
+    try out.appendSlice(allocator, canonical_scalar_list_store_instruction(element_kind));
+    try out.append(allocator, '\n');
     try generated_text.append_block(allocator, out, 8,
         \\local.get $__gc_index
         \\i32.const 1
@@ -463,14 +462,15 @@ fn emit_lift(
 ) !void {
     const result_area_pointer_offset = memory_plan.result_area_pointer_offset orelse return error.MeasuredResultAreaPointerMissing;
     const result_area_length_offset = memory_plan.result_area_length_offset orelse return error.MeasuredResultAreaLengthMissing;
+    const element_kind = memory_plan.element_scalar_kind orelse .u8;
     const result_type = switch (memory_plan.copy_shape) {
         .scalar => return error.UnsupportedMarshalShape,
         .text_bytes => "(ref null $do_text)",
-        .list_elements => if (memory_plan.element_core_type != null) "(ref null $do_u32)" else "(ref null $do_bytes)",
+        .list_elements => canonical_scalar_list_ref_type(element_kind),
         .map_entries => return error.UnsupportedMarshalShape,
         .record_fields => return error.UnsupportedMarshalShape,
     };
-    const array_type = if (memory_plan.element_core_type != null) "$do_u32" else "$do_bytes";
+    const array_type = canonical_scalar_list_gc_type(element_kind);
     try generated_text.append_fmt_block(
         allocator,
         out,
@@ -559,11 +559,9 @@ fn emit_lift(
         , .{ .element_stride = memory_plan.element_stride });
     }
     try out.appendSlice(allocator, "        i32.add\n");
-    if (memory_plan.element_stride == 1) {
-        try out.appendSlice(allocator, "        i32.load8_u\n");
-    } else {
-        try out.appendSlice(allocator, "        i32.load\n");
-    }
+    try out.appendSlice(allocator, "        ");
+    try out.appendSlice(allocator, canonical_scalar_list_load_instruction(element_kind));
+    try out.append(allocator, '\n');
     try append_fmt(allocator, out, "        array.set {[array_type]s}\n", .{ .array_type = array_type });
     try generated_text.append_block(allocator, out, 8,
         \\local.get $__gc_index
@@ -752,8 +750,8 @@ fn emit_map_lift(
         \\  (local $__copy_bytes i32)
         \\  (local $__copy_bytes64 i64)
         \\  (local $__memory_bytes i64)
-       \\  (local $__keys (ref $do_u32))
-       \\  (local $__vals (ref $do_u32))
+        \\  (local $__keys (ref $do_u32))
+        \\  (local $__vals (ref $do_u32))
         \\
     , .{ .function_name = config.function_name });
     try generated_text.append_block(allocator, out, 4,
@@ -867,7 +865,7 @@ fn emit_map_lower_text(
         \\    (local $__total_bytes64 i64)
         \\    (local $__cabi_ptr i32)
         \\    (local $__payload_ptr i32)
-        \\    (local $__text_bytes (ref $do_bytes))
+        \\    (local $__text_bytes (ref $do_u8))
         \\    (local $__memory_bytes i64)
         \\
     , .{ .function_name = config.function_name, .input_local = config.input_local });
@@ -1054,7 +1052,7 @@ fn emit_map_lower_text(
         \\        i32.add
         \\        local.get $__text_bytes
         \\        local.get $__text_index
-        \\        array.get_s $do_bytes
+        \\        array.get_s $do_u8
         \\        i32.store8
         \\        local.get $__text_index
         \\        i32.const 1
@@ -1119,7 +1117,7 @@ fn emit_map_lift_text(
         \\  (local $__memory_bytes i64)
         \\  (local $__keys (ref $do_u32))
         \\  (local $__vals (ref $do_text_array))
-        \\  (local $__text_bytes (ref $do_bytes))
+        \\  (local $__text_bytes (ref $do_u8))
         \\  (local $__text_result (ref $do_text))
         \\
     , .{ .function_name = config.function_name });
@@ -1196,7 +1194,7 @@ fn emit_map_lift_text(
     try emit_span_guard(allocator, out, "__text_ptr", "__text_length");
     try generated_text.append_fmt_block(allocator, out, 4,
         \\local.get $__text_length
-        \\array.new_default $do_bytes
+        \\array.new_default $do_u8
         \\local.set $__text_bytes
         \\i32.const 0
         \\local.set $__text_index
@@ -1212,7 +1210,7 @@ fn emit_map_lift_text(
         \\    local.get $__text_index
         \\    i32.add
         \\    i32.load8_u
-        \\    array.set $do_bytes
+        \\    array.set $do_u8
         \\    local.get $__text_index
         \\    i32.const 1
         \\    i32.add
@@ -1329,7 +1327,7 @@ fn emit_record_lift(
         \\    (local $__text_ptr i32)
         \\    (local $__text_length i32)
         \\    (local $__text_index i32)
-        \\    (local $__text_bytes (ref $do_bytes))
+        \\    (local $__text_bytes (ref $do_u8))
         \\
     );
     if (has_record_list) {
@@ -1345,7 +1343,7 @@ fn emit_record_lift(
             try out.appendSlice(allocator, "    (local $__list_array (ref $do_u32))\n");
         }
         if (has_record_byte_list) {
-            try out.appendSlice(allocator, "    (local $__byte_list_array (ref $do_bytes))\n");
+            try out.appendSlice(allocator, "    (local $__byte_list_array (ref $do_u8))\n");
         }
     }
     try generated_text.append_block(allocator, out, 4,
@@ -1398,7 +1396,7 @@ fn emit_record_lift_mixed_text_two_u32_lists(
         \\    (local $__cabi_ptr_0 i32)
         \\    (local $__gc_length_0 i32)
         \\    (local $__gc_index_0 i32)
-        \\    (local $__gc_values_0 (ref $do_bytes))
+        \\    (local $__gc_values_0 (ref $do_u8))
         \\    (local $__cabi_ptr_1 i32)
         \\    (local $__gc_length_1 i32)
         \\    (local $__gc_index_1 i32)
@@ -1523,7 +1521,7 @@ fn emit_record_lift_mixed_text_two_u32_lists(
 
     try generated_text.append_block(allocator, out, 4,
         \\local.get $__gc_length_0
-        \\array.new_default $do_bytes
+        \\array.new_default $do_u8
         \\local.set $__gc_values_0
         \\i32.const 0
         \\local.set $__gc_index_0
@@ -1539,7 +1537,7 @@ fn emit_record_lift_mixed_text_two_u32_lists(
         \\    local.get $__gc_index_0
         \\    i32.add
         \\    i32.load8_u
-        \\    array.set $do_bytes
+        \\    array.set $do_u8
         \\    local.get $__gc_index_0
         \\    i32.const 1
         \\    i32.add
@@ -1692,7 +1690,7 @@ fn emit_record_lift_value(
             try emit_span_guard(allocator, out, "__text_ptr", "__text_length");
             try generated_text.append_fmt_block(allocator, out, 4,
                 \\    local.get $__text_length
-                \\    array.new_default $do_bytes
+                \\    array.new_default $do_u8
                 \\    local.set $__text_bytes
                 \\    i32.const 0
                 \\    local.set $__text_index
@@ -1708,7 +1706,7 @@ fn emit_record_lift_value(
                 \\        local.get $__text_index
                 \\        i32.add
                 \\        i32.load8_u
-                \\        array.set $do_bytes
+                \\        array.set $do_u8
                 \\        local.get $__text_index
                 \\        i32.const 1
                 \\        i32.add
@@ -1738,7 +1736,7 @@ fn emit_record_lift_value(
             if (element.kind != .scalar) return error.UnsupportedMarshalShape;
             const element_facts = element.measured orelse return error.MeasuredChildMissing;
             const is_byte_list = element.scalar_kind == .u8;
-            const array_type = if (is_byte_list) "$do_bytes" else "$do_u32";
+            const array_type = if (is_byte_list) "$do_u8" else "$do_u32";
             const array_local = if (is_byte_list) "__byte_list_array" else "__list_array";
             const stride: u32 = if (is_byte_list) 1 else 4;
             if (facts.element_stride != stride) return error.UnsupportedMarshalShape;
@@ -1843,6 +1841,7 @@ fn emit_record_lift_value(
             if (!valid_wat_name(name)) return error.InvalidWatName;
             try append_fmt(allocator, out, "    struct.new $do_{[name]s}\n", .{ .name = name });
         },
+        .option, .result, .variant => return error.UnsupportedMarshalShape,
     }
 }
 
@@ -2035,7 +2034,7 @@ fn emit_record_lower_managed_text(
             \\        struct.get $do_text $bytes
             \\        ref.as_non_null
             \\        local.get $__gc_index_{[slot]d}
-            \\        array.get_s $do_bytes
+            \\        array.get_s $do_u8
             \\        i32.store8
             \\        local.get $__gc_index_{[slot]d}
             \\        i32.const 1
@@ -2138,7 +2137,7 @@ fn emit_record_lower_managed_mixed_scalar_list(
         \\(local $__gc_length_0 i32)
         \\(local $__gc_index_0 i32)
         \\(local $__cabi_ptr_0 i32)
-        \\(local $__gc_values_0 (ref $do_bytes))
+        \\(local $__gc_values_0 (ref $do_u8))
         \\(local $__gc_length_1 i32)
         \\(local $__gc_index_1 i32)
         \\(local $__cabi_ptr_1 i32)
@@ -2201,7 +2200,7 @@ fn emit_record_lower_managed_mixed_scalar_list(
         \\    i32.add
         \\    local.get $__gc_values_0
         \\    local.get $__gc_index_0
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.store8
         \\    local.get $__gc_index_0
         \\    i32.const 1
@@ -2333,14 +2332,14 @@ fn emit_record_lower_managed_mixed_scalar_list(
 
 fn scalar_list_gc_type(kind: marshal_ops.ScalarListElementKind) []const u8 {
     return switch (kind) {
-        .byte => "$do_bytes",
+        .byte => "$do_u8",
         .u32 => "$do_u32",
     };
 }
 
 fn scalar_list_load_instruction(kind: marshal_ops.ScalarListElementKind) []const u8 {
     return switch (kind) {
-        .byte => "array.get_s $do_bytes",
+        .byte => "array.get_s $do_u8",
         .u32 => "array.get $do_u32",
     };
 }
@@ -2434,7 +2433,7 @@ fn emit_record_lower_managed_text_scalar_list_pair_impl(
         \\(local $__gc_length_0 i32)
         \\(local $__gc_index_0 i32)
         \\(local $__cabi_ptr_0 i32)
-        \\(local $__gc_values_0 (ref $do_bytes))
+        \\(local $__gc_values_0 (ref $do_u8))
         \\(local $__gc_length_1 i32)
         \\(local $__gc_index_1 i32)
         \\(local $__cabi_ptr_1 i32)
@@ -2508,7 +2507,7 @@ fn emit_record_lower_managed_text_scalar_list_pair_impl(
         \\    i32.add
         \\    local.get $__gc_values_0
         \\    local.get $__gc_index_0
-        \\    array.get_s $do_bytes
+        \\    array.get_s $do_u8
         \\    i32.store8
         \\    local.get $__gc_index_0
         \\    i32.const 1
@@ -3201,14 +3200,14 @@ fn append_source_byte(
             \\        struct.get $do_text $bytes
             \\        ref.as_non_null
             \\        local.get $__gc_index
-            \\        array.get_s $do_bytes
+            \\        array.get_s $do_u8
             \\
         , .{ .input_local = input_local }),
         .list_elements => try generated_text.append_fmt_block(allocator, out, 8,
             \\        local.get ${[input_local]s}
             \\        ref.as_non_null
             \\        local.get $__gc_index
-            \\        array.get_s $do_bytes
+            \\        array.get_s $do_u8
             \\
         , .{ .input_local = input_local }),
         .map_entries => return error.UnsupportedMarshalShape,
@@ -3226,17 +3225,86 @@ fn append_source_element(
         try append_source_byte(allocator, out, .text_bytes, input_local);
         return;
     }
-    if (memory_plan.element_core_type != null) {
-        try generated_text.append_fmt_block(allocator, out, 8,
-            \\        local.get ${[input_local]s}
-            \\        ref.as_non_null
-            \\        local.get $__gc_index
-            \\        array.get $do_u32
-            \\
-        , .{ .input_local = input_local });
-        return;
-    }
-    try append_source_byte(allocator, out, .list_elements, input_local);
+    const element_kind = memory_plan.element_scalar_kind orelse return error.UnsupportedMarshalShape;
+    try generated_text.append_fmt_block(allocator, out, 8,
+        \\        local.get ${[input_local]s}
+        \\        ref.as_non_null
+        \\        local.get $__gc_index
+        \\        {[get_instruction]s}
+        \\
+    , .{
+        .input_local = input_local,
+        .get_instruction = canonical_scalar_list_array_get_instruction(element_kind),
+    });
+}
+
+fn canonical_scalar_list_gc_type(kind: wit_abi_types.ScalarKind) []const u8 {
+    return switch (kind) {
+        .bool => "$do_bool",
+        .u8 => "$do_u8",
+        .u16 => "$do_u16",
+        .u32 => "$do_u32",
+        .u64 => "$do_u64",
+        .i32 => "$do_i32",
+        .i64 => "$do_i64",
+        .f32 => "$do_f32",
+        .f64 => "$do_f64",
+        .i8, .i16 => unreachable,
+    };
+}
+
+fn canonical_scalar_list_ref_type(kind: wit_abi_types.ScalarKind) []const u8 {
+    return switch (kind) {
+        .bool => "(ref null $do_bool)",
+        .u8 => "(ref null $do_u8)",
+        .u16 => "(ref null $do_u16)",
+        .u32 => "(ref null $do_u32)",
+        .u64 => "(ref null $do_u64)",
+        .i32 => "(ref null $do_i32)",
+        .i64 => "(ref null $do_i64)",
+        .f32 => "(ref null $do_f32)",
+        .f64 => "(ref null $do_f64)",
+        .i8, .i16 => unreachable,
+    };
+}
+
+fn canonical_scalar_list_array_get_instruction(kind: wit_abi_types.ScalarKind) []const u8 {
+    return if (kind == .u8) "array.get_u $do_u8" else switch (kind) {
+        .bool => "array.get $do_bool",
+        .u8 => unreachable,
+        .u16 => "array.get $do_u16",
+        .u32 => "array.get $do_u32",
+        .u64 => "array.get $do_u64",
+        .i32 => "array.get $do_i32",
+        .i64 => "array.get $do_i64",
+        .f32 => "array.get $do_f32",
+        .f64 => "array.get $do_f64",
+        .i8, .i16 => unreachable,
+    };
+}
+
+fn canonical_scalar_list_load_instruction(kind: wit_abi_types.ScalarKind) []const u8 {
+    return switch (kind) {
+        .bool, .u8 => "i32.load8_u",
+        .u16 => "i32.load16_u",
+        .u32, .i32 => "i32.load",
+        .u64, .i64 => "i64.load",
+        .f32 => "f32.load",
+        .f64 => "f64.load",
+        .i8, .i16 => unreachable,
+    };
+}
+
+fn canonical_scalar_list_store_instruction(kind: wit_abi_types.ScalarKind) []const u8 {
+    return switch (kind) {
+        .bool, .u8 => "i32.store8",
+        .u16 => "i32.store16",
+        .u32, .i32 => "i32.store",
+        .u64, .i64 => "i64.store",
+        .f32 => "f32.store",
+        .f64 => "f64.store",
+        .i8, .i16 => unreachable,
+    };
 }
 
 fn append_copy_byte_count(
@@ -3531,10 +3599,10 @@ test "canonical marshal WAT lift emits checked load construct publish and free o
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $canonical_call") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "i32.load8_u") != null);
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "local.set $__gc_result") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $cabi_realloc") != null);
-    try std.testing.expect((std.mem.indexOf(u8, wat, "array.set $do_bytes") orelse unreachable) <
+    try std.testing.expect((std.mem.indexOf(u8, wat, "array.set $do_u8") orelse unreachable) <
         (std.mem.lastIndexOf(u8, wat, "call $cabi_realloc") orelse unreachable));
 }
 
@@ -3603,6 +3671,85 @@ test "canonical marshal WAT emits typed u32 list lower and lift copies" {
     try std.testing.expect(std.mem.indexOf(u8, lift_wat, "(ref null $do_u32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, lift_wat, "array.set $do_u32") != null);
     try std.testing.expect(std.mem.indexOf(u8, lift_wat, "i32.load") != null);
+}
+
+test "canonical marshal WAT emits every supported scalar list shape" {
+    const Case = struct {
+        kind: wit_abi_types.ScalarKind,
+        byte_size: u32,
+        alignment: u32,
+        stride: u32,
+        core_type: wit_layout.CoreWord,
+        array_name: []const u8,
+        load: []const u8,
+        store: []const u8,
+    };
+    const cases = [_]Case{
+        .{ .kind = .bool, .byte_size = 1, .alignment = 1, .stride = 1, .core_type = .i32, .array_name = "$do_bool", .load = "i32.load8_u", .store = "i32.store8" },
+        .{ .kind = .u8, .byte_size = 1, .alignment = 1, .stride = 1, .core_type = .i32, .array_name = "$do_u8", .load = "i32.load8_u", .store = "i32.store8" },
+        .{ .kind = .u16, .byte_size = 2, .alignment = 2, .stride = 2, .core_type = .i32, .array_name = "$do_u16", .load = "i32.load16_u", .store = "i32.store16" },
+        .{ .kind = .i32, .byte_size = 4, .alignment = 4, .stride = 4, .core_type = .i32, .array_name = "$do_i32", .load = "i32.load", .store = "i32.store" },
+        .{ .kind = .u32, .byte_size = 4, .alignment = 4, .stride = 4, .core_type = .i32, .array_name = "$do_u32", .load = "i32.load", .store = "i32.store" },
+        .{ .kind = .i64, .byte_size = 8, .alignment = 8, .stride = 8, .core_type = .i64, .array_name = "$do_i64", .load = "i64.load", .store = "i64.store" },
+        .{ .kind = .u64, .byte_size = 8, .alignment = 8, .stride = 8, .core_type = .i64, .array_name = "$do_u64", .load = "i64.load", .store = "i64.store" },
+        .{ .kind = .f32, .byte_size = 4, .alignment = 4, .stride = 4, .core_type = .f32, .array_name = "$do_f32", .load = "f32.load", .store = "f32.store" },
+        .{ .kind = .f64, .byte_size = 8, .alignment = 8, .stride = 8, .core_type = .f64, .array_name = "$do_f64", .load = "f64.load", .store = "f64.store" },
+    };
+
+    for (cases, 0..) |case, index| {
+        var element = wit_abi_types.AbiType.scalar(std.testing.allocator, case.kind);
+        defer element.deinit();
+        var value = try wit_abi_types.AbiType.list(std.testing.allocator, &element);
+        defer value.deinit();
+        const measured = marshal.MeasuredNode{
+            .layout = .{ .list = .{
+                .pointer_offset = 0,
+                .length_offset = 4,
+                .element_byte_size = case.byte_size,
+                .element_stride = case.stride,
+                .element_alignment = case.alignment,
+                .ticket_offset = 0,
+                .capacity = 4,
+                .accepted_lengths = &.{ 0, 1, 2, 4 },
+                .allocation = .cabi_realloc,
+                .free = .cabi_realloc,
+            } },
+            .children = &.{.{ .layout = .{ .scalar = .{
+                .offset = 0,
+                .byte_size = case.byte_size,
+                .alignment = case.alignment,
+                .core_type = case.core_type,
+            } } }},
+        };
+
+        var lower_plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+            .package = "demo:marshal-scalar-list@1.0.0",
+            .world = "probe",
+            .member = "api.send",
+            .revision = "wit-resolver-v1",
+            .schema_hash = "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+        }, &value, .lower, measured);
+        defer marshal.deinit_sync_value_plan(std.testing.allocator, lower_plan);
+        const lower_wat = try emit_sync_marshal_function(std.testing.allocator, &lower_plan, .{});
+        defer std.testing.allocator.free(lower_wat);
+        try std.testing.expect(std.mem.indexOf(u8, lower_wat, case.array_name) != null);
+        try std.testing.expect(std.mem.indexOf(u8, lower_wat, case.store) != null);
+
+        var lift_plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+            .package = "demo:marshal-scalar-list@1.0.0",
+            .world = "probe",
+            .member = "api.receive",
+            .revision = "wit-resolver-v1",
+            .schema_hash = "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+        }, &value, .lift, measured);
+        defer marshal.deinit_sync_value_plan(std.testing.allocator, lift_plan);
+        const lift_wat = try emit_sync_marshal_function(std.testing.allocator, &lift_plan, .{});
+        defer std.testing.allocator.free(lift_wat);
+        try std.testing.expect(std.mem.indexOf(u8, lift_wat, case.array_name) != null);
+        try std.testing.expect(std.mem.indexOf(u8, lift_wat, case.load) != null);
+        try std.testing.expect(std.mem.indexOf(u8, lift_wat, "[linear-temp-free] count=1") != null);
+        _ = index;
+    }
 }
 
 test "canonical marshal WAT lowers and lifts a scalar map pair-list" {
@@ -3728,7 +3875,7 @@ test "canonical marshal WAT lowers and lifts a u32 text map" {
     defer std.testing.allocator.free(lower_wat);
     try std.testing.expect(std.mem.indexOf(u8, lower_wat, "(param $input (ref null $do_map))") != null);
     try std.testing.expect(std.mem.indexOf(u8, lower_wat, "array.get $do_text_array") != null);
-    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "array.get_s $do_bytes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower_wat, "array.get_s $do_u8") != null);
     try std.testing.expect(std.mem.indexOf(u8, lower_wat, "i32.const 12") != null);
 
     const lift_plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
@@ -3909,7 +4056,7 @@ test "canonical marshal WAT lowers two managed text fields before reverse frees"
 
     const wat = try emit_sync_marshal_function(std.testing.allocator, &plan, .{});
     defer std.testing.allocator.free(wat);
-    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "array.get_s $do_bytes"));
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "array.get_s $do_u8"));
     try std.testing.expectEqual(@as(usize, 4), std.mem.count(u8, wat, "call $cabi_realloc"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, wat, "call $canonical_call"));
     const call_index = std.mem.indexOf(u8, wat, "call $canonical_call") orelse unreachable;
@@ -4039,12 +4186,12 @@ test "canonical marshal WAT lowers bounded record byte-list with numeric root fi
     try std.testing.expect(std.mem.indexOf(u8, wat, "(param $input (ref null $writing))") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $writing 0") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $writing 1") != null);
-    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, wat, "array.get_s $do_bytes"));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, wat, "array.get_s $do_u8"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, wat, "i32.store8"));
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "call $cabi_realloc"));
     try std.testing.expect(std.mem.indexOf(u8, wat, "$do_text") == null);
 
-    const copy = std.mem.indexOf(u8, wat, "array.get_s $do_bytes") orelse unreachable;
+    const copy = std.mem.indexOf(u8, wat, "array.get_s $do_u8") orelse unreachable;
     const call = std.mem.indexOf(u8, wat, "call $canonical_call") orelse unreachable;
     const first_realloc = std.mem.indexOf(u8, wat, "call $cabi_realloc") orelse unreachable;
     const last_realloc = std.mem.lastIndexOf(u8, wat, "call $cabi_realloc") orelse unreachable;
@@ -4115,7 +4262,7 @@ test "canonical marshal WAT lowers mixed text and byte-list fields with reverse 
     });
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(param $input (ref null $writing))") != null);
-    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "array.get_s $do_bytes"));
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "array.get_s $do_u8"));
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "i32.store8"));
     try std.testing.expectEqual(@as(usize, 4), std.mem.count(u8, wat, "call $cabi_realloc"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, wat, "call $canonical_call"));
@@ -4325,7 +4472,7 @@ test "canonical marshal WAT lowers bounded record u32-list with numeric root fie
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, wat, "array.get $do_u32"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, wat, "i32.store"));
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "call $cabi_realloc"));
-    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get_s $do_bytes") == null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get_s $do_u8") == null);
 
     const copy = std.mem.indexOf(u8, wat, "array.get $do_u32") orelse unreachable;
     const call = std.mem.indexOf(u8, wat, "call $canonical_call") orelse unreachable;
@@ -4433,7 +4580,9 @@ test "canonical marshal WAT lowers bounded record with two u32-list fields" {
     try std.testing.expect(second_guard < second_copy);
     try std.testing.expect(first_copy < second_copy);
     try std.testing.expect(second_copy < call);
-    try std.testing.expect(std.mem.indexOf(u8, wat,
+    try std.testing.expect(std.mem.indexOf(
+        u8,
+        wat,
         "local.get $__cabi_ptr_0\n    local.get $__gc_length_0\n    local.get $__cabi_ptr_1\n    local.get $__gc_length_1\n    call $canonical_call",
     ) != null);
 
@@ -4544,14 +4693,16 @@ test "canonical marshal WAT lowers bounded record with text and two u32-list fie
     defer std.testing.allocator.free(wat);
 
     try std.testing.expect(std.mem.indexOf(u8, wat, "block $__text_two_lists_cleanup") != null);
-    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, wat, "array.get_s $do_bytes"));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, wat, "array.get_s $do_u8"));
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "array.get $do_u32"));
     try std.testing.expectEqual(@as(usize, 6), std.mem.count(u8, wat, "call $cabi_realloc"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, wat, "call $canonical_call"));
-    try std.testing.expect(std.mem.indexOf(u8, wat,
+    try std.testing.expect(std.mem.indexOf(
+        u8,
+        wat,
         "local.get $__cabi_ptr_0\n    local.get $__gc_length_0\n    local.get $__cabi_ptr_1\n    local.get $__gc_length_1\n    local.get $__cabi_ptr_2\n    local.get $__gc_length_2\n    call $canonical_call",
     ) != null);
-    const text_copy = std.mem.indexOf(u8, wat, "array.get_s $do_bytes") orelse unreachable;
+    const text_copy = std.mem.indexOf(u8, wat, "array.get_s $do_u8") orelse unreachable;
     const first_copy = std.mem.indexOf(u8, wat, "array.get $do_u32") orelse unreachable;
     const second_copy = std.mem.indexOfPos(u8, wat, first_copy + 1, "array.get $do_u32") orelse unreachable;
     const call = std.mem.indexOf(u8, wat, "call $canonical_call") orelse unreachable;
@@ -4645,15 +4796,17 @@ test "canonical marshal WAT lowers mixed text byte/u32 lists with guarded revers
     });
     defer std.testing.allocator.free(wat);
 
-    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "array.get_s $do_bytes"));
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "array.get_s $do_u8"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, wat, "array.get $do_u32"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, wat, "call $canonical_call"));
-    try std.testing.expect(std.mem.indexOf(u8, wat,
+    try std.testing.expect(std.mem.indexOf(
+        u8,
+        wat,
         "local.get $input\n    ref.as_non_null\n    struct.get $writing 0\n    local.get $__cabi_ptr_0\n    local.get $__gc_length_0\n    local.get $__cabi_ptr_1\n    local.get $__gc_length_1\n    local.get $__cabi_ptr_2\n    local.get $__gc_length_2\n    call $canonical_call",
     ) != null);
 
-    const text_copy = std.mem.indexOf(u8, wat, "array.get_s $do_bytes") orelse unreachable;
-    const bytes_copy = std.mem.indexOfPos(u8, wat, text_copy + 1, "array.get_s $do_bytes") orelse unreachable;
+    const text_copy = std.mem.indexOf(u8, wat, "array.get_s $do_u8") orelse unreachable;
+    const bytes_copy = std.mem.indexOfPos(u8, wat, text_copy + 1, "array.get_s $do_u8") orelse unreachable;
     const values_copy = std.mem.indexOf(u8, wat, "array.get $do_u32") orelse unreachable;
     const bytes_guard = std.mem.indexOf(u8, wat, "local.get $__cabi_ptr_1\n    i64.extend_i32_u") orelse unreachable;
     const values_guard = std.mem.indexOf(u8, wat, "local.get $__cabi_ptr_2\n    i64.extend_i32_u") orelse unreachable;
@@ -4663,13 +4816,19 @@ test "canonical marshal WAT lowers mixed text byte/u32 lists with guarded revers
     try std.testing.expect(bytes_copy < values_copy);
     try std.testing.expect(values_copy < call);
 
-    const values_free = std.mem.indexOf(u8, wat,
+    const values_free = std.mem.indexOf(
+        u8,
+        wat,
         "local.get $__cabi_ptr_2\n    local.get $__gc_copy_bytes_2\n    i32.const 4\n    i32.const 0\n    call $cabi_realloc",
     ) orelse unreachable;
-    const bytes_free = std.mem.indexOf(u8, wat,
+    const bytes_free = std.mem.indexOf(
+        u8,
+        wat,
         "local.get $__cabi_ptr_1\n    local.get $__gc_copy_bytes_1\n    i32.const 1\n    i32.const 0\n    call $cabi_realloc",
     ) orelse unreachable;
-    const label_free = std.mem.indexOf(u8, wat,
+    const label_free = std.mem.indexOf(
+        u8,
+        wat,
         "local.get $__cabi_ptr_0\n    local.get $__gc_length_0\n    i32.const 1\n    i32.const 0\n    call $cabi_realloc",
     ) orelse unreachable;
     try std.testing.expect(call < values_free);
@@ -4771,7 +4930,7 @@ test "canonical marshal WAT lifts mixed text and two u32-list fields with revers
 
     try std.testing.expect(std.mem.indexOf(u8, wat, "(result (ref null $reading))") != null);
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, wat, "i32.load8_u"));
-    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, wat, "array.set $do_bytes"));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, wat, "array.set $do_u8"));
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "array.set $do_u32"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, wat, "call $__gc_canonical_call"));
     try std.testing.expect(std.mem.indexOf(u8, wat, "block $__text_two_lists_lift_cleanup") != null);
@@ -4783,13 +4942,19 @@ test "canonical marshal WAT lifts mixed text and two u32-list fields with revers
     const construct = std.mem.indexOf(u8, wat, "struct.new $reading") orelse unreachable;
     try std.testing.expect(callback < construct);
 
-    const second_free = std.mem.indexOf(u8, wat,
+    const second_free = std.mem.indexOf(
+        u8,
+        wat,
         "local.get $__cabi_ptr_2\n    local.get $__gc_copy_bytes_2\n    i32.const 4\n    i32.const 0\n    call $cabi_realloc",
     ) orelse unreachable;
-    const first_free = std.mem.indexOf(u8, wat,
+    const first_free = std.mem.indexOf(
+        u8,
+        wat,
         "local.get $__cabi_ptr_1\n    local.get $__gc_copy_bytes_1\n    i32.const 4\n    i32.const 0\n    call $cabi_realloc",
     ) orelse unreachable;
-    const label_free = std.mem.indexOf(u8, wat,
+    const label_free = std.mem.indexOf(
+        u8,
+        wat,
         "local.get $__cabi_ptr_0\n    local.get $__gc_length_0\n    i32.const 1\n    i32.const 0\n    call $cabi_realloc",
     ) orelse unreachable;
     try std.testing.expect(construct < second_free);

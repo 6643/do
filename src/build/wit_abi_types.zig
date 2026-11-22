@@ -54,6 +54,12 @@ pub const FieldRef = struct {
     value: *const AbiType,
 };
 
+pub const VariantCaseRef = struct {
+    tag: u32,
+    name: []const u8,
+    payload: ?*const AbiType,
+};
+
 pub const VariantSpec = struct {
     tag: u32,
     name: []const u8,
@@ -239,6 +245,45 @@ pub const AbiType = struct {
     pub fn resource_mode(self: *const AbiType) ?ResourceMode {
         return switch (self.shape) {
             .resource => |value| value.mode,
+            else => null,
+        };
+    }
+
+    pub fn option_value(self: *const AbiType) ?*const AbiType {
+        return switch (self.shape) {
+            .option => |value| value,
+            else => null,
+        };
+    }
+
+    pub fn result_ok(self: *const AbiType) ?*const AbiType {
+        return switch (self.shape) {
+            .result => |value| value.ok,
+            else => null,
+        };
+    }
+
+    pub fn result_err(self: *const AbiType) ?*const AbiType {
+        return switch (self.shape) {
+            .result => |value| value.err,
+            else => null,
+        };
+    }
+
+    pub fn variant_case_count(self: *const AbiType) ?usize {
+        return switch (self.shape) {
+            .variant => |cases| cases.len,
+            else => null,
+        };
+    }
+
+    pub fn variant_case_at(self: *const AbiType, index: usize) ?VariantCaseRef {
+        return switch (self.shape) {
+            .variant => |cases| if (index < cases.len) .{
+                .tag = cases[index].tag,
+                .name = cases[index].name,
+                .payload = if (cases[index].payload) |payload| payload else null,
+            } else null,
             else => null,
         };
     }

@@ -153,8 +153,7 @@ pub const ListLayoutPlan = struct {
         const element = value.list_element() orelse return error.UnsupportedListElement;
         if (element.kind() == .list) return error.NestedListElement;
         if (element.kind() == .scalar) {
-            if (element.scalar_kind() != .u32) return error.UnsupportedListElement;
-            try validate_list_measurement(measured);
+            try validate_scalar_list_measurement(measured, element.scalar_kind() orelse return error.UnsupportedListElement);
             const accepted_lengths = try allocator.dupe(u32, measured.accepted_lengths);
             errdefer allocator.free(accepted_lengths);
             return .{
@@ -463,12 +462,18 @@ pub const LayoutPlan = struct {
         value: *const abi_types.AbiType,
         measured: VariantMeasurement,
     ) (LayoutError || abi_types.AbiTypeError || Allocator.Error)!LayoutPlan {
-        if (value.kind() != .variant) return error.WrongRootKind;
+        if (value.kind() != .variant and value.kind() != .option and value.kind() != .result) return error.WrongRootKind;
         try value.validate();
         try validate_container(measured.byte_size, measured.alignment);
         if (!is_aligned(measured.tag_offset, @min(measured.alignment, 4))) return error.MisalignedOffset;
         try check_region(measured.tag_offset, 4, measured.byte_size);
         if (measured.cases.len == 0) return error.MissingPayloadMetadata;
+        const expected_case_count: usize = switch (value.kind()) {
+            .option, .result => 2,
+            .variant => value.variant_case_count() orelse return error.MissingPayloadMetadata,
+            else => unreachable,
+        };
+        if (measured.cases.len != expected_case_count) return error.MissingPayloadMetadata;
 
         var cases = try allocator.alloc(VariantCasePlan, measured.cases.len);
         var initialized: usize = 0;
@@ -478,6 +483,31 @@ pub const LayoutPlan = struct {
         }
         for (measured.cases, 0..) |case, index| {
             try validate_variant_case(measured, case, index);
+            const ExpectedCase = struct { name: []const u8, tag: u32, has_payload: bool };
+            const source_case: ExpectedCase = switch (value.kind()) {
+                .option => if (index == 0)
+                    .{ .name = "none", .tag = 0, .has_payload = false }
+                else
+                    .{ .name = "some", .tag = 1, .has_payload = true },
+                .result => if (index == 0)
+                    .{ .name = "ok", .tag = 0, .has_payload = value.result_ok() != null }
+                else
+                    .{ .name = "err", .tag = 1, .has_payload = value.result_err() != null },
+                .variant => blk: {
+                    const source_variant_case = value.variant_case_at(index) orelse return error.MissingPayloadMetadata;
+                    break :blk .{
+                        .name = source_variant_case.name,
+                        .tag = source_variant_case.tag,
+                        .has_payload = source_variant_case.payload != null,
+                    };
+                },
+                else => unreachable,
+            };
+            if (!std.mem.eql(u8, case.name, source_case.name) or case.tag != source_case.tag or
+                (value.kind() != .variant and case.payload_required != source_case.has_payload))
+            {
+                return error.MissingPayloadMetadata;
+            }
             cases[index] = .{
                 .name = try allocator.dupe(u8, case.name),
                 .tag = case.tag,
@@ -591,6 +621,35 @@ fn validate_list_measurement(measured: ListLayoutMeasurement) LayoutError!void {
     if (last_slot_end > std.math.maxInt(u32)) return error.OffsetOverflow;
 }
 
+fn validate_scalar_list_measurement(measured: ListLayoutMeasurement, kind: abi_types.ScalarKind) LayoutError!void {
+    const expected = scalar_list_element_measurement(kind);
+    if (measured.element_byte_size != expected.byte_size or
+        measured.element_alignment != expected.alignment)
+    {
+        return error.ScalarTypeMismatch;
+    }
+    if (measured.element_stride != expected.byte_size) return error.InvalidStride;
+    if (!is_aligned(measured.pointer_offset, 4) or !is_aligned(measured.length_offset, 4)) {
+        return error.MisalignedOffset;
+    }
+    if (measured.pointer_offset > std.math.maxInt(u32) - 4 or
+        measured.length_offset > std.math.maxInt(u32) - 4)
+    {
+        return error.OffsetOverflow;
+    }
+    if (measured.pointer_offset == measured.length_offset) return error.LayoutOutOfBounds;
+    if (measured.capacity == 0) return error.InvalidCapacity;
+    if (measured.allocation == .none or measured.free == .none) return error.MissingListStorageActions;
+    if (measured.accepted_lengths.len == 0 or measured.accepted_lengths[0] != 0) return error.InvalidListLength;
+    var previous: u32 = 0;
+    for (measured.accepted_lengths, 0..) |length, index| {
+        if (length > measured.capacity or (index != 0 and length <= previous)) return error.InvalidListLength;
+        previous = length;
+    }
+    const last_slot_end = @as(u64, measured.capacity) * measured.element_stride;
+    if (last_slot_end > std.math.maxInt(u32)) return error.OffsetOverflow;
+}
+
 fn validate_byte_list_measurement(measured: ByteListLayoutMeasurement) LayoutError!void {
     if (measured.capacity == 0) return error.InvalidCapacity;
     if (measured.element_byte_size != 1 or measured.element_alignment != 1) return error.InvalidAlignment;
@@ -665,6 +724,17 @@ fn scalar_measurement(kind: abi_types.ScalarKind) PayloadMeasurement {
         .f64 => .{ .offset = 0, .byte_size = 8, .alignment = 8, .core_type = .f64 },
         .f32 => .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .f32 },
         else => .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 },
+    };
+}
+
+pub fn scalar_list_element_measurement(kind: abi_types.ScalarKind) PayloadMeasurement {
+    return switch (kind) {
+        .bool, .u8, .i8 => .{ .offset = 0, .byte_size = 1, .alignment = 1, .core_type = .i32 },
+        .u16, .i16 => .{ .offset = 0, .byte_size = 2, .alignment = 2, .core_type = .i32 },
+        .u32, .i32 => .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 },
+        .u64, .i64 => .{ .offset = 0, .byte_size = 8, .alignment = 8, .core_type = .i64 },
+        .f32 => .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .f32 },
+        .f64 => .{ .offset = 0, .byte_size = 8, .alignment = 8, .core_type = .f64 },
     };
 }
 

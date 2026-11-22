@@ -6,6 +6,7 @@
 //! host call.
 const std = @import("std");
 const marshal = @import("codegen_component_marshal_plan.zig");
+const wit_types = @import("wit_abi_types.zig");
 const wit_layout = @import("wit_abi_layout.zig");
 
 pub const MemoryOperation = enum {
@@ -79,6 +80,7 @@ pub const MemoryPlan = struct {
     element_stride: u32,
     scalar_core_type: ?wit_layout.CoreWord = null,
     element_core_type: ?wit_layout.CoreWord = null,
+    element_scalar_kind: ?wit_types.ScalarKind = null,
     result_area_pointer_offset: ?u32 = null,
     result_area_length_offset: ?u32 = null,
     record_field_count: u32 = 0,
@@ -135,18 +137,25 @@ pub fn build_sync_memory_plan(plan: *const marshal.SyncValuePlan) !MemoryPlan {
         .list => {
             if (plan.root.children.len != 1) return error.MeasuredChildMissing;
             const child = plan.root.children[0].measured orelse return error.MeasuredChildMissing;
+            const element_kind = plan.root.children[0].scalar_kind orelse return error.UnsupportedMarshalShape;
+            const expected = scalar_list_element_layout(element_kind) orelse return error.UnsupportedMarshalShape;
             const stride = measured.element_stride orelse return error.MeasuredElementStrideMissing;
-            const element_core_type = if (stride == 1 and child.core_type == null)
-                null
-            else if (stride == 4 and child.byte_size == 4 and child.alignment == 4 and child.core_type == .i32)
-                wit_layout.CoreWord.i32
-            else
+            if (measured.element_byte_size != expected.byte_size or
+                measured.element_alignment != expected.alignment or
+                stride != expected.byte_size or
+                child.byte_size != expected.byte_size or
+                child.alignment != expected.alignment or
+                (child.core_type != expected.core_type and
+                    !(element_kind == .u8 and child.core_type == null)))
+            {
                 return error.UnsupportedMarshalShape;
+            }
             return .{
                 .direction = plan.direction,
                 .copy_shape = .list_elements,
                 .element_stride = stride,
-                .element_core_type = element_core_type,
+                .element_core_type = if (element_kind == .u8) null else expected.core_type,
+                .element_scalar_kind = element_kind,
                 .result_area_pointer_offset = measured.pointer_offset,
                 .result_area_length_offset = measured.length_offset,
                 .operations = operations_for(plan.direction),
@@ -271,7 +280,15 @@ pub fn build_sync_memory_plan(plan: *const marshal.SyncValuePlan) !MemoryPlan {
                     &record_lift_operations,
             };
         },
+        .option, .result, .variant => return error.UnsupportedMarshalShape,
     }
+}
+
+fn scalar_list_element_layout(kind: wit_types.ScalarKind) ?wit_layout.PayloadMeasurement {
+    return switch (kind) {
+        .bool, .u8, .u16, .u32, .u64, .i32, .i64, .f32, .f64 => wit_layout.scalar_list_element_measurement(kind),
+        .i8, .i16 => null,
+    };
 }
 
 pub fn record_contains_text(node: *const marshal.MarshalNode) bool {
@@ -372,6 +389,7 @@ fn validate_record_lift_node(node: *const marshal.MarshalNode, is_root: bool) !v
                 }
             },
             .map => return error.UnsupportedMarshalShape,
+            .option, .result, .variant => return error.UnsupportedMarshalShape,
         }
     }
 }
@@ -454,6 +472,7 @@ fn validate_record_lower_node(node: *const marshal.MarshalNode, allow_managed_te
                 if (!allow_managed_text or (index != 1 and index != 2)) return error.UnsupportedMarshalShape;
                 try validate_managed_text_child(child);
             },
+            .option, .result, .variant => return error.UnsupportedMarshalShape,
             else => return error.UnsupportedMarshalShape,
         }
     }
