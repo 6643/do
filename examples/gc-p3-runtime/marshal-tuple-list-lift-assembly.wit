@@ -1,0 +1,10 @@
+package demo:marshal-tuple-list-lift@1.0.0;
+
+interface api {
+  receive: func() -> tuple<u32, list<u8>>;
+}
+
+world probe {
+  import api;
+  export run: func() -> u32;
+}

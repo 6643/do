@@ -226,3 +226,51 @@ inventory field to move from `pending` to `complete`; it does not authorize
 general aggregates, arbitrary layouts, generic async, resources, ownership,
 `Option`/`Result`, or any other row. The next independent row is
 `host_wit_marshalling_managed_record_lower` (Task 14).
+
+### G5c measured indirect Tuple byte-list lift (2026-11-23)
+
+The exact descriptor
+`demo:marshal-tuple-list-lift/api.receive@1.0.0/lift` is now registered in
+`doc/wit/gc_descriptor_manifest.json` with source/WIT provenance and a measured
+12-byte Tuple layout: `u32@0`, `list<u8>@4`, and one indirect `i32` result word.
+The ordinary Do host declaration is checked against `Tuple<u32, [u8]>`; a
+`Tuple<u32, [u32]>` drift case is rejected before WAT emission.
+
+`examples/gc-p3-runtime/test_gc_marshal_tuple_list_lift_host.sh` now generates
+Core WAT through `codegen_gc_wit_marshal.emit_module`, then runs the embedded
+Component with Wasmtime. The host callback returns `(7, [10,20,30])`; the
+exported result is `770` and the callback count is one. This closes only this
+measured indirect Tuple byte-list lift descriptor. Other Tuple/list child
+combinations, arbitrary indirect layouts, async/resource payloads, and full
+G5c cutover remain unproven.
+
+### G5c measured indirect Tuple u32-list lift (2026-11-23)
+
+The adjacent exact descriptor
+`demo:marshal-tuple-u32-list-lift/api.receive@1.0.0/lift` is also registered.
+Its measured root is the same 12-byte Tuple shape, with `u32@0` and a direct
+`list<u32>@4`; the list uses 4-byte element size, stride, and alignment and
+one indirect `i32` result word. The compiler rejects a corresponding
+`Tuple<u32, [u8]>` declaration before WAT emission.
+
+The Component gate returns `(7, [10,20,30])` from the host callback and observes
+`result=770` with one callback. The generated module emits `$do_u32` exactly
+once even though both the scalar field and list child use that type. This closes
+only the pinned `Tuple<u32, list<u32>>` lift shape; arbitrary Tuple/list layouts
+and async/resource payloads remain unproven.
+
+### Tuple scalar-list emitter generalization (2026-11-23)
+
+The compiler-side synchronous Tuple emitter now accepts every scalar list
+element layout represented by the current typed-array table: `bool`, `u8`,
+`u16`, `u32`, `u64`, `i8`, `i16`, `i32`, `i64`, `f32`, and `f64`. It also
+collects multiple list children in source order and traverses list children
+inside nested Tuples. Each list keeps its measured stride, alignment, result-area
+offsets, and independent linear allocation/free sequence. Lift frees all copied
+linear spans before constructing and publishing the GC Tuple.
+
+The focused Zig emitter suite covers a non-byte `list<f64>` Tuple and the
+operation-order regression. This is compiler/WAT evidence only; it does not add
+a new manifest-backed Component host descriptor, and it does not authorize
+`list<list<T>>`, list of records/Tuples/text, map children, async/resource
+payloads, arbitrary indirect layouts, or full G5c cutover.

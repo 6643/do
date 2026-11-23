@@ -87,7 +87,8 @@ fn contains_unsupported_shape(
     if (depth > 128) return true;
     if (model.type_is_resource(type_ref, interface.resources)) return true;
     switch (type_ref.kind) {
-        .own, .borrow, .future, .stream, .tuple => return true,
+        .own, .borrow, .future, .stream => return true,
+        .tuple => return !is_supported_tuple_shape(type_ref, interface, depth),
         else => {},
     }
     for (type_ref.args) |arg| {
@@ -118,4 +119,44 @@ fn contains_unsupported_shape(
         }
     }
     return false;
+}
+
+fn is_supported_tuple_shape(
+    type_ref: *const model.TypeRef,
+    interface: *const model.InterfaceDecl,
+    depth: usize,
+) bool {
+    if (depth > 128) return false;
+    return switch (type_ref.kind) {
+        .bool, .s8, .u8, .s16, .u16, .s32, .u32, .s64, .u64, .f32, .f64 => true,
+        .tuple => type_ref.args.len >= 2 and for (type_ref.args) |arg| {
+            if (!is_supported_tuple_element(arg, interface, depth + 1)) break false;
+        } else true,
+        .named => for (interface.aliases) |alias| {
+            if (std.mem.eql(u8, alias.name, type_ref.name)) {
+                break is_supported_tuple_shape(alias.type_ref, interface, depth + 1);
+            }
+        } else false,
+        else => false,
+    };
+}
+
+fn is_supported_tuple_element(
+    type_ref: *const model.TypeRef,
+    interface: *const model.InterfaceDecl,
+    depth: usize,
+) bool {
+    if (depth > 128) return false;
+    return switch (type_ref.kind) {
+        .bool, .s8, .u8, .s16, .u16, .s32, .u32, .s64, .u64, .f32, .f64 => true,
+        .tuple => is_supported_tuple_shape(type_ref, interface, depth + 1),
+        .list => type_ref.args.len == 1 and
+            (type_ref.args[0].kind == .u8 or type_ref.args[0].kind == .u32),
+        .named => for (interface.aliases) |alias| {
+            if (std.mem.eql(u8, alias.name, type_ref.name)) {
+                break is_supported_tuple_element(alias.type_ref, interface, depth + 1);
+            }
+        } else false,
+        else => false,
+    };
 }

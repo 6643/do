@@ -121,6 +121,23 @@ const gc_assembly_cases = [_]GcAssemblyCase{
         .reference_needle = "(func $canonical_call (type $canonical_lift))",
         .reference_replacement = "(func $canonical_call (param (ref null $do_record)))",
     },
+    .{
+        .name = "Tuple byte-list lift component",
+        .wit = "examples/gc-p3-runtime/marshal-tuple-list-lift-assembly.wit",
+        .static_core_wat = null,
+        .generator = "src/gc_marshal_tuple_probe_main.zig",
+        .component_wit_marker = "receive: func() -> tuple<u32, list<u8>>",
+        .core_markers = &.{
+            "(type $do_tuple (struct",
+            "(type $canonical_lift (func (param i32)))",
+            "array.set $do_u8",
+        },
+        .rename_from = "receive:",
+        .rename_to = "renamed:",
+        .missing_function_marker = "missing function `receive`",
+        .reference_needle = "(func $canonical_call (type $canonical_lift))",
+        .reference_replacement = "(func $canonical_call (param (ref null $do_tuple)))",
+    },
 };
 
 const PureLoweringCase = struct {
@@ -1131,9 +1148,41 @@ fn run_all(init: std.process.Init) !void {
             .gc_arc_inventory => try run_gc_arc_inventory(init, repo_root),
             .gc_backend_firewall => try run_gc_backend_firewall(init, repo_root),
             .gc_component_boundary => try run_gc_component_boundary(init, repo_root),
+            .gc_tuple_list_lift_host => try run_gc_tuple_list_lift_host(init, repo_root),
+            .gc_tuple_u32_list_lift_host => try run_gc_tuple_u32_list_lift_host(init, repo_root),
         }
         try print_case_passed(init.io, case.name);
     }
+}
+
+fn run_gc_tuple_list_lift_host(init: std.process.Init, repo_root: []const u8) !void {
+    const script = try join(init.gpa, repo_root, "examples/gc-p3-runtime/test_gc_marshal_tuple_list_lift_host.sh");
+    defer init.gpa.free(script);
+    const argv = [_][]const u8{ "bash", script };
+    var result = try process.run_checked(init.gpa, init.io, .{
+        .argv = &argv,
+        .environ = init.environ_map,
+        .cwd = repo_root,
+        .timeout_ms = 180_000,
+    });
+    defer result.deinit(init.gpa);
+    try expect_success(init, &result);
+    try process.assert_stdout_contains(result, "GC Tuple byte-list lift host execution passed result=770 receive-calls=1");
+}
+
+fn run_gc_tuple_u32_list_lift_host(init: std.process.Init, repo_root: []const u8) !void {
+    const script = try join(init.gpa, repo_root, "examples/gc-p3-runtime/test_gc_marshal_tuple_u32_list_lift_host.sh");
+    defer init.gpa.free(script);
+    const argv = [_][]const u8{ "bash", script };
+    var result = try process.run_checked(init.gpa, init.io, .{
+        .argv = &argv,
+        .environ = init.environ_map,
+        .cwd = repo_root,
+        .timeout_ms = 180_000,
+    });
+    defer result.deinit(init.gpa);
+    try expect_success(init, &result);
+    try process.assert_stdout_contains(result, "GC Tuple u32-list lift host execution passed result=770 receive-calls=1");
 }
 
 fn run_compiler_fixture_matrix(
@@ -3946,17 +3995,19 @@ test "GC runtime oracle matrix covers async frame and C ABI probes" {
     try std.testing.expect(gc_runtime_oracle_cases[1].probes[2].expected == null);
 }
 
-test "GC assembly matrix covers text and parser-backed record fixtures" {
+test "GC assembly matrix covers text, record, and Tuple lift fixtures" {
     var found = false;
     for (test_cases.cases) |case| {
         if (std.mem.eql(u8, case.name, "GC assembly matrix")) found = true;
     }
     try std.testing.expect(found);
-    try std.testing.expectEqual(@as(usize, 2), gc_assembly_cases.len);
+    try std.testing.expectEqual(@as(usize, 3), gc_assembly_cases.len);
     try std.testing.expectEqualStrings("examples/gc-p3-runtime/marshal-text-assembly.wit", gc_assembly_cases[0].wit);
     try std.testing.expectEqualStrings("examples/gc-p3-runtime/marshal-record-assembly.wit", gc_assembly_cases[1].wit);
     try std.testing.expect(gc_assembly_cases[0].static_core_wat != null);
     try std.testing.expect(gc_assembly_cases[1].generator != null);
+    try std.testing.expectEqualStrings("examples/gc-p3-runtime/marshal-tuple-list-lift-assembly.wit", gc_assembly_cases[2].wit);
+    try std.testing.expect(gc_assembly_cases[2].generator != null);
 }
 
 test "pure lowering matrix covers the bounded async GC frame table" {

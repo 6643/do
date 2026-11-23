@@ -1352,12 +1352,21 @@ parser 可执行 PEG 单独维护在 `doc/grammar.peg`。该文件按 token 流�
 ## 18. 非目标
 
 
-同步 canonical marshal 目前只覆盖 measured scalar `list<T>` 子集:
-`bool`, `u8`, `u16`, `u32`, `u64`, `i32`, `i64`, `f32`, `f64`。lower/lift 固定使用
+同步 canonical marshal 目前覆盖 measured scalar `list<T>` 子集、纯标量 Tuple，以及 Tuple 中标量元素 list 子槽的 lower/lift:
+`bool`, `u8`, `u16`, `u32`, `u64`, `i8`, `i16`, `i32`, `i64`, `f32`, `f64`。lower/lift 固定使用
 `(ptr, len)`，GC 侧使用对应 typed array，线性内存按自然宽度、对齐和 stride 读写；
-测量事实不匹配时在 WAT emission 前拒绝，零长度遵循现有分配/调用/释放顺序。
-`i8`, `i16`, text/record/resource 元素, nested list, async/stream payload 以及任意
-tuple/map lowering 不属于该能力，因此不能据此宣称任意 list/map/tuple 的 WASI
-lowering 已完成。
+测量事实不匹配时在 WAT emission 前拒绝，零长度遵循现有分配/调用/释放顺序。纯
+Tuple 保留树状 GC 表示。纯标量 Tuple 及嵌套纯标量 Tuple 在 canonical ABI 上按源码
+顺序递归 flatten 为 `i32/i64/f32/f64` core words。Tuple 额外允许一个或多个直接
+或嵌套 Tuple 内的 scalar list 子槽。lower 时每个
+子槽按 `(i32,i32)` 展开，元素复制到 canonical 线性内存，并在 host 调用后按逆序释放
+临时分配。lift 时 root 必须带一个 `i32` indirect result pointer 及 `cabi_realloc`
+allocation/free metadata；Tuple 和各 list span 从 measured result area 读取，元素复制到
+对应 GC typed array，所有 list span 在构造并发布 GC Tuple 前释放。
+Tuple 的字段数量、偏移、大小和对齐必须与 measured layout 一致；长度乘 stride 溢出会在
+WAT runtime trap。Tuple 中的 `u32` 标量和 `list<u32>` 共享同一个 `$do_u32` GC
+array type，模块声明必须去重，不能生成重复的 Wasm type identifier。
+text/record/resource 元素, nested list, async/stream payload, 含复杂子项的 Tuple 以及
+map lowering 不属于该能力，因此不能据此宣称任意 list/map/tuple 的 WASI lowering 已完成。
 
 1. 本版不承诺 timezone、calendar、duration 类型或本地化时间格式化；`lib/time.do` 当前只提供已声明的基础时间戳、单调时钟和毫秒换算辅助。

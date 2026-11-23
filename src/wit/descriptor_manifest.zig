@@ -45,6 +45,7 @@ pub const MeasurementKind = enum {
     byte_list,
     map,
     record,
+    tuple,
 };
 
 pub const MeasuredField = struct {
@@ -58,6 +59,18 @@ pub const MeasuredMapField = struct {
     offset: u32,
     byte_size: u32,
     alignment: u32,
+};
+
+pub const MeasuredTupleField = struct {
+    offset: u32,
+    byte_size: u32,
+    alignment: u32,
+};
+
+pub const MeasuredIndirect = struct {
+    core_words: []const []const u8,
+    allocation: []const u8,
+    free: []const u8,
 };
 
 /// Manifest-owned, recursively decoded layout facts. Slices point into the
@@ -81,6 +94,8 @@ pub const MeasuredNode = struct {
     map_value: ?MeasuredMapField = null,
     accepted_lengths: []const u32 = &.{},
     fields: []const MeasuredField = &.{},
+    tuple_fields: []const MeasuredTupleField = &.{},
+    indirect: ?MeasuredIndirect = null,
     children: []const MeasuredNode = &.{},
 };
 
@@ -422,9 +437,28 @@ fn parse_measured_node(allocator: std.mem.Allocator, value: std.json.Value) (Man
                 }
             }
         },
+        .tuple => {
+            const field_values = array_value(object.get("fields")) orelse return error.DescriptorMeasurementInvalid;
+            const child_values = array_value(object.get("children")) orelse return error.DescriptorMeasurementInvalid;
+            if (field_values.items.len < 2 or field_values.items.len != child_values.items.len) {
+                return error.DescriptorMeasurementInvalid;
+            }
+            node.tuple_fields = try parse_measured_tuple_fields(allocator, field_values, byte_size);
+            node.children = try parse_measured_children(allocator, child_values);
+            for (node.tuple_fields, node.children) |field, child| {
+                if (child.byte_size != field.byte_size or child.alignment != field.alignment or
+                    (child.offset != null and child.offset.? != field.offset))
+                {
+                    return error.DescriptorMeasurementInvalid;
+                }
+            }
+            if (object.get("indirect")) |raw_indirect| {
+                node.indirect = try parse_measured_indirect(allocator, raw_indirect);
+            }
+        },
     }
 
-    if (kind != .record) {
+    if (kind != .record and kind != .tuple) {
         if (object.get("children")) |raw_children| {
             const children = array_value(raw_children) orelse return error.DescriptorMeasurementInvalid;
             if (children.items.len != 0) return error.DescriptorMeasurementInvalid;
@@ -435,6 +469,56 @@ fn parse_measured_node(allocator: std.mem.Allocator, value: std.json.Value) (Man
         }
     }
     return node;
+}
+
+fn parse_measured_tuple_fields(
+    allocator: std.mem.Allocator,
+    values: std.json.Array,
+    container_size: u32,
+) (ManifestError || std.mem.Allocator.Error)![]const MeasuredTupleField {
+    const fields = try allocator.alloc(MeasuredTupleField, values.items.len);
+    errdefer allocator.free(fields);
+    for (values.items, 0..) |value, index| {
+        const object = object_value(value) orelse return error.DescriptorMeasurementInvalid;
+        const offset = bounded_u32(object.get("offset")) orelse return error.DescriptorMeasurementInvalid;
+        const byte_size = bounded_u32(object.get("byte_size")) orelse return error.DescriptorMeasurementInvalid;
+        const alignment = bounded_u32(object.get("alignment")) orelse return error.DescriptorMeasurementInvalid;
+        if (byte_size == 0 or !valid_alignment(alignment) or !is_aligned(offset, alignment) or
+            !valid_region(offset, byte_size, container_size))
+        {
+            return error.DescriptorMeasurementInvalid;
+        }
+        if (index != 0) {
+            const previous = fields[index - 1];
+            if (offset <= previous.offset or !valid_region(previous.offset, previous.byte_size, offset)) {
+                return error.DescriptorMeasurementInvalid;
+            }
+        }
+        fields[index] = .{ .offset = offset, .byte_size = byte_size, .alignment = alignment };
+    }
+    return fields;
+}
+
+fn parse_measured_indirect(
+    allocator: std.mem.Allocator,
+    value: std.json.Value,
+) (ManifestError || std.mem.Allocator.Error)!MeasuredIndirect {
+    const object = object_value(value) orelse return error.DescriptorMeasurementInvalid;
+    const raw_words = array_value(object.get("core_words")) orelse return error.DescriptorMeasurementInvalid;
+    if (raw_words.items.len == 0) return error.DescriptorMeasurementInvalid;
+    const core_words = try allocator.alloc([]const u8, raw_words.items.len);
+    errdefer allocator.free(core_words);
+    for (raw_words.items, 0..) |raw_word, index| {
+        const word = string_value(raw_word) orelse return error.DescriptorMeasurementInvalid;
+        if (!valid_core_type(word)) return error.DescriptorMeasurementInvalid;
+        core_words[index] = word;
+    }
+    const allocation = string_value(object.get("allocation")) orelse return error.DescriptorMeasurementInvalid;
+    const free = string_value(object.get("free")) orelse return error.DescriptorMeasurementInvalid;
+    if (!std.mem.eql(u8, allocation, "cabi_realloc") or !std.mem.eql(u8, free, "cabi_realloc")) {
+        return error.DescriptorMeasurementInvalid;
+    }
+    return .{ .core_words = core_words, .allocation = allocation, .free = free };
 }
 
 fn parse_measured_fields(
@@ -505,6 +589,8 @@ fn deinit_measured_node(allocator: std.mem.Allocator, node: MeasuredNode) void {
     for (node.children) |child| deinit_measured_node(allocator, child);
     if (node.children.len != 0) allocator.free(node.children);
     if (node.fields.len != 0) allocator.free(node.fields);
+    if (node.tuple_fields.len != 0) allocator.free(node.tuple_fields);
+    if (node.indirect) |indirect| allocator.free(indirect.core_words);
     if (node.accepted_lengths.len != 0) allocator.free(node.accepted_lengths);
 }
 
@@ -515,6 +601,7 @@ fn parse_measurement_kind(value: []const u8) ?MeasurementKind {
     if (std.mem.eql(u8, value, "byte_list")) return .byte_list;
     if (std.mem.eql(u8, value, "map")) return .map;
     if (std.mem.eql(u8, value, "record")) return .record;
+    if (std.mem.eql(u8, value, "tuple")) return .tuple;
     return null;
 }
 

@@ -329,6 +329,246 @@ test "component marshal route rejects unsupported parser-backed shapes before WA
     }));
 }
 
+test "component marshal route admits a scalar tuple lower and lift" {
+    const source =
+        \\package demo:marshal-route-tuple@1.0.0;
+        \\
+        \\interface api {
+        \\  exchange: func(value: tuple<u32, s64>) -> tuple<u32, s64>;
+        \\}
+        \\
+        \\world probe { import api; }
+    ;
+    const measured = marshal.MeasuredNode{
+        .layout = .{ .tuple = .{
+            .byte_size = 16,
+            .alignment = 8,
+            .fields = &.{
+                .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+                .{ .offset = 8, .byte_size = 8, .alignment = 8 },
+            },
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 8, .alignment = 8, .core_type = .i64 } } },
+        },
+    };
+    const lower = try emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "exchange",
+        .direction = .lower,
+        .measured = measured,
+    });
+    defer std.testing.allocator.free(lower);
+    try std.testing.expect(std.mem.indexOf(u8, lower, "(type $canonical_lower (func (param i32 i64)))") != null);
+
+    const lift = try emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "exchange",
+        .direction = .lift,
+        .measured = measured,
+    });
+    defer std.testing.allocator.free(lift);
+    try std.testing.expect(std.mem.indexOf(u8, lift, "(type $canonical_lift (func (result i32 i64)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lift, "(result (ref null $do_tuple))") != null);
+}
+
+test "component marshal route lowers a tuple with a scalar byte list child" {
+    const source =
+        \\package demo:marshal-route-tuple-list@1.0.0;
+        \\
+        \\interface api { send: func(value: tuple<u32, list<u8>>); }
+        \\
+        \\world probe { import api; }
+    ;
+    const wat = try emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "send",
+        .direction = .lower,
+        .measured = .{
+            .layout = .{ .tuple = .{
+                .byte_size = 12,
+                .alignment = 4,
+                .fields = &.{
+                    .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+                    .{ .offset = 4, .byte_size = 8, .alignment = 4 },
+                },
+            } },
+            .children = &.{
+                .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+                .{ .layout = .{ .byte_list = .{
+                    .pointer_offset = 0,
+                    .length_offset = 4,
+                    .element_byte_size = 1,
+                    .element_stride = 1,
+                    .element_alignment = 1,
+                    .capacity = 8,
+                    .accepted_lengths = &.{ 0, 8 },
+                    .allocation = .cabi_realloc,
+                    .free = .cabi_realloc,
+                } } },
+            },
+        },
+    });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lower (func (param i32 i32 i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.get_u $do_u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "call $canonical_call") != null);
+}
+
+test "component marshal route lifts a tuple with an indirect scalar byte list child" {
+    const source =
+        \\package demo:marshal-route-tuple-list-lift@1.0.0;
+        \\
+        \\interface api { receive: func() -> tuple<u32, list<u8>>; }
+        \\
+        \\world probe { import api; }
+    ;
+    const wat = try emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "receive",
+        .direction = .lift,
+        .measured = .{
+            .layout = .{ .tuple = .{
+                .byte_size = 12,
+                .alignment = 4,
+                .fields = &.{
+                    .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+                    .{ .offset = 4, .byte_size = 8, .alignment = 4 },
+                },
+                .indirect = .{ .core_words = &.{.i32}, .allocation = .cabi_realloc, .free = .cabi_realloc },
+            } },
+            .children = &.{
+                .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+                .{ .layout = .{ .byte_list = .{
+                    .pointer_offset = 0,
+                    .length_offset = 4,
+                    .element_byte_size = 1,
+                    .element_stride = 1,
+                    .element_alignment = 1,
+                    .capacity = 8,
+                    .accepted_lengths = &.{ 0, 8 },
+                    .allocation = .cabi_realloc,
+                    .free = .cabi_realloc,
+                } } },
+            },
+        },
+    });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lift (func (param i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.load8_u") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $do_tuple") != null);
+}
+
+test "component marshal route lowers a tuple with two direct list children" {
+    const source =
+        \\package demo:marshal-route-tuple-two-lists@1.0.0;
+        \\
+        \\interface api { send: func(value: tuple<u32, list<u8>, list<u32>>); }
+        \\
+        \\world probe { import api; }
+    ;
+    const measured = marshal.MeasuredNode{
+        .layout = .{ .tuple = .{
+            .byte_size = 20,
+            .alignment = 4,
+            .fields = &.{
+                .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+                .{ .offset = 4, .byte_size = 8, .alignment = 4 },
+                .{ .offset = 12, .byte_size = 8, .alignment = 4 },
+            },
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .byte_list = .{
+                .pointer_offset = 0, .length_offset = 4, .element_byte_size = 1,
+                .element_stride = 1, .element_alignment = 1, .capacity = 4,
+                .accepted_lengths = &.{ 0, 4 }, .allocation = .cabi_realloc, .free = .cabi_realloc,
+            } } },
+            .{ .layout = .{ .list = .{
+                .pointer_offset = 0, .length_offset = 4, .element_byte_size = 4,
+                .element_stride = 4, .element_alignment = 4, .ticket_offset = 0, .capacity = 3,
+                .accepted_lengths = &.{ 0, 3 }, .allocation = .cabi_realloc, .free = .cabi_realloc,
+            } }, .children = &.{.{ .layout = .{ .scalar = .{
+                .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32,
+            } } }} },
+        },
+    };
+    const wat = try emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "send",
+        .direction = .lower,
+        .measured = measured,
+    });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lower (func (param i32 i32 i32 i32 i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__tuple_list_array_0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__tuple_list_array_1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__tuple_list_pointer_0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__tuple_list_pointer_1") != null);
+    try std.testing.expectEqual(@as(usize, 4), std.mem.count(u8, wat, "call $cabi_realloc"));
+}
+
+test "component marshal route lowers a tuple with a nested list child" {
+    const source =
+        \\package demo:marshal-route-tuple-nested-list@1.0.0;
+        \\
+        \\interface api { send: func(value: tuple<u32, tuple<list<u8>, u32>>); }
+        \\
+        \\world probe { import api; }
+    ;
+    const wat = try emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "send",
+        .direction = .lower,
+        .measured = .{
+            .layout = .{ .tuple = .{
+                .byte_size = 16,
+                .alignment = 4,
+                .fields = &.{
+                    .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+                    .{ .offset = 4, .byte_size = 12, .alignment = 4 },
+                },
+            } },
+            .children = &.{
+                .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+                .{ .layout = .{ .tuple = .{
+                    .byte_size = 12,
+                    .alignment = 4,
+                    .fields = &.{
+                        .{ .offset = 0, .byte_size = 8, .alignment = 4 },
+                        .{ .offset = 8, .byte_size = 4, .alignment = 4 },
+                    },
+                } }, .children = &.{
+                    .{ .layout = .{ .byte_list = .{
+                        .pointer_offset = 0, .length_offset = 4, .element_byte_size = 1,
+                        .element_stride = 1, .element_alignment = 1, .capacity = 4,
+                        .accepted_lengths = &.{ 0, 4 }, .allocation = .cabi_realloc, .free = .cabi_realloc,
+                    } } },
+                    .{ .layout = .{ .scalar = .{ .offset = 8, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+                } },
+            },
+        },
+    });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lower (func (param i32 i32 i32 i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $do_tuple_1 $field0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $do_tuple_1 $field1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "__tuple_list_array_0") != null);
+}
+
 test "component marshal route rejects resource and async variant payloads before WAT" {
     const source =
         \\package demo:marshal-route-unsupported-variants@1.0.0;

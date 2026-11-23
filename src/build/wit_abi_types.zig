@@ -316,6 +316,20 @@ pub const AbiType = struct {
         };
     }
 
+    pub fn tuple_element_count(self: *const AbiType) ?usize {
+        return switch (self.shape) {
+            .tuple => |values| values.len,
+            else => null,
+        };
+    }
+
+    pub fn tuple_element_at(self: *const AbiType, index: usize) ?*const AbiType {
+        return switch (self.shape) {
+            .tuple => |values| if (index < values.len) &values[index] else null,
+            else => null,
+        };
+    }
+
     pub fn record_field_at(self: *const AbiType, index: usize) ?FieldRef {
         return switch (self.shape) {
             .record => |fields| if (index < fields.len) .{

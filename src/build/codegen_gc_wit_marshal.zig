@@ -25,6 +25,8 @@ pub const mixed_text_byte_list_lift_descriptor = host_boundary.mixed_text_byte_l
 pub const mixed_text_two_u32_lists_lift_descriptor = host_boundary.mixed_text_two_u32_lists_lift_descriptor;
 pub const map_u32_u32_lower_descriptor = host_boundary.map_u32_u32_lower_descriptor;
 pub const map_u32_u32_lift_descriptor = host_boundary.map_u32_u32_lift_descriptor;
+pub const tuple_byte_list_lift_descriptor = host_boundary.tuple_byte_list_lift_descriptor;
+pub const tuple_u32_list_lift_descriptor = host_boundary.tuple_u32_list_lift_descriptor;
 
 pub fn emit_module(
     io: std.Io,
@@ -52,6 +54,8 @@ pub fn emit_module(
     const is_mixed_text_two_u32_lists_lift = std.mem.eql(u8, descriptor_id, mixed_text_two_u32_lists_lift_descriptor);
     const is_map_u32_u32_lower = std.mem.eql(u8, descriptor_id, map_u32_u32_lower_descriptor);
     const is_map_u32_u32_lift = std.mem.eql(u8, descriptor_id, map_u32_u32_lift_descriptor);
+    const is_tuple_byte_list_lift = std.mem.eql(u8, descriptor_id, tuple_byte_list_lift_descriptor);
+    const is_tuple_u32_list_lift = std.mem.eql(u8, descriptor_id, tuple_u32_list_lift_descriptor);
     var loaded = try descriptor_loader.load_request_from_manifest(
         io,
         allocator,
@@ -63,6 +67,15 @@ pub fn emit_module(
     defer loaded.deinit();
     try descriptor_loader.validate_loaded_host_boundary(&loaded, entry_tokens);
 
+    if (is_tuple_byte_list_lift or is_tuple_u32_list_lift) {
+        return emit_tuple_list_lift_wrapper(
+            allocator,
+            &loaded,
+            if (is_tuple_byte_list_lift) "u8" else "u32",
+            1,
+            0,
+        );
+    }
     if (is_nested_record_lift_deeper) {
         return nested_lift_deeper_probe.emit_nested_record_lift_deeper_module_from_loaded(allocator, &loaded);
     }
@@ -585,6 +598,73 @@ pub fn emit_module(
     return out.toOwnedSlice(allocator);
 }
 
+fn emit_tuple_list_lift_wrapper(
+    allocator: std.mem.Allocator,
+    loaded: *const descriptor_loader.LoadedRequest,
+    element_type: []const u8,
+    list_field_index: usize,
+    scalar_field_index: usize,
+) ![]u8 {
+    const base = try manifest_route.emit_sync_marshal_module_from_loaded_request(
+        allocator,
+        loaded,
+        null,
+        true,
+    );
+    defer allocator.free(base);
+    if (!std.mem.endsWith(u8, base, ")\n")) return error.InvalidGeneratedModule;
+
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+    try out.appendSlice(allocator, base[0 .. base.len - 2]);
+    const array_get = if (std.mem.eql(u8, element_type, "u8")) "get_u" else "get";
+    const wrapper = try std.fmt.allocPrint(allocator,
+        \\  (func $run (result i32)
+        \\    (local $tuple (ref null $do_tuple))
+        \\    (local $items (ref null $do_{[element_type]s}))
+        \\    call $marshal
+        \\    local.tee $tuple
+        \\    ref.as_non_null
+        \\    struct.get $do_tuple $field{[scalar_field_index]d}
+        \\    i32.const 100
+        \\    i32.mul
+        \\    local.get $tuple
+        \\    ref.as_non_null
+        \\    struct.get $do_tuple $field{[list_field_index]d}
+        \\    local.tee $items
+        \\    ref.as_non_null
+        \\    array.len
+        \\    i32.const 10
+        \\    i32.mul
+        \\    i32.add
+        \\    local.get $items
+        \\    ref.as_non_null
+        \\    i32.const 0
+        \\    array.{[array_get]s} $do_{[element_type]s}
+        \\    i32.add
+        \\    local.get $items
+        \\    ref.as_non_null
+        \\    local.get $items
+        \\    ref.as_non_null
+        \\    array.len
+        \\    i32.const 1
+        \\    i32.sub
+        \\    array.{[array_get]s} $do_{[element_type]s}
+        \\    i32.add)
+        \\  (export "run" (func $run))
+        \\
+    , .{
+        .element_type = element_type,
+        .array_get = array_get,
+        .scalar_field_index = scalar_field_index,
+        .list_field_index = list_field_index,
+    });
+    defer allocator.free(wrapper);
+    try out.appendSlice(allocator, wrapper);
+    try out.appendSlice(allocator, ")\n");
+    return out.toOwnedSlice(allocator);
+}
+
 test "GC WIT marshal adapter emits the pinned managed lower module" {
     const source = @embedFile("test/compile_ok/565_gc_wit_managed_record_host_boundary.do");
     const tokens = try lexer.tokenize(std.testing.allocator, source);
@@ -890,6 +970,70 @@ test "G5c mixed text byte-list lift compiler route emits a module" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_u8 4") == null);
     try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, wat, "call $cabi_realloc"));
     try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"stats\" (func $stats))") != null);
+}
+
+test "manifest-backed Tuple byte-list lift compiler route emits a module" {
+    const source = @embedFile("test/compile_ok/684_gc_wit_tuple_byte_list_lift_host_boundary.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    const wat = try emit_module(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        tuple_byte_list_lift_descriptor,
+        tokens,
+    );
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-tuple-list-lift/api@1.0.0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lift (func (param i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $do_tuple") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"run\" (func $run))") != null);
+}
+
+test "manifest-backed Tuple byte-list lift rejects type drift" {
+    const source = @embedFile("test/data/684_gc_wit_tuple_byte_list_lift_type_drift.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try std.testing.expectError(error.GcWitHostSignatureMismatch, emit_module(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        tuple_byte_list_lift_descriptor,
+        tokens,
+    ));
+}
+
+test "manifest-backed Tuple u32-list lift compiler route emits a module" {
+    const source = @embedFile("test/compile_ok/685_gc_wit_tuple_u32_list_lift_host_boundary.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    const wat = try emit_module(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        tuple_u32_list_lift_descriptor,
+        tokens,
+    );
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-tuple-u32-list-lift/api@1.0.0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lift (func (param i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_u32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $do_tuple") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"run\" (func $run))") != null);
+}
+
+test "manifest-backed Tuple u32-list lift rejects element-type drift" {
+    const source = @embedFile("test/data/685_gc_wit_tuple_u32_list_lift_type_drift.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    try std.testing.expectError(error.GcWitHostSignatureMismatch, emit_module(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        tuple_u32_list_lift_descriptor,
+        tokens,
+    ));
 }
 
 test "G5c mixed text and two u32-list lift compiler route emits measured module" {

@@ -68,6 +68,19 @@ pub const FieldMeasurement = struct {
     indirect: ?IndirectMeasurement,
 };
 
+pub const TupleFieldMeasurement = struct {
+    offset: u32,
+    byte_size: u32,
+    alignment: u32,
+};
+
+pub const TupleMeasurement = struct {
+    byte_size: u32,
+    alignment: u32,
+    fields: []const TupleFieldMeasurement,
+    indirect: ?IndirectMeasurement = null,
+};
+
 pub const RecordMeasurement = struct {
     byte_size: u32,
     alignment: u32,
@@ -421,6 +434,12 @@ pub const RecordFieldPlan = struct {
     indirect: ?IndirectMeasurement,
 };
 
+pub const TupleFieldPlan = struct {
+    offset: u32,
+    byte_size: u32,
+    alignment: u32,
+};
+
 pub const LayoutPlan = struct {
     allocator: Allocator,
     byte_size: u32,
@@ -429,6 +448,7 @@ pub const LayoutPlan = struct {
     indirect: ?IndirectMeasurement,
     variant_cases: []VariantCasePlan,
     record_fields: []RecordFieldPlan,
+    tuple_fields: []TupleFieldPlan,
 
     pub fn scalar(
         allocator: Allocator,
@@ -455,6 +475,45 @@ pub const LayoutPlan = struct {
             .indirect = null,
             .variant_cases = &.{},
             .record_fields = &.{},
+            .tuple_fields = &.{},
+        };
+    }
+
+    pub fn tuple(
+        allocator: Allocator,
+        value: *const abi_types.AbiType,
+        measured: TupleMeasurement,
+    ) (LayoutError || abi_types.AbiTypeError || Allocator.Error)!LayoutPlan {
+        if (value.kind() != .tuple) return error.WrongRootKind;
+        try value.validate();
+        try validate_container(measured.byte_size, measured.alignment);
+        if (measured.indirect) |indirect| {
+            if (indirect.core_words.len == 0 or indirect.allocation == .none or indirect.free == .none) {
+                return error.MissingIndirectMetadata;
+            }
+        }
+        const field_count = value.tuple_element_count() orelse return error.MissingPayloadMetadata;
+        if (field_count == 0 or measured.fields.len != field_count) return error.MissingPayloadMetadata;
+
+        var fields = try allocator.alloc(TupleFieldPlan, measured.fields.len);
+        errdefer allocator.free(fields);
+        for (measured.fields, 0..) |field, index| {
+            try validate_tuple_field(measured, field, index);
+            fields[index] = .{
+                .offset = field.offset,
+                .byte_size = field.byte_size,
+                .alignment = field.alignment,
+            };
+        }
+        return .{
+            .allocator = allocator,
+            .byte_size = measured.byte_size,
+            .alignment = measured.alignment,
+            .scalar_measurement = null,
+            .indirect = measured.indirect,
+            .variant_cases = &.{},
+            .record_fields = &.{},
+            .tuple_fields = fields,
         };
     }
 
@@ -529,6 +588,7 @@ pub const LayoutPlan = struct {
             .indirect = measured.indirect,
             .variant_cases = cases,
             .record_fields = &.{},
+            .tuple_fields = &.{},
         };
     }
 
@@ -572,6 +632,7 @@ pub const LayoutPlan = struct {
             .indirect = measured.indirect,
             .variant_cases = &.{},
             .record_fields = fields,
+            .tuple_fields = &.{},
         };
     }
 
@@ -580,8 +641,10 @@ pub const LayoutPlan = struct {
         if (self.variant_cases.len != 0) self.allocator.free(self.variant_cases);
         for (self.record_fields) |field| self.allocator.free(field.name);
         if (self.record_fields.len != 0) self.allocator.free(self.record_fields);
+        if (self.tuple_fields.len != 0) self.allocator.free(self.tuple_fields);
         self.variant_cases = &.{};
         self.record_fields = &.{};
+        self.tuple_fields = &.{};
     }
 };
 
@@ -764,6 +827,19 @@ fn validate_field(measured: RecordMeasurement, field: FieldMeasurement, index: u
     try check_region(field.offset, field.byte_size, measured.byte_size);
     if (field.indirect) |indirect| {
         if (indirect.core_words.len == 0) return error.MissingIndirectMetadata;
+    }
+}
+
+fn validate_tuple_field(measured: TupleMeasurement, field: TupleFieldMeasurement, index: usize) LayoutError!void {
+    if (field.byte_size == 0 or !is_power_of_two(field.alignment)) return error.InvalidAlignment;
+    if (!is_aligned(field.offset, field.alignment)) return error.MisalignedOffset;
+    try check_region(field.offset, field.byte_size, measured.byte_size);
+    for (measured.fields[0..index]) |previous| {
+        const previous_end = @as(u64, previous.offset) + previous.byte_size;
+        const field_end = @as(u64, field.offset) + field.byte_size;
+        if (@as(u64, field.offset) < previous_end and @as(u64, previous.offset) < field_end) {
+            return error.LayoutOutOfBounds;
+        }
     }
 }
 

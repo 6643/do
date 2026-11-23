@@ -32,6 +32,20 @@ const map_measured_layout_prefix =
     "\"allocation\":\"cabi_realloc\",\"free\":\"cabi_realloc\"}," ++
     "\"canonical_import\":";
 
+const tuple_measured_layout_prefix =
+    "\"measured_layout\":{\"kind\":\"tuple\",\"byte_size\":12,\"alignment\":4," ++
+    "\"fields\":[" ++
+    "{\"offset\":0,\"byte_size\":4,\"alignment\":4}," ++
+    "{\"offset\":4,\"byte_size\":8,\"alignment\":4}]," ++
+    "\"children\":[" ++
+    "{\"kind\":\"scalar\",\"offset\":0,\"byte_size\":4,\"alignment\":4,\"core_type\":\"i32\"}," ++
+    "{\"kind\":\"byte_list\",\"byte_size\":8,\"alignment\":4," ++
+    "\"pointer_offset\":0,\"length_offset\":4,\"element_byte_size\":1," ++
+    "\"element_stride\":1,\"element_alignment\":1,\"capacity\":8," ++
+    "\"accepted_lengths\":[0,1,8],\"allocation\":\"cabi_realloc\",\"free\":\"cabi_realloc\"}]," ++
+    "\"indirect\":{\"core_words\":[\"i32\"],\"allocation\":\"cabi_realloc\",\"free\":\"cabi_realloc\"}}," ++
+    "\"canonical_import\":";
+
 fn source_with_measurement(allocator: std.mem.Allocator, prefix: []const u8) ![]u8 {
     return std.mem.replaceOwned(u8, allocator, valid_source, "\"canonical_import\":", prefix);
 }
@@ -77,6 +91,40 @@ test "descriptor manifest decodes a map measurement" {
     try std.testing.expectEqual(@as(u32, 0), layout.map_key.?.offset);
     try std.testing.expectEqual(@as(u32, 4), layout.map_value.?.offset);
     try std.testing.expectEqual(@as(usize, 3), layout.accepted_lengths.len);
+}
+
+test "descriptor manifest decodes an indirect Tuple byte-list measurement" {
+    const source = try source_with_measurement(std.testing.allocator, tuple_measured_layout_prefix);
+    defer std.testing.allocator.free(source);
+    var parsed = try manifest.parse(std.testing.allocator, source);
+    defer parsed.deinit(std.testing.allocator);
+    const layout = parsed.document.descriptors[0].measured_layout orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(manifest.MeasurementKind.tuple, layout.kind);
+    try std.testing.expectEqual(@as(usize, 2), layout.tuple_fields.len);
+    try std.testing.expectEqual(@as(u32, 4), layout.tuple_fields[1].offset);
+    try std.testing.expectEqual(manifest.MeasurementKind.byte_list, layout.children[1].kind);
+    try std.testing.expectEqual(@as(usize, 1), layout.indirect.?.core_words.len);
+    try std.testing.expectEqualStrings("i32", layout.indirect.?.core_words[0]);
+}
+
+test "repository descriptor manifest parses the indirect Tuple lift" {
+    const source = try std.Io.Dir.cwd().readFileAlloc(
+        std.testing.io,
+        "../doc/wit/gc_descriptor_manifest.json",
+        std.testing.allocator,
+        .limited(1024 * 1024),
+    );
+    defer std.testing.allocator.free(source);
+    var parsed = try manifest.parse(
+        std.testing.allocator,
+        source,
+    );
+    defer parsed.deinit(std.testing.allocator);
+    const descriptor = try parsed.find_descriptor("demo:marshal-tuple-list-lift/api.receive@1.0.0/lift");
+    const layout = descriptor.measured_layout orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(manifest.MeasurementKind.tuple, layout.kind);
+    try std.testing.expectEqual(@as(usize, 1), layout.indirect.?.core_words.len);
+    try std.testing.expectEqualStrings("i32", layout.indirect.?.core_words[0]);
 }
 
 test "descriptor manifest rejects a map measurement without value facts" {

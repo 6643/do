@@ -25,6 +25,7 @@ pub const NodeKind = enum {
     list,
     map,
     record,
+    tuple,
     option,
     result,
     variant,
@@ -91,6 +92,7 @@ pub const MeasuredLayout = union(enum) {
     byte_list: wit_layout.ByteListLayoutMeasurement,
     map: wit_layout.MapLayoutMeasurement,
     record: wit_layout.RecordMeasurement,
+    tuple: wit_layout.TupleMeasurement,
     variant: wit_layout.VariantMeasurement,
 };
 
@@ -100,6 +102,7 @@ pub const SyncValuePlan = struct {
     root: MarshalNode,
     abi: component_abi.AbiPlan,
     canonical_signature: component_abi.CanonicalSignature,
+    canonical_type: []u8,
     contains_gc_reference: bool,
 };
 
@@ -114,9 +117,11 @@ pub fn build_sync_value_plan(
     const root = try build_node(allocator, source, 0);
     errdefer deinit_node(allocator, root);
 
+    const canonical_type = try canonical_type_name(allocator, source);
+    errdefer allocator.free(canonical_type);
     const slot = component_abi.CanonicalSlot{
         .source_type = source_type_name(source),
-        .canonical_type = try canonical_type_name(source),
+        .canonical_type = canonical_type,
         .direction = switch (direction) {
             .lift => .lift,
             .lower => .lower,
@@ -158,6 +163,7 @@ pub fn build_sync_value_plan(
         .root = root,
         .abi = abi_plan,
         .canonical_signature = canonical_signature,
+        .canonical_type = canonical_type,
         .contains_gc_reference = false,
     };
 }
@@ -205,9 +211,11 @@ pub fn build_sync_value_plan_with_layout(
     errdefer deinit_node(allocator, root);
     try bind_measured_node(allocator, &root, source, measured, null);
 
+    const canonical_type = try canonical_type_name(allocator, source);
+    errdefer allocator.free(canonical_type);
     const slot = component_abi.CanonicalSlot{
         .source_type = source_type_name(source),
-        .canonical_type = try canonical_type_name(source),
+        .canonical_type = canonical_type,
         .direction = switch (direction) {
             .lift => .lift,
             .lower => .lower,
@@ -249,6 +257,7 @@ pub fn build_sync_value_plan_with_layout(
         .root = root,
         .abi = abi_plan,
         .canonical_signature = canonical_signature,
+        .canonical_type = canonical_type,
         .contains_gc_reference = false,
     };
 }
@@ -256,6 +265,7 @@ pub fn build_sync_value_plan_with_layout(
 pub fn deinit_sync_value_plan(allocator: std.mem.Allocator, plan: SyncValuePlan) void {
     deinit_node(allocator, plan.root);
     component_abi.deinit_abi_plan(allocator, plan.abi);
+    allocator.free(plan.canonical_type);
     var canonical_signature = plan.canonical_signature;
     canonical_signature.deinit(allocator);
     allocator.free(plan.descriptor.package);
@@ -305,6 +315,7 @@ fn source_type_name(source: *const wit_types.AbiType) []const u8 {
         .list => "list",
         .map => "map",
         .record => "record",
+        .tuple => "tuple",
         .option => "option",
         .result => "result",
         .variant => "variant",
@@ -312,20 +323,55 @@ fn source_type_name(source: *const wit_types.AbiType) []const u8 {
     };
 }
 
-fn canonical_type_name(source: *const wit_types.AbiType) ![]const u8 {
+fn canonical_type_name(allocator: std.mem.Allocator, source: *const wit_types.AbiType) ![]u8 {
     return switch (source.kind()) {
-        .scalar => switch (source.scalar_kind() orelse return error.UnsupportedMarshalShape) {
+        .scalar => allocator.dupe(u8, switch (source.scalar_kind() orelse return error.UnsupportedMarshalShape) {
             .u64, .i64 => "i64",
             .f32 => "f32",
             .f64 => "f64",
             else => "i32",
-        },
-        .text, .list, .map => "(i32,i32)",
-        .record => "memory",
-        .option, .result, .variant => "memory",
+        }),
+        .text, .list, .map => allocator.dupe(u8, "(i32,i32)"),
+        .record, .option, .result, .variant => allocator.dupe(u8, "memory"),
         .resource => error.ResourceBoundaryUnsupported,
-        .unit, .tuple => error.UnsupportedMarshalShape,
+        .tuple => blk: {
+            var out = std.ArrayList(u8).empty;
+            errdefer out.deinit(allocator);
+            try out.append(allocator, '(');
+            try append_tuple_canonical_type(allocator, &out, source);
+            try out.append(allocator, ')');
+            break :blk try out.toOwnedSlice(allocator);
+        },
+        .unit => error.UnsupportedMarshalShape,
     };
+}
+
+fn append_tuple_canonical_type(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    source: *const wit_types.AbiType,
+) !void {
+    switch (source.kind()) {
+        .scalar => try out.appendSlice(allocator, switch (source.scalar_kind() orelse return error.UnsupportedMarshalShape) {
+            .u64, .i64 => "i64",
+            .f32 => "f32",
+            .f64 => "f64",
+            else => "i32",
+        }),
+        .tuple => {
+            const count = source.tuple_element_count() orelse return error.UnsupportedMarshalShape;
+            for (0..count) |index| {
+                if (index != 0) try out.append(allocator, ',');
+                try append_tuple_canonical_type(allocator, out, source.tuple_element_at(index) orelse return error.UnsupportedMarshalShape);
+            }
+        },
+        .list => {
+            const element = source.list_element() orelse return error.UnsupportedMarshalShape;
+            if (element.kind() != .scalar) return error.UnsupportedMarshalShape;
+            try out.appendSlice(allocator, "(i32,i32)");
+        },
+        else => return error.UnsupportedMarshalShape,
+    }
 }
 
 fn build_canonical_signature(
@@ -359,14 +405,6 @@ fn build_canonical_signature(
             .byte_size = 4,
             .alignment = 4,
         };
-        if (indirect) {
-            const facts = node.measured.?;
-            result_area = .{
-                .offset = facts.offset,
-                .byte_size = facts.byte_size,
-                .alignment = facts.alignment,
-            };
-        }
         for (node.variant_cases, 0..) |case, index| {
             var payload: ?component_abi.CanonicalPayload = null;
             if (case.payload_child) |child_index| {
@@ -385,6 +423,15 @@ fn build_canonical_signature(
             cases[index] = .{ .tag = case.tag, .payload = payload };
             initialized_cases += 1;
         }
+    }
+
+    if (direction == .lift and indirect) {
+        const facts = node.measured.?;
+        result_area = .{
+            .offset = facts.offset,
+            .byte_size = facts.byte_size,
+            .alignment = facts.alignment,
+        };
     }
 
     if (indirect) {
@@ -428,7 +475,7 @@ fn append_node_core_words(
     switch (node.kind) {
         .scalar => try words.append(allocator, core_word_for_scalar(node.scalar_kind orelse return error.UnsupportedMarshalShape)),
         .text, .list, .map => try words.appendSlice(allocator, &.{ .i32, .i32 }),
-        .record => for (node.children) |*child| try append_node_core_words(allocator, words, child),
+        .record, .tuple => for (node.children) |*child| try append_node_core_words(allocator, words, child),
         .option, .result, .variant => try append_variant_core_words(allocator, words, node),
     }
 }
@@ -554,11 +601,43 @@ fn build_node(allocator: std.mem.Allocator, source: *const wit_types.AbiType, of
                 .children = children,
             };
         },
+        .tuple => {
+            const element_count = source.tuple_element_count() orelse return error.UnsupportedMarshalShape;
+            if (element_count == 0) return error.UnsupportedMarshalShape;
+            var children = try allocator.alloc(MarshalNode, element_count);
+            var initialized: usize = 0;
+            errdefer {
+                for (children[0..initialized]) |child| deinit_node(allocator, child);
+                allocator.free(children);
+            }
+
+            var tuple_offset: u32 = 0;
+            var tuple_alignment: u32 = 1;
+            while (initialized < element_count) : (initialized += 1) {
+                const element = source.tuple_element_at(initialized) orelse return error.UnsupportedMarshalShape;
+                if (element.kind() != .scalar and element.kind() != .tuple and
+                    !(element.kind() == .list and element.list_element() != null and
+                        element.list_element().?.kind() == .scalar)) return error.UnsupportedMarshalShape;
+                const element_alignment = try canonical_alignment(element);
+                tuple_alignment = @max(tuple_alignment, element_alignment);
+                const aligned_offset = align_up(tuple_offset, element_alignment);
+                children[initialized] = try build_node(allocator, element, aligned_offset);
+                tuple_offset = aligned_offset + children[initialized].provisional_size;
+            }
+            return .{
+                .kind = .tuple,
+                .canonical_shape = .aggregate,
+                .provisional_offset = offset,
+                .provisional_size = align_up(tuple_offset, tuple_alignment),
+                .provisional_alignment = tuple_alignment,
+                .children = children,
+            };
+        },
         .option => try build_variant_node(allocator, source, .option),
         .result => try build_variant_node(allocator, source, .result),
         .variant => try build_variant_node(allocator, source, .variant),
         .resource => error.ResourceBoundaryUnsupported,
-        .unit, .tuple => error.UnsupportedMarshalShape,
+        .unit => error.UnsupportedMarshalShape,
     };
 }
 
@@ -632,12 +711,14 @@ fn variant_case(source: *const wit_types.AbiType, kind: NodeKind, index: usize) 
             .{ .tag = 0, .name = "none", .payload = null }
         else if (index == 1)
             .{ .tag = 1, .name = "some", .payload = source.option_value() }
-        else null,
+        else
+            null,
         .result => if (index == 0)
             .{ .tag = 0, .name = "ok", .payload = source.result_ok() }
         else if (index == 1)
             .{ .tag = 1, .name = "err", .payload = source.result_err() }
-        else null,
+        else
+            null,
         .variant => source.variant_case_at(index),
         else => null,
     };
@@ -780,6 +861,35 @@ fn bind_measured_node(
                 .indirect = facts.indirect,
             };
         },
+        .tuple => |facts| {
+            if (source.kind() != .tuple) return error.MeasuredKindMismatch;
+            var layout = try wit_layout.LayoutPlan.tuple(allocator, source, facts);
+            defer layout.deinit();
+            const element_count = source.tuple_element_count() orelse return error.UnsupportedMeasuredShape;
+            if (measured.children.len != element_count or node.children.len != element_count) {
+                return error.MeasuredChildCountMismatch;
+            }
+            for (0..element_count) |index| {
+                const source_child = source.tuple_element_at(index) orelse return error.UnsupportedMeasuredShape;
+                const field = facts.fields[index];
+                if (source_child.kind() != .scalar and source_child.kind() != .tuple and
+                    source_child.kind() != .list)
+                {
+                    return error.UnsupportedMeasuredShape;
+                }
+                try bind_measured_node(allocator, &node.children[index], source_child, measured.children[index], field.offset);
+                const child_facts = node.children[index].measured orelse return error.MeasuredChildMissing;
+                if (child_facts.byte_size != field.byte_size or child_facts.alignment != field.alignment) {
+                    return error.MeasuredFieldMismatch;
+                }
+            }
+            node.measured = .{
+                .offset = placement_offset orelse 0,
+                .byte_size = facts.byte_size,
+                .alignment = facts.alignment,
+                .indirect = facts.indirect,
+            };
+        },
         .variant => |facts| {
             if (source.kind() != .option and source.kind() != .result and source.kind() != .variant) {
                 return error.MeasuredKindMismatch;
@@ -881,9 +991,19 @@ fn canonical_alignment(source: *const wit_types.AbiType) !u32 {
             }
             return alignment;
         },
+        .tuple => {
+            const element_count = source.tuple_element_count() orelse return error.UnsupportedMarshalShape;
+            if (element_count == 0) return error.UnsupportedMarshalShape;
+            var alignment: u32 = 1;
+            for (0..element_count) |index| {
+                const element = source.tuple_element_at(index) orelse return error.UnsupportedMarshalShape;
+                alignment = @max(alignment, try canonical_alignment(element));
+            }
+            return alignment;
+        },
         .option, .result, .variant => 4,
         .resource => error.ResourceBoundaryUnsupported,
-        .unit, .tuple => error.UnsupportedMarshalShape,
+        .unit => error.UnsupportedMarshalShape,
     };
 }
 
@@ -1076,4 +1196,257 @@ test "marshal plan rejects variant measurement drift and unsupported payloads" {
             .schema_hash = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         }, &resource_option, .lower),
     );
+}
+
+test "marshal plan flattens a scalar tuple for canonical lower" {
+    var u32_value = wit_types.AbiType.scalar(std.testing.allocator, .u32);
+    defer u32_value.deinit();
+    var i64_value = wit_types.AbiType.scalar(std.testing.allocator, .i64);
+    defer i64_value.deinit();
+    var f32_value = wit_types.AbiType.scalar(std.testing.allocator, .f32);
+    defer f32_value.deinit();
+    var source = try wit_types.AbiType.tuple(std.testing.allocator, &.{
+        &u32_value,
+        &i64_value,
+        &f32_value,
+    });
+    defer source.deinit();
+
+    const plan = try build_sync_value_plan(std.testing.allocator, .{
+        .package = "demo:marshal-tuple@1.0.0",
+        .world = "probe",
+        .member = "api.write",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    }, &source, .lower);
+    defer deinit_sync_value_plan(std.testing.allocator, plan);
+
+    try std.testing.expectEqual(NodeKind.tuple, plan.root.kind);
+    try std.testing.expectEqual(@as(usize, 3), plan.root.children.len);
+    try std.testing.expectEqualStrings("tuple", plan.abi.arguments[0].source_type);
+    try std.testing.expectEqualStrings("(i32,i64,f32)", plan.abi.arguments[0].canonical_type);
+    try std.testing.expectEqualSlices(component_abi.CanonicalWord, &.{ .i32, .i64, .f32 }, plan.canonical_signature.parameters);
+    try std.testing.expectEqual(@as(usize, 0), plan.canonical_signature.results.len);
+}
+
+test "marshal plan flattens nested scalar tuples for canonical lift" {
+    var u32_value = wit_types.AbiType.scalar(std.testing.allocator, .u32);
+    defer u32_value.deinit();
+    var i64_value = wit_types.AbiType.scalar(std.testing.allocator, .i64);
+    defer i64_value.deinit();
+    var f64_value = wit_types.AbiType.scalar(std.testing.allocator, .f64);
+    defer f64_value.deinit();
+    var inner = try wit_types.AbiType.tuple(std.testing.allocator, &.{ &i64_value, &f64_value });
+    defer inner.deinit();
+    var source = try wit_types.AbiType.tuple(std.testing.allocator, &.{ &u32_value, &inner });
+    defer source.deinit();
+
+    const plan = try build_sync_value_plan(std.testing.allocator, .{
+        .package = "demo:marshal-nested-tuple@1.0.0",
+        .world = "probe",
+        .member = "api.read",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    }, &source, .lift);
+    defer deinit_sync_value_plan(std.testing.allocator, plan);
+
+    try std.testing.expectEqual(NodeKind.tuple, plan.root.kind);
+    try std.testing.expectEqual(NodeKind.tuple, plan.root.children[1].kind);
+    try std.testing.expectEqualStrings("tuple", plan.abi.results[0].source_type);
+    try std.testing.expectEqualStrings("(i32,i64,f64)", plan.abi.results[0].canonical_type);
+    try std.testing.expectEqualSlices(component_abi.CanonicalWord, &.{ .i32, .i64, .f64 }, plan.canonical_signature.results);
+    try std.testing.expectEqual(@as(usize, 0), plan.canonical_signature.parameters.len);
+}
+
+test "marshal plan binds measured scalar tuple offsets and alignment" {
+    var u32_value = wit_types.AbiType.scalar(std.testing.allocator, .u32);
+    defer u32_value.deinit();
+    var i64_value = wit_types.AbiType.scalar(std.testing.allocator, .i64);
+    defer i64_value.deinit();
+    var f32_value = wit_types.AbiType.scalar(std.testing.allocator, .f32);
+    defer f32_value.deinit();
+    var source = try wit_types.AbiType.tuple(std.testing.allocator, &.{ &u32_value, &i64_value, &f32_value });
+    defer source.deinit();
+
+    const plan = try build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-tuple-measured@1.0.0",
+        .world = "probe",
+        .member = "api.write",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    }, &source, .lower, .{
+        .layout = .{ .tuple = .{
+            .byte_size = 24,
+            .alignment = 8,
+            .fields = &.{
+                .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+                .{ .offset = 8, .byte_size = 8, .alignment = 8 },
+                .{ .offset = 16, .byte_size = 4, .alignment = 4 },
+            },
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 8, .alignment = 8, .core_type = .i64 } } },
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .f32 } } },
+        },
+    });
+    defer deinit_sync_value_plan(std.testing.allocator, plan);
+
+    try std.testing.expectEqual(@as(u32, 24), plan.root.measured.?.byte_size);
+    try std.testing.expectEqual(@as(u32, 8), plan.root.measured.?.alignment);
+    try std.testing.expectEqual(@as(u32, 8), plan.root.children[1].measured.?.offset);
+    try std.testing.expectEqual(@as(u32, 16), plan.root.children[2].measured.?.offset);
+}
+
+test "marshal plan binds nested scalar tuple measurements" {
+    var u32_value = wit_types.AbiType.scalar(std.testing.allocator, .u32);
+    defer u32_value.deinit();
+    var i64_value = wit_types.AbiType.scalar(std.testing.allocator, .i64);
+    defer i64_value.deinit();
+    var f64_value = wit_types.AbiType.scalar(std.testing.allocator, .f64);
+    defer f64_value.deinit();
+    var inner = try wit_types.AbiType.tuple(std.testing.allocator, &.{ &i64_value, &f64_value });
+    defer inner.deinit();
+    var source = try wit_types.AbiType.tuple(std.testing.allocator, &.{ &u32_value, &inner });
+    defer source.deinit();
+
+    const plan = try build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-nested-tuple-measured@1.0.0",
+        .world = "probe",
+        .member = "api.read",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    }, &source, .lift, .{
+        .layout = .{ .tuple = .{
+            .byte_size = 24,
+            .alignment = 8,
+            .fields = &.{
+                .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+                .{ .offset = 8, .byte_size = 16, .alignment = 8 },
+            },
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{
+                .layout = .{ .tuple = .{
+                    .byte_size = 16,
+                    .alignment = 8,
+                    .fields = &.{
+                        .{ .offset = 0, .byte_size = 8, .alignment = 8 },
+                        .{ .offset = 8, .byte_size = 8, .alignment = 8 },
+                    },
+                } },
+                .children = &.{
+                    .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 8, .alignment = 8, .core_type = .i64 } } },
+                    .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 8, .alignment = 8, .core_type = .f64 } } },
+                },
+            },
+        },
+    });
+    defer deinit_sync_value_plan(std.testing.allocator, plan);
+
+    try std.testing.expectEqual(@as(u32, 8), plan.root.children[1].measured.?.offset);
+    try std.testing.expectEqual(@as(u32, 8), plan.root.children[1].children[1].measured.?.offset);
+}
+
+test "marshal plan rejects measured scalar tuple offset drift" {
+    var u32_value = wit_types.AbiType.scalar(std.testing.allocator, .u32);
+    defer u32_value.deinit();
+    var i64_value = wit_types.AbiType.scalar(std.testing.allocator, .i64);
+    defer i64_value.deinit();
+    var source = try wit_types.AbiType.tuple(std.testing.allocator, &.{ &u32_value, &i64_value });
+    defer source.deinit();
+
+    try std.testing.expectError(error.MisalignedOffset, build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-tuple-drift@1.0.0",
+        .world = "probe",
+        .member = "api.write",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    }, &source, .lower, .{
+        .layout = .{ .tuple = .{
+            .byte_size = 16,
+            .alignment = 8,
+            .fields = &.{
+                .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+                .{ .offset = 4, .byte_size = 8, .alignment = 8 },
+            },
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 8, .alignment = 8, .core_type = .i64 } } },
+        },
+    }));
+}
+
+test "marshal plan admits a tuple with a scalar byte list child" {
+    var count = wit_types.AbiType.scalar(std.testing.allocator, .u32);
+    defer count.deinit();
+    var byte = wit_types.AbiType.scalar(std.testing.allocator, .u8);
+    defer byte.deinit();
+    var bytes = try wit_types.AbiType.list(std.testing.allocator, &byte);
+    defer bytes.deinit();
+    var source = try wit_types.AbiType.tuple(std.testing.allocator, &.{ &count, &bytes });
+    defer source.deinit();
+
+    const plan = try build_sync_value_plan(std.testing.allocator, .{
+        .package = "demo:marshal-tuple-list@1.0.0",
+        .world = "probe",
+        .member = "api.exchange",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    }, &source, .lower);
+    defer deinit_sync_value_plan(std.testing.allocator, plan);
+
+    try std.testing.expectEqual(NodeKind.tuple, plan.root.kind);
+    try std.testing.expectEqual(NodeKind.list, plan.root.children[1].kind);
+    try std.testing.expectEqualSlices(component_abi.CanonicalWord, &.{ .i32, .i32, .i32 }, plan.canonical_signature.parameters);
+    try std.testing.expectEqualStrings("(i32,(i32,i32))", plan.abi.arguments[0].canonical_type);
+}
+
+test "marshal plan binds a tuple byte list child from measured facts" {
+    var count = wit_types.AbiType.scalar(std.testing.allocator, .u32);
+    defer count.deinit();
+    var byte = wit_types.AbiType.scalar(std.testing.allocator, .u8);
+    defer byte.deinit();
+    var bytes = try wit_types.AbiType.list(std.testing.allocator, &byte);
+    defer bytes.deinit();
+    var source = try wit_types.AbiType.tuple(std.testing.allocator, &.{ &count, &bytes });
+    defer source.deinit();
+
+    const plan = try build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-tuple-list-measured@1.0.0",
+        .world = "probe",
+        .member = "api.exchange",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    }, &source, .lower, .{
+        .layout = .{ .tuple = .{
+            .byte_size = 12,
+            .alignment = 4,
+            .fields = &.{
+                .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+                .{ .offset = 4, .byte_size = 8, .alignment = 4 },
+            },
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .byte_list = .{
+                .pointer_offset = 0,
+                .length_offset = 4,
+                .element_byte_size = 1,
+                .element_stride = 1,
+                .element_alignment = 1,
+                .capacity = 8,
+                .accepted_lengths = &.{ 0, 8 },
+                .allocation = .cabi_realloc,
+                .free = .cabi_realloc,
+            } } },
+        },
+    });
+    defer deinit_sync_value_plan(std.testing.allocator, plan);
+
+    try std.testing.expectEqual(@as(u32, 4), plan.root.children[1].measured.?.offset);
+    try std.testing.expectEqual(@as(?u32, 0), plan.root.children[1].measured.?.pointer_offset);
+    try std.testing.expectEqual(@as(?u32, 4), plan.root.children[1].measured.?.length_offset);
 }

@@ -118,9 +118,41 @@ fn convert_type(
                 if (err) |*value| value else null,
             );
         },
-        .unit, .future, .stream, .tuple, .own, .borrow => error.UnsupportedWitMarshalShape,
+        .unit, .future, .stream, .own, .borrow => error.UnsupportedWitMarshalShape,
         .char => error.UnsupportedWitMarshalShape,
+        .tuple => convert_tuple(allocator, interface, type_ref, active),
     };
+}
+
+fn convert_tuple(
+    allocator: std.mem.Allocator,
+    interface: *const wit_model.InterfaceDecl,
+    type_ref: *const wit_model.TypeRef,
+    active: *std.StringHashMap(void),
+) (ResolveError || wit_types.AbiTypeError || std.mem.Allocator.Error)!wit_types.AbiType {
+    if (type_ref.args.len < 2) return error.UnsupportedWitMarshalShape;
+    const values = try allocator.alloc(wit_types.AbiType, type_ref.args.len);
+    var initialized: usize = 0;
+    errdefer {
+        for (values[0..initialized]) |*value| value.deinit();
+        allocator.free(values);
+    }
+    const pointers = try allocator.alloc(*const wit_types.AbiType, type_ref.args.len);
+    defer allocator.free(pointers);
+    for (type_ref.args, 0..) |arg, index| {
+        values[index] = try convert_type(allocator, interface, arg, active);
+        initialized += 1;
+        if (values[index].kind() != .scalar and values[index].kind() != .tuple and
+            values[index].kind() != .list)
+        {
+            return error.UnsupportedWitMarshalShape;
+        }
+        pointers[index] = &values[index];
+    }
+    const result = try wit_types.AbiType.tuple(allocator, pointers);
+    for (values[0..initialized]) |*value| value.deinit();
+    allocator.free(values);
+    return result;
 }
 
 fn format_package(allocator: std.mem.Allocator, package: wit_model.PackageDecl) ![]u8 {

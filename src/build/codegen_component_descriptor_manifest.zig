@@ -231,6 +231,16 @@ fn load_request_internal(
             },
             .root_type = root_type_name,
         });
+    } else if (root_type.kind == .tuple) {
+        if (descriptor.direction != .lift) return error.UnsupportedWitShape;
+        const root_type_name = try render_do_tuple_type(allocator, root_type);
+        defer allocator.free(root_type_name);
+        owned_host_boundary = try host_boundary.OwnedHostBoundarySpec.from_spec(allocator, .{
+            .locator = descriptor.canonical_import.module,
+            .member = descriptor.member,
+            .shape = .lift_tuple,
+            .root_type = root_type_name,
+        });
     }
     errdefer if (owned_host_boundary) |*boundary| boundary.deinit();
 
@@ -443,7 +453,46 @@ fn convert_manifest_measurement(
                 .children = children,
             };
         },
+        .tuple => {
+            if (node.tuple_fields.len != children.len or node.tuple_fields.len < 2) {
+                return error.DescriptorMeasurementInvalid;
+            }
+            const fields = try allocator.alloc(wit_layout.TupleFieldMeasurement, node.tuple_fields.len);
+            errdefer allocator.free(fields);
+            for (node.tuple_fields, 0..) |field, index| {
+                fields[index] = .{
+                    .offset = field.offset,
+                    .byte_size = field.byte_size,
+                    .alignment = field.alignment,
+                };
+            }
+            const indirect = if (node.indirect) |facts| try convert_manifest_indirect(allocator, facts) else null;
+            errdefer if (indirect) |facts| allocator.free(facts.core_words);
+            return .{
+                .layout = .{ .tuple = .{
+                    .byte_size = node.byte_size,
+                    .alignment = node.alignment,
+                    .fields = fields,
+                    .indirect = indirect,
+                } },
+                .children = children,
+            };
+        },
     }
+}
+
+fn convert_manifest_indirect(
+    allocator: std.mem.Allocator,
+    facts: descriptor_manifest.MeasuredIndirect,
+) !wit_layout.IndirectMeasurement {
+    const core_words = try allocator.alloc(wit_layout.CoreWord, facts.core_words.len);
+    errdefer allocator.free(core_words);
+    for (facts.core_words, 0..) |word, index| core_words[index] = try convert_core_type(word);
+    return .{
+        .core_words = core_words,
+        .allocation = try convert_allocation_action(facts.allocation),
+        .free = try convert_free_action(facts.free),
+    };
 }
 
 fn convert_core_type(value: []const u8) !wit_layout.CoreWord {
@@ -471,6 +520,10 @@ fn deinit_marshal_measured_node(allocator: std.mem.Allocator, node: marshal.Meas
     if (node.children.len != 0) allocator.free(node.children);
     switch (node.layout) {
         .record => |record| if (record.fields.len != 0) allocator.free(record.fields),
+        .tuple => |tuple| {
+            if (tuple.fields.len != 0) allocator.free(tuple.fields);
+            if (tuple.indirect) |indirect| allocator.free(indirect.core_words);
+        },
         else => {},
     }
 }
@@ -546,6 +599,34 @@ fn do_boundary_type(type_ref: *const wit_model.TypeRef) ?[]const u8 {
             null,
         else => null,
     };
+}
+
+fn render_do_tuple_type(allocator: std.mem.Allocator, type_ref: *const wit_model.TypeRef) ![]u8 {
+    if (type_ref.kind != .tuple or type_ref.args.len < 2) return error.UnsupportedWitShape;
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+    try append_do_tuple_type(allocator, &out, type_ref);
+    return out.toOwnedSlice(allocator);
+}
+
+fn append_do_tuple_type(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    type_ref: *const wit_model.TypeRef,
+) anyerror!void {
+    if (type_ref.kind != .tuple or type_ref.args.len < 2) return error.UnsupportedWitShape;
+    try out.appendSlice(allocator, "Tuple<");
+    for (type_ref.args, 0..) |arg, index| {
+        if (index != 0) try out.appendSlice(allocator, ", ");
+        if (arg.kind == .tuple) {
+            try append_do_tuple_type(allocator, out, arg);
+        } else if (do_boundary_type(arg)) |ty| {
+            try out.appendSlice(allocator, ty);
+        } else {
+            return error.UnsupportedWitShape;
+        }
+    }
+    try out.append(allocator, '>');
 }
 
 fn type_matches(allocator: std.mem.Allocator, type_ref: *const wit_model.TypeRef, expected: []const u8) bool {
@@ -762,6 +843,52 @@ test "manifest converter decodes a measured u32 map" {
         else => return error.TestUnexpectedResult,
     }
     try std.testing.expectEqual(@as(usize, 2), converted.children.len);
+}
+
+test "manifest converter preserves indirect Tuple field and list measurements" {
+    const node = descriptor_manifest.MeasuredNode{
+        .kind = .tuple,
+        .byte_size = 12,
+        .alignment = 4,
+        .tuple_fields = &.{
+            .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+            .{ .offset = 4, .byte_size = 8, .alignment = 4 },
+        },
+        .indirect = .{
+            .core_words = &.{"i32"},
+            .allocation = "cabi_realloc",
+            .free = "cabi_realloc",
+        },
+        .children = &.{
+            .{ .kind = .scalar, .byte_size = 4, .alignment = 4, .offset = 0, .core_type = "i32" },
+            .{
+                .kind = .byte_list,
+                .byte_size = 8,
+                .alignment = 4,
+                .pointer_offset = 0,
+                .length_offset = 4,
+                .element_byte_size = 1,
+                .element_stride = 1,
+                .element_alignment = 1,
+                .capacity = 8,
+                .accepted_lengths = &.{ 0, 1, 8 },
+                .allocation = "cabi_realloc",
+                .free = "cabi_realloc",
+            },
+        },
+    };
+    const converted = try convert_manifest_measurement(std.testing.allocator, node);
+    defer deinit_marshal_measured_node(std.testing.allocator, converted);
+    switch (converted.layout) {
+        .tuple => |tuple| {
+            try std.testing.expectEqual(@as(u32, 12), tuple.byte_size);
+            try std.testing.expectEqual(@as(usize, 1), tuple.indirect.?.core_words.len);
+            try std.testing.expectEqual(wit_layout.CoreWord.i32, tuple.indirect.?.core_words[0]);
+        },
+        else => return error.TestUnexpectedResult,
+    }
+    try std.testing.expectEqual(@as(usize, 2), converted.children.len);
+    try std.testing.expectEqual(@as(u32, 4), converted.children[1].measured.?.offset);
 }
 
 test "loaded request admits the two u32 list lower host boundary" {
