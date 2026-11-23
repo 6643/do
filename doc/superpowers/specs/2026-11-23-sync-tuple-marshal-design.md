@@ -10,8 +10,9 @@ of its scalar children into core words.
 The completed slice makes pure scalar and nested scalar Tuples measurable,
 lowerable, liftable, and fail-closed when their descriptor facts do not match.
 It also admits scalar list children at any Tuple path in both lower and
-indirect lift directions, using the measured list layout for each child. This
-does not claim arbitrary aggregate payload support.
+indirect lift directions, using the measured list layout for each child, and
+admits `list<tuple<...>>` when every Tuple leaf is a measured scalar. This does
+not claim arbitrary aggregate payload support.
 
 ## Goals
 
@@ -22,6 +23,8 @@ does not claim arbitrary aggregate payload support.
   Tuples.
 - Emit lower and indirect lift paths for one or more scalar list children at
   direct or nested Tuple paths, copying through measured linear memory.
+- Emit lower and lift paths for `list<tuple<scalar...>>` with measured Tuple
+  element size, alignment, and stride.
 - Keep the canonical boundary free of GC references.
 - Preserve exact rejection for unsupported Tuple children and async/resource
   shapes.
@@ -31,7 +34,8 @@ does not claim arbitrary aggregate payload support.
 - Async, future, stream, resource, borrowed, or owned payload lowering.
 - Arbitrary map lowering.
 - Tuple children containing text, map, option, result, or variant.
-- Lists nested inside lists and general complex list element lowering.
+- Lists nested inside lists and general complex list element lowering. A list
+  of pure scalar Tuples is the bounded aggregate element case admitted here.
 - Rewriting Tuple into a named record or exposing synthetic field names.
 
 ## Constraints
@@ -88,7 +92,8 @@ each Tuple field and list `(ptr,len)` from the sum of its measured path offsets,
 copies every list into a GC typed array, frees all linear spans, and only then
 constructs and publishes the GC Tuple. Lists nested inside lists, complex list elements,
 and resource, future, and stream shapes remain rejected by the registry or
-marshal plan.
+marshal plan. `list<tuple<...>>` is admitted only when every Tuple leaf is a
+measured scalar and the list element stride equals the measured Tuple size.
 
 ## Validation and tests
 

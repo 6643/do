@@ -1366,7 +1366,12 @@ allocation/free metadata；Tuple 和各 list span 从 measured result area 读�
 Tuple 的字段数量、偏移、大小和对齐必须与 measured layout 一致；长度乘 stride 溢出会在
 WAT runtime trap。Tuple 中的 `u32` 标量和 `list<u32>` 共享同一个 `$do_u32` GC
 array type，模块声明必须去重，不能生成重复的 Wasm type identifier。
-text/record/resource 元素, nested list, async/stream payload, 含复杂子项的 Tuple 以及
+同步边界还允许 `list<tuple<...>>`，但仅限 Tuple 元素树全部是 measured scalar 叶子；
+元素的 measured byte size、alignment 和 list stride 必须完全一致。lower/lift 将每个
+Tuple 元素作为 GC struct 放入 typed array，按 Tuple 字段偏移复制其标量字段。此项
+不会放宽 list-of-list、Tuple 内含 managed 元素的 list、text/record/resource 元素、async/stream
+payload 或任意未测量 aggregate 的限制。text/record/resource 元素, nested list,
+async/stream payload, 含复杂子项的 Tuple 以及
 map lowering 不属于该能力，因此不能据此宣称任意 list/map/tuple 的 WASI lowering 已完成。
 
 1. 本版不承诺 timezone、calendar、duration 类型或本地化时间格式化；`lib/time.do` 当前只提供已声明的基础时间戳、单调时钟和毫秒换算辅助。

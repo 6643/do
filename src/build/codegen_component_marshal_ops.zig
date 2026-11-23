@@ -26,6 +26,7 @@ pub const CopyShape = enum {
     scalar,
     text_bytes,
     list_elements,
+    list_tuple_elements,
     map_entries,
     record_fields,
     tuple_fields,
@@ -175,6 +176,27 @@ pub fn build_sync_memory_plan_with_allocator(
         .list => {
             if (plan.root.children.len != 1) return error.MeasuredChildMissing;
             const child = plan.root.children[0].measured orelse return error.MeasuredChildMissing;
+            if (plan.root.children[0].kind == .tuple) {
+                try validate_scalar_tuple_list_element(&plan.root.children[0]);
+                const stride = measured.element_stride orelse return error.MeasuredElementStrideMissing;
+                const tuple_size = child.byte_size;
+                const tuple_alignment = child.alignment;
+                if (measured.element_byte_size != tuple_size or
+                    measured.element_alignment != tuple_alignment or
+                    stride != tuple_size or
+                    child.offset != 0)
+                {
+                    return error.UnsupportedMarshalShape;
+                }
+                return .{
+                    .direction = plan.direction,
+                    .copy_shape = .list_tuple_elements,
+                    .element_stride = stride,
+                    .result_area_pointer_offset = measured.pointer_offset,
+                    .result_area_length_offset = measured.length_offset,
+                    .operations = operations_for(plan.direction),
+                };
+            }
             const element_kind = plan.root.children[0].scalar_kind orelse return error.UnsupportedMarshalShape;
             const expected = scalar_list_element_layout(element_kind) orelse return error.UnsupportedMarshalShape;
             const stride = measured.element_stride orelse return error.MeasuredElementStrideMissing;
@@ -365,6 +387,24 @@ pub fn build_sync_memory_plan_with_allocator(
     }
 }
 
+fn validate_scalar_tuple_list_element(node: *const marshal.MarshalNode) !void {
+    if (node.kind != .tuple or node.children.len == 0) return error.UnsupportedMarshalShape;
+    const facts = node.measured orelse return error.MeasuredChildMissing;
+    if (facts.byte_size == 0 or facts.alignment == 0 or facts.indirect != null) {
+        return error.UnsupportedMarshalShape;
+    }
+    for (node.children) |*child| {
+        switch (child.kind) {
+            .scalar => {
+                const child_facts = child.measured orelse return error.MeasuredChildMissing;
+                _ = child_facts.core_type orelse return error.MeasuredScalarCoreTypeMissing;
+            },
+            .tuple => try validate_scalar_tuple_list_element(child),
+            else => return error.UnsupportedMarshalShape,
+        }
+    }
+}
+
 const tuple_lower_operations = [_]MemoryOperation{
     .read_gc_span,
     .flatten_gc_fields,
@@ -510,25 +550,43 @@ fn build_tuple_operations(
     const operations = try allocator.alloc(MemoryOperation, length);
     var index: usize = 0;
     if (direction == .lower) {
-        operations[index] = .read_gc_span; index += 1;
-        operations[index] = .flatten_gc_fields; index += 1;
+        operations[index] = .read_gc_span;
+        index += 1;
+        operations[index] = .flatten_gc_fields;
+        index += 1;
         for (0..list_count) |_| {
-            operations[index] = .validate_linear_range; index += 1;
-            operations[index] = .cabi_realloc_alloc; index += 1;
-            operations[index] = .copy_to_linear; index += 1;
+            operations[index] = .validate_linear_range;
+            index += 1;
+            operations[index] = .cabi_realloc_alloc;
+            index += 1;
+            operations[index] = .copy_to_linear;
+            index += 1;
         }
-        operations[index] = .canonical_call; index += 1;
-        for (0..list_count) |_| { operations[index] = .cabi_realloc_free; index += 1; }
+        operations[index] = .canonical_call;
+        index += 1;
+        for (0..list_count) |_| {
+            operations[index] = .cabi_realloc_free;
+            index += 1;
+        }
     } else {
-        operations[index] = .canonical_call; index += 1;
-        operations[index] = .read_gc_span; index += 1;
+        operations[index] = .canonical_call;
+        index += 1;
+        operations[index] = .read_gc_span;
+        index += 1;
         for (0..list_count) |_| {
-            operations[index] = .validate_linear_range; index += 1;
-            operations[index] = .copy_from_linear; index += 1;
+            operations[index] = .validate_linear_range;
+            index += 1;
+            operations[index] = .copy_from_linear;
+            index += 1;
         }
-        for (0..list_count) |_| { operations[index] = .cabi_realloc_free; index += 1; }
-        operations[index] = .construct_gc_value; index += 1;
-        operations[index] = .publish_gc_root; index += 1;
+        for (0..list_count) |_| {
+            operations[index] = .cabi_realloc_free;
+            index += 1;
+        }
+        operations[index] = .construct_gc_value;
+        index += 1;
+        operations[index] = .publish_gc_root;
+        index += 1;
     }
     return operations;
 }
@@ -1497,6 +1555,54 @@ test "marshal operation plan admits measured u32 list copies" {
     try std.testing.expectEqual(@as(usize, 6), memory_plan.operations.len);
 }
 
+test "marshal operation plan admits a list of scalar tuples" {
+    var first = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
+    defer first.deinit();
+    var second = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .i32);
+    defer second.deinit();
+    var element = try @import("wit_abi_types.zig").AbiType.tuple(std.testing.allocator, &.{ &first, &second });
+    defer element.deinit();
+    var value = try @import("wit_abi_types.zig").AbiType.list(std.testing.allocator, &element);
+    defer value.deinit();
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-list-tuple@1.0.0",
+        .world = "probe",
+        .member = "api.send",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:3737373737373737373737373737373737373737373737373737373737373737",
+    }, &value, .lower, .{ .layout = .{ .list = .{
+        .pointer_offset = 0,
+        .length_offset = 4,
+        .element_byte_size = 8,
+        .element_stride = 8,
+        .element_alignment = 4,
+        .ticket_offset = 0,
+        .capacity = 2,
+        .accepted_lengths = &.{ 0, 2 },
+        .allocation = .cabi_realloc,
+        .free = .cabi_realloc,
+    } }, .children = &.{.{
+        .layout = .{ .tuple = .{
+            .byte_size = 8,
+            .alignment = 4,
+            .fields = &.{
+                .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+                .{ .offset = 4, .byte_size = 4, .alignment = 4 },
+            },
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+        },
+    }} });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const memory_plan = try build_sync_memory_plan(&plan);
+    try std.testing.expectEqual(CopyShape.list_tuple_elements, memory_plan.copy_shape);
+    try std.testing.expectEqual(@as(u32, 8), memory_plan.element_stride);
+    try std.testing.expectEqual(@as(usize, 6), memory_plan.operations.len);
+}
+
 test "marshal operation plan admits a measured scalar map pair-list" {
     var key = @import("wit_abi_types.zig").AbiType.scalar(std.testing.allocator, .u32);
     defer key.deinit();
@@ -2386,16 +2492,32 @@ test "marshal operation plan admits multiple direct tuple list children" {
         .children = &.{
             .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
             .{ .layout = .{ .byte_list = .{
-                .pointer_offset = 0, .length_offset = 4, .element_byte_size = 1,
-                .element_stride = 1, .element_alignment = 1, .capacity = 4,
-                .accepted_lengths = &.{ 0, 4 }, .allocation = .cabi_realloc, .free = .cabi_realloc,
+                .pointer_offset = 0,
+                .length_offset = 4,
+                .element_byte_size = 1,
+                .element_stride = 1,
+                .element_alignment = 1,
+                .capacity = 4,
+                .accepted_lengths = &.{ 0, 4 },
+                .allocation = .cabi_realloc,
+                .free = .cabi_realloc,
             } } },
             .{ .layout = .{ .list = .{
-                .pointer_offset = 0, .length_offset = 4, .element_byte_size = 4,
-                .element_stride = 4, .element_alignment = 4, .ticket_offset = 0, .capacity = 3,
-                .accepted_lengths = &.{ 0, 3 }, .allocation = .cabi_realloc, .free = .cabi_realloc,
+                .pointer_offset = 0,
+                .length_offset = 4,
+                .element_byte_size = 4,
+                .element_stride = 4,
+                .element_alignment = 4,
+                .ticket_offset = 0,
+                .capacity = 3,
+                .accepted_lengths = &.{ 0, 3 },
+                .allocation = .cabi_realloc,
+                .free = .cabi_realloc,
             } }, .children = &.{.{ .layout = .{ .scalar = .{
-                .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32,
+                .offset = 0,
+                .byte_size = 4,
+                .alignment = 4,
+                .core_type = .i32,
             } } }} },
         },
     });

@@ -184,6 +184,24 @@ pub const ListLayoutPlan = struct {
                 .free = measured.free,
             };
         }
+        if (element.kind() == .tuple) {
+            try validate_list_measurement(measured);
+            const accepted_lengths = try allocator.dupe(u32, measured.accepted_lengths);
+            errdefer allocator.free(accepted_lengths);
+            return .{
+                .allocator = allocator,
+                .pointer_offset = measured.pointer_offset,
+                .length_offset = measured.length_offset,
+                .element_byte_size = measured.element_byte_size,
+                .element_stride = measured.element_stride,
+                .element_alignment = measured.element_alignment,
+                .ticket_offset = measured.ticket_offset,
+                .capacity = measured.capacity,
+                .accepted_lengths = accepted_lengths,
+                .allocation = measured.allocation,
+                .free = measured.free,
+            };
+        }
         if (element.kind() != .record) return error.UnsupportedListElement;
         const field_count = element.record_field_count() orelse return error.UnsupportedListElement;
         if (field_count == 0) return error.MissingOwnedSlot;

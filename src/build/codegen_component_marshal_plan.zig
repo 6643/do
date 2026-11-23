@@ -527,7 +527,7 @@ fn build_node(allocator: std.mem.Allocator, source: *const wit_types.AbiType, of
         .list => {
             const element = source.list_element() orelse return error.UnsupportedMarshalShape;
             switch (element.kind()) {
-                .scalar, .text => {},
+                .scalar, .text, .tuple => {},
                 else => return error.UnsupportedMarshalShape,
             }
             var children = try allocator.alloc(MarshalNode, 1);
@@ -736,7 +736,7 @@ fn bind_measured_node(
     source: *const wit_types.AbiType,
     measured: MeasuredNode,
     placement_offset: ?u32,
-) !void {
+) anyerror!void {
     switch (measured.layout) {
         .scalar => |facts| {
             var layout = try wit_layout.LayoutPlan.scalar(allocator, source, facts);
@@ -767,7 +767,7 @@ fn bind_measured_node(
             defer layout.deinit();
             if (measured.children.len != 1) return error.MeasuredChildCountMismatch;
             const element = source.list_element() orelse return error.UnsupportedMeasuredShape;
-            try bind_measured_list_element(&node.children[0], element, measured.children[0], facts.ticket_offset);
+            try bind_measured_list_element(allocator, &node.children[0], element, measured.children[0], facts.ticket_offset);
             node.measured = .{
                 .offset = placement_offset orelse 0,
                 .byte_size = 8,
@@ -936,11 +936,18 @@ fn bind_measured_node(
 }
 
 fn bind_measured_list_element(
+    allocator: std.mem.Allocator,
     node: *MarshalNode,
     source: *const wit_types.AbiType,
     measured: MeasuredNode,
     placement_offset: u32,
-) !void {
+) anyerror!void {
+    if (source.kind() == .tuple) {
+        try bind_measured_node(allocator, node, source, measured, 0);
+        const facts = node.measured orelse return error.MeasuredChildMissing;
+        if (facts.offset != 0) return error.MeasuredFieldMismatch;
+        return;
+    }
     if (source.kind() != .scalar or measured.children.len != 0) return error.UnsupportedMeasuredShape;
     const facts = switch (measured.layout) {
         .scalar => |value| value,
@@ -1449,4 +1456,54 @@ test "marshal plan binds a tuple byte list child from measured facts" {
     try std.testing.expectEqual(@as(u32, 4), plan.root.children[1].measured.?.offset);
     try std.testing.expectEqual(@as(?u32, 0), plan.root.children[1].measured.?.pointer_offset);
     try std.testing.expectEqual(@as(?u32, 4), plan.root.children[1].measured.?.length_offset);
+}
+
+test "marshal plan admits a list of scalar tuples" {
+    var first = wit_types.AbiType.scalar(std.testing.allocator, .u32);
+    defer first.deinit();
+    var second = wit_types.AbiType.scalar(std.testing.allocator, .i32);
+    defer second.deinit();
+    var element = try wit_types.AbiType.tuple(std.testing.allocator, &.{ &first, &second });
+    defer element.deinit();
+    var source = try wit_types.AbiType.list(std.testing.allocator, &element);
+    defer source.deinit();
+
+    const plan = try build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-list-tuple-plan@1.0.0",
+        .world = "probe",
+        .member = "api.exchange",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:3636363636363636363636363636363636363636363636363636363636363636",
+    }, &source, .lower, .{
+        .layout = .{ .list = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .element_byte_size = 8,
+            .element_stride = 8,
+            .element_alignment = 4,
+            .ticket_offset = 0,
+            .capacity = 2,
+            .accepted_lengths = &.{ 0, 2 },
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } },
+        .children = &.{.{
+            .layout = .{ .tuple = .{
+                .byte_size = 8,
+                .alignment = 4,
+                .fields = &.{
+                    .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+                    .{ .offset = 4, .byte_size = 4, .alignment = 4 },
+                },
+            } },
+            .children = &.{
+                .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+                .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            },
+        }},
+    });
+    defer deinit_sync_value_plan(std.testing.allocator, plan);
+    try std.testing.expectEqual(NodeKind.list, plan.root.kind);
+    try std.testing.expectEqual(NodeKind.tuple, plan.root.children[0].kind);
+    try std.testing.expectEqual(@as(usize, 2), plan.root.children[0].children.len);
 }

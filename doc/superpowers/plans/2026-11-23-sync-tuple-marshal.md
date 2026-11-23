@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Add measured synchronous lower/lift support for pure scalar and nested scalar WIT Tuples.
+**Goal:** Add measured synchronous lower/lift support for pure scalar and nested scalar WIT Tuples, then extend the bounded slice to lists of pure scalar Tuples.
 
 **Architecture:** Keep Tuple as an anonymous aggregate in the marshal tree. Extend the existing recursive plan and canonical word machinery, add a Tuple-specific memory plan and emitter path, and keep complex/async/resource shapes fail-closed.
 
@@ -61,6 +61,7 @@
 - [x] **Task 13: Verify non-final list position in Tuple lift.** Add a measured `Tuple<list<u8>, u32>` WAT regression so the list copy and scalar load use their positional measured offsets rather than assuming the list is the final field.
 - [x] **Task 14: Generalize Tuple scalar-list paths.** Admit all current scalar typed-array kinds, multiple direct list children, and lists inside nested Tuples. Keep list-of-list, complex list elements, map/record/text children, async/resource payloads, and arbitrary unmeasured indirect layouts fail-closed. Validate reverse lower cleanup and pre-construction lift cleanup order.
 - [x] **Task 15: Fix nested Tuple lift offsets.** Accumulate measured offsets along every Tuple path before reading scalar fields or list `(ptr,len)` pairs from the indirect result area. Add a regression for a list and scalar inside a nested Tuple, while preserving overflow rejection.
+- [x] **Task 16: Add measured `list<tuple<scalar...>>` lowering.** Admit a list whose element is a pure scalar or nested scalar Tuple when measured element size, alignment, and stride match. Emit a typed GC array of Tuple structs, copy each scalar field through linear memory in source order, and keep list-of-list, managed, resource, async, and unmeasured aggregate elements fail-closed.
 
 ## Verification Commands
 

@@ -38,7 +38,7 @@ pub fn emit_sync_marshal_module(
     try validate_config(allocator, plan, config, &memory_plan);
     const uses_linear_memory = switch (memory_plan.copy_shape) {
         .scalar => false,
-        .text_bytes, .list_elements, .map_entries => true,
+        .text_bytes, .list_elements, .list_tuple_elements, .map_entries => true,
         .record_fields => memory_plan.direction == .lift or
             memory_plan.record_indirect != null or
             memory_plan.record_managed_text_lower or
@@ -51,7 +51,7 @@ pub fn emit_sync_marshal_module(
         .variant => marshal_ops.variant_contains_linear_payload(&plan.root),
     };
     const uses_realloc = switch (memory_plan.copy_shape) {
-        .text_bytes, .list_elements, .map_entries => true,
+        .text_bytes, .list_elements, .list_tuple_elements, .map_entries => true,
         .record_fields => memory_plan.record_indirect != null or
             memory_plan.record_managed_text_lower or
             memory_plan.record_managed_scalar_list_lower or
@@ -111,6 +111,9 @@ pub fn emit_sync_marshal_module(
     }
     if (memory_plan.copy_shape == .tuple_fields) {
         try emit_tuple_type(allocator, &out, plan);
+    }
+    if (memory_plan.copy_shape == .list_tuple_elements) {
+        try emit_list_tuple_types(allocator, &out, plan);
     }
     if (memory_plan.copy_shape == .variant) {
         try emit_variant_type(allocator, &out, plan);
@@ -227,7 +230,7 @@ pub fn emit_sync_marshal_gc_support(
     try validate_config(allocator, plan, config, &memory_plan);
     const uses_linear_memory = switch (memory_plan.copy_shape) {
         .scalar => false,
-        .text_bytes, .list_elements, .map_entries => true,
+        .text_bytes, .list_elements, .list_tuple_elements, .map_entries => true,
         .record_fields => memory_plan.direction == .lift or
             memory_plan.record_indirect != null or
             memory_plan.record_managed_text_lower or
@@ -240,7 +243,7 @@ pub fn emit_sync_marshal_gc_support(
         .variant => marshal_ops.variant_contains_linear_payload(&plan.root),
     };
     const uses_realloc = switch (memory_plan.copy_shape) {
-        .text_bytes, .list_elements, .map_entries => true,
+        .text_bytes, .list_elements, .list_tuple_elements, .map_entries => true,
         .record_fields => memory_plan.record_indirect != null or
             memory_plan.record_managed_text_lower or
             memory_plan.record_managed_scalar_list_lower or
@@ -620,6 +623,75 @@ fn emit_tuple_type(
     var path = std.ArrayList(usize).empty;
     defer path.deinit(allocator);
     try emit_tuple_type_recursive(allocator, out, &plan.root, &path);
+}
+
+fn emit_list_tuple_types(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    plan: *const marshal.SyncValuePlan,
+) !void {
+    if (plan.root.kind != .list or plan.root.children.len != 1) return error.UnsupportedMarshalShape;
+    const element = &plan.root.children[0];
+    if (element.kind != .tuple or element.children.len == 0) return error.UnsupportedMarshalShape;
+    var path = std.ArrayList(usize).empty;
+    defer path.deinit(allocator);
+    try emit_list_tuple_type_recursive(allocator, out, element, &path);
+    try out.appendSlice(allocator, "  (type $do_list_tuple_array (array (mut (ref null $do_list_tuple_element))))\n");
+}
+
+fn emit_list_tuple_type_recursive(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    node: *const marshal.MarshalNode,
+    path: *std.ArrayList(usize),
+) !void {
+    if (node.kind != .tuple or node.children.len == 0) return error.UnsupportedMarshalShape;
+    for (node.children, 0..) |*child, index| {
+        if (child.kind == .tuple) {
+            try path.append(allocator, index);
+            try emit_list_tuple_type_recursive(allocator, out, child, path);
+            _ = path.pop();
+        }
+    }
+    try out.appendSlice(allocator, "  (type ");
+    try append_list_tuple_type_name(allocator, out, path.items);
+    try out.appendSlice(allocator, " (struct");
+    for (node.children, 0..) |*child, index| {
+        switch (child.kind) {
+            .scalar => {
+                const facts = child.measured orelse return error.MeasuredChildMissing;
+                const core_type = facts.core_type orelse return error.MeasuredScalarCoreTypeMissing;
+                try generated_text.append_fmt(allocator, out, " (field $field{[index]d} {[core_type]s})", .{
+                    .index = index,
+                    .core_type = switch (core_type) {
+                        .i32 => "i32",
+                        .i64 => "i64",
+                        .f32 => "f32",
+                        .f64 => "f64",
+                    },
+                });
+            },
+            .tuple => {
+                try out.appendSlice(allocator, " (field ");
+                try generated_text.append_fmt(allocator, out, "$field{[index]d} (ref null ", .{ .index = index });
+                try path.append(allocator, index);
+                try append_list_tuple_type_name(allocator, out, path.items);
+                _ = path.pop();
+                try out.appendSlice(allocator, "))");
+            },
+            else => return error.UnsupportedMarshalShape,
+        }
+    }
+    try out.appendSlice(allocator, "))\n");
+}
+
+fn append_list_tuple_type_name(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    path: []const usize,
+) !void {
+    try out.appendSlice(allocator, "$do_list_tuple_element");
+    for (path) |index| try generated_text.append_fmt(allocator, out, "_{[index]d}", .{ .index = index });
 }
 
 fn emit_tuple_type_recursive(

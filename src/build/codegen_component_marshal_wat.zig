@@ -63,6 +63,10 @@ pub fn emit_sync_marshal_function(
             .lower => try emit_lower(allocator, &out, &memory_plan, config),
             .lift => try emit_lift(allocator, &out, &memory_plan, config),
         },
+        .list_tuple_elements => switch (memory_plan.direction) {
+            .lower => try emit_list_tuple_lower(allocator, &out, plan, &memory_plan, config),
+            .lift => try emit_list_tuple_lift(allocator, &out, plan, &memory_plan, config),
+        },
         .map_entries => switch (memory_plan.direction) {
             .lower => try emit_map_lower(allocator, &out, plan, &memory_plan, config),
             .lift => try emit_map_lift(allocator, &out, plan, &memory_plan, config),
@@ -1194,8 +1198,7 @@ fn emit_tuple_lower(
     while (free_index > 0) {
         free_index -= 1;
         const list = memory_plan.tuple_linear_lists[free_index];
-        try generated_text.append_fmt_block(allocator, out, 4,
-            "local.get $__tuple_list_pointer_{[index]d}\nlocal.get $__tuple_list_bytes_{[index]d}\n" ++
+        try generated_text.append_fmt_block(allocator, out, 4, "local.get $__tuple_list_pointer_{[index]d}\nlocal.get $__tuple_list_bytes_{[index]d}\n" ++
             \\i32.const {[alignment]d}
             \\i32.const 0
             \\call ${[realloc_name]s}
@@ -1203,6 +1206,294 @@ fn emit_tuple_lower(
         , .{ .index = free_index, .alignment = list.element_alignment, .realloc_name = config.realloc_name });
     }
     try out.appendSlice(allocator, "  )\n");
+}
+
+fn emit_list_tuple_lower(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    plan: *const marshal.SyncValuePlan,
+    memory_plan: *const marshal_ops.MemoryPlan,
+    config: EmitConfig,
+) !void {
+    const element = list_tuple_element_node(plan) orelse return error.UnsupportedMarshalShape;
+    try generated_text.append_fmt_block(allocator, out, 2,
+        \\  (func ${[function_name]s} (param ${[input_local]s} (ref null $do_list_tuple_array))
+        \\    (local $__list_tuple_length i32)
+        \\    (local $__list_tuple_index i32)
+        \\    (local $__list_tuple_bytes i32)
+        \\    (local $__list_tuple_bytes64 i64)
+        \\    (local $__list_tuple_pointer i32)
+        \\    (local $__list_tuple_array (ref null $do_list_tuple_array))
+        \\    (local $__memory_bytes i64)
+        \\
+    , .{ .function_name = config.function_name, .input_local = config.input_local });
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\    local.get ${[input_local]s}
+        \\    ref.as_non_null
+        \\    array.len
+        \\    local.set $__list_tuple_length
+        \\    local.get ${[input_local]s}
+        \\    local.set $__list_tuple_array
+        \\
+    , .{ .input_local = config.input_local });
+    try append_copy_byte_count_for_locals(
+        allocator,
+        out,
+        "__list_tuple_length",
+        "__list_tuple_bytes",
+        "__list_tuple_bytes64",
+        memory_plan.element_stride,
+    );
+    try generated_text.append_fmt_block(allocator, out, 4,
+        \\    i32.const 0
+        \\    i32.const 0
+        \\    i32.const {[alignment]d}
+        \\    local.get $__list_tuple_bytes
+        \\    call ${[realloc_name]s}
+        \\    local.set $__list_tuple_pointer
+        \\    i32.const 0
+        \\    local.set $__list_tuple_index
+        \\    block $__list_tuple_done
+        \\      loop $__list_tuple_copy
+        \\        local.get $__list_tuple_index
+        \\        local.get $__list_tuple_length
+        \\        i32.ge_u
+        \\        br_if $__list_tuple_done
+    , .{ .alignment = element_tuple_alignment(element), .realloc_name = config.realloc_name });
+    var path = std.ArrayList(usize).empty;
+    defer path.deinit(allocator);
+    try emit_list_tuple_lower_fields(allocator, out, element, config, memory_plan.element_stride, 0, &path);
+    try generated_text.append_fmt_block(allocator, out, 8,
+        \\        local.get $__list_tuple_index
+        \\        i32.const 1
+        \\        i32.add
+        \\        local.set $__list_tuple_index
+        \\        br $__list_tuple_copy
+        \\      end
+        \\    end
+        \\    local.get $__list_tuple_pointer
+        \\    local.get $__list_tuple_length
+        \\    call ${[canonical_call_name]s}
+        \\    local.get $__list_tuple_pointer
+        \\    local.get $__list_tuple_bytes
+        \\    i32.const {[alignment]d}
+        \\    i32.const 0
+        \\    call ${[realloc_name]s}
+        \\    drop)
+    , .{
+        .canonical_call_name = config.canonical_call_name,
+        .alignment = element_tuple_alignment(element),
+        .realloc_name = config.realloc_name,
+    });
+}
+
+fn emit_list_tuple_lower_fields(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    node: *const marshal.MarshalNode,
+    config: EmitConfig,
+    stride: u32,
+    base_offset: u32,
+    path: *std.ArrayList(usize),
+) !void {
+    if (node.kind != .tuple) return error.UnsupportedMarshalShape;
+    for (node.children, 0..) |*child, index| {
+        try path.append(allocator, index);
+        const facts = child.measured orelse return error.MeasuredChildMissing;
+        const offset = std.math.add(u32, base_offset, facts.offset) catch return error.OffsetOverflow;
+        if (child.kind == .tuple) {
+            try emit_list_tuple_lower_fields(allocator, out, child, config, stride, offset, path);
+            _ = path.pop();
+            continue;
+        }
+        if (child.kind != .scalar) return error.UnsupportedMarshalShape;
+        try generated_text.append_fmt_block(allocator, out, 8,
+            \\        local.get $__list_tuple_pointer
+            \\        local.get $__list_tuple_index
+            \\        i32.const {[stride]d}
+            \\        i32.mul
+            \\        i32.add
+            \\        i32.const {[offset]d}
+            \\        i32.add
+        , .{ .stride = stride, .offset = offset });
+        try emit_list_tuple_source_field(allocator, out, path.items);
+        try out.appendSlice(allocator, "        ");
+        try out.appendSlice(allocator, list_tuple_store_instruction(child.scalar_kind orelse return error.UnsupportedMarshalShape));
+        try out.append(allocator, '\n');
+        _ = path.pop();
+    }
+}
+
+fn emit_list_tuple_source_field(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    path: []const usize,
+) !void {
+    if (path.len == 0) return error.UnsupportedMarshalShape;
+    try generated_text.append_block(allocator, out, 8,
+        \\        local.get $__list_tuple_array
+        \\        ref.as_non_null
+        \\        local.get $__list_tuple_index
+        \\        array.get $do_list_tuple_array
+        \\        ref.as_non_null
+    );
+    for (path, 0..) |field_index, depth| {
+        try out.appendSlice(allocator, "        struct.get ");
+        try append_list_tuple_type_name(allocator, out, path[0..depth]);
+        try generated_text.append_fmt(allocator, out, " $field{[field_index]d}\n", .{ .field_index = field_index });
+        if (depth + 1 < path.len) try out.appendSlice(allocator, "        ref.as_non_null\n");
+    }
+}
+
+fn emit_list_tuple_lift(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    plan: *const marshal.SyncValuePlan,
+    memory_plan: *const marshal_ops.MemoryPlan,
+    config: EmitConfig,
+) !void {
+    const element = list_tuple_element_node(plan) orelse return error.UnsupportedMarshalShape;
+    const pointer_offset = memory_plan.result_area_pointer_offset orelse return error.MeasuredResultAreaPointerMissing;
+    const length_offset = memory_plan.result_area_length_offset orelse return error.MeasuredResultAreaLengthMissing;
+    try generated_text.append_fmt_block(allocator, out, 2,
+        \\  (func ${[function_name]s} (result (ref null $do_list_tuple_array))
+        \\    (local $__result_area i32)
+        \\    (local $__list_tuple_pointer i32)
+        \\    (local $__list_tuple_length i32)
+        \\    (local $__list_tuple_index i32)
+        \\    (local $__list_tuple_bytes i32)
+        \\    (local $__list_tuple_bytes64 i64)
+        \\    (local $__memory_bytes i64)
+        \\    (local $__list_tuple_array (ref null $do_list_tuple_array))
+        \\
+        \\    i32.const 0
+        \\    local.set $__result_area
+        \\    local.get $__result_area
+        \\    call ${[canonical_call_name]s}
+        \\    local.get $__result_area
+        \\    i32.const {[pointer_offset]d}
+        \\    i32.add
+        \\    i32.load
+        \\    local.set $__list_tuple_pointer
+        \\    local.get $__result_area
+        \\    i32.const {[length_offset]d}
+        \\    i32.add
+        \\    i32.load
+        \\    local.set $__list_tuple_length
+        \\
+    , .{
+        .function_name = config.function_name,
+        .canonical_call_name = config.canonical_call_name,
+        .pointer_offset = pointer_offset,
+        .length_offset = length_offset,
+    });
+    try append_copy_byte_count_for_locals(allocator, out, "__list_tuple_length", "__list_tuple_bytes", "__list_tuple_bytes64", memory_plan.element_stride);
+    try emit_span_guard(allocator, out, "__list_tuple_pointer", "__list_tuple_bytes");
+    try generated_text.append_block(allocator, out, 4,
+        \\    local.get $__list_tuple_length
+        \\    array.new_default $do_list_tuple_array
+        \\    local.set $__list_tuple_array
+        \\    i32.const 0
+        \\    local.set $__list_tuple_index
+        \\    block $__list_tuple_lift_done
+        \\      loop $__list_tuple_lift_copy
+        \\        local.get $__list_tuple_index
+        \\        local.get $__list_tuple_length
+        \\        i32.ge_u
+        \\        br_if $__list_tuple_lift_done
+        \\        local.get $__list_tuple_array
+        \\        local.get $__list_tuple_index
+        \\
+    );
+    var path = std.ArrayList(usize).empty;
+    defer path.deinit(allocator);
+    try emit_list_tuple_lift_value(allocator, out, element, config, memory_plan.element_stride, 0, &path);
+    try generated_text.append_fmt_block(allocator, out, 8,
+        \\        array.set $do_list_tuple_array
+        \\        local.get $__list_tuple_index
+        \\        i32.const 1
+        \\        i32.add
+        \\        local.set $__list_tuple_index
+        \\        br $__list_tuple_lift_copy
+        \\      end
+        \\    end
+        \\    local.get $__list_tuple_pointer
+        \\    local.get $__list_tuple_bytes
+        \\    i32.const {[alignment]d}
+        \\    i32.const 0
+        \\    call ${[realloc_name]s}
+        \\    drop
+        \\    local.get $__list_tuple_array)
+        \\
+    , .{ .alignment = element_tuple_alignment(element), .realloc_name = config.realloc_name });
+}
+
+fn emit_list_tuple_lift_value(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    node: *const marshal.MarshalNode,
+    config: EmitConfig,
+    stride: u32,
+    base_offset: u32,
+    path: *std.ArrayList(usize),
+) !void {
+    if (node.kind != .tuple) return error.UnsupportedMarshalShape;
+    for (node.children, 0..) |*child, index| {
+        try path.append(allocator, index);
+        const facts = child.measured orelse return error.MeasuredChildMissing;
+        const offset = std.math.add(u32, base_offset, facts.offset) catch return error.OffsetOverflow;
+        if (child.kind == .tuple) {
+            try emit_list_tuple_lift_value(allocator, out, child, config, stride, offset, path);
+            _ = path.pop();
+            continue;
+        }
+        if (child.kind != .scalar) return error.UnsupportedMarshalShape;
+        try generated_text.append_fmt_block(allocator, out, 8,
+            \\        local.get $__list_tuple_pointer
+            \\        local.get $__list_tuple_index
+            \\        i32.const {[stride]d}
+            \\        i32.mul
+            \\        i32.add
+            \\        i32.const {[offset]d}
+            \\        i32.add
+            \\        {[load]s}
+        , .{
+            .stride = stride,
+            .offset = offset,
+            .load = list_tuple_load_instruction(child.scalar_kind orelse return error.UnsupportedMarshalShape),
+        });
+        _ = path.pop();
+    }
+    try out.appendSlice(allocator, "        struct.new ");
+    try append_list_tuple_type_name(allocator, out, path.items);
+    try out.append(allocator, '\n');
+}
+
+fn list_tuple_element_node(plan: *const marshal.SyncValuePlan) ?*const marshal.MarshalNode {
+    if (plan.root.kind != .list or plan.root.children.len != 1) return null;
+    const element = &plan.root.children[0];
+    return if (element.kind == .tuple) element else null;
+}
+
+fn element_tuple_alignment(node: *const marshal.MarshalNode) u32 {
+    return node.measured.?.alignment;
+}
+
+fn append_list_tuple_type_name(
+    allocator: std.mem.Allocator,
+    out: *std.ArrayList(u8),
+    path: []const usize,
+) !void {
+    try out.appendSlice(allocator, "$do_list_tuple_element");
+    for (path) |index| try generated_text.append_fmt(allocator, out, "_{[index]d}", .{ .index = index });
+}
+
+fn list_tuple_load_instruction(kind: wit_abi_types.ScalarKind) []const u8 {
+    return canonical_scalar_list_load_instruction(kind);
+}
+
+fn list_tuple_store_instruction(kind: wit_abi_types.ScalarKind) []const u8 {
+    return canonical_scalar_list_store_instruction(kind);
 }
 
 fn emit_tuple_lower_values(
@@ -1456,28 +1747,28 @@ fn emit_tuple_lift_linear(
             .pointer_offset = std.math.add(u32, list_offset, list.pointer_offset) catch return error.OffsetOverflow,
             .length_offset = std.math.add(u32, list_offset, list.length_offset) catch return error.OffsetOverflow,
         });
-    try append_copy_byte_count_for_locals(
-        allocator,
-        out,
-        length_local,
-        bytes_local,
-        bytes64_local,
-        list.element_stride,
+        try append_copy_byte_count_for_locals(
+            allocator,
+            out,
+            length_local,
+            bytes_local,
+            bytes64_local,
+            list.element_stride,
         );
         try emit_span_guard(allocator, out, pointer_local, bytes_local);
         try generated_text.append_fmt(allocator, out, "    local.get ${[length_local]s}\n    array.new_default {[array_type]s}\n    local.set ${[array_local]s}\n    i32.const 0\n    local.set ${[index_local]s}\n    block $__tuple_list_lift_done_{[index]d}\n      loop $__tuple_list_lift_copy_{[index]d}\n        local.get ${[index_local]s}\n        local.get ${[length_local]s}\n        i32.ge_u\n        br_if $__tuple_list_lift_done_{[index]d}\n        local.get ${[array_local]s}\n        local.get ${[index_local]s}\n        local.get ${[pointer_local]s}\n        local.get ${[index_local]s}\n        i32.const {[stride]d}\n        i32.mul\n        i32.add\n        {[load_instruction]s}\n        {[array_set_instruction]s}\n        local.get ${[index_local]s}\n        i32.const 1\n        i32.add\n        local.set ${[index_local]s}\n        br $__tuple_list_lift_copy_{[index]d}\n      end\n    end\n    local.get ${[pointer_local]s}\n    local.get ${[bytes_local]s}\n    i32.const {[alignment]d}\n    i32.const 0\n    call ${[realloc_name]s}\n    drop\n", .{
-        .array_type = array_type,
-        .index = list_index,
-        .pointer_local = pointer_local,
-        .length_local = length_local,
-        .bytes_local = bytes_local,
-        .index_local = index_local,
-        .array_local = array_local,
-        .stride = list.element_stride,
-        .load_instruction = load_instruction,
-        .array_set_instruction = array_set_instruction,
-        .alignment = list.element_alignment,
-        .realloc_name = config.realloc_name,
+            .array_type = array_type,
+            .index = list_index,
+            .pointer_local = pointer_local,
+            .length_local = length_local,
+            .bytes_local = bytes_local,
+            .index_local = index_local,
+            .array_local = array_local,
+            .stride = list.element_stride,
+            .load_instruction = load_instruction,
+            .array_set_instruction = array_set_instruction,
+            .alignment = list.element_alignment,
+            .realloc_name = config.realloc_name,
         });
     }
     var path = std.ArrayList(usize).empty;
@@ -1671,6 +1962,7 @@ fn emit_lower(
         .scalar => return error.UnsupportedMarshalShape,
         .text_bytes => "(ref null $do_text)",
         .list_elements => canonical_scalar_list_ref_type(element_kind),
+        .list_tuple_elements => return error.UnsupportedMarshalShape,
         .map_entries => return error.UnsupportedMarshalShape,
         .record_fields => return error.UnsupportedMarshalShape,
         .tuple_fields => return error.UnsupportedMarshalShape,
@@ -1779,6 +2071,7 @@ fn emit_lift(
         .scalar => return error.UnsupportedMarshalShape,
         .text_bytes => "(ref null $do_text)",
         .list_elements => canonical_scalar_list_ref_type(element_kind),
+        .list_tuple_elements => return error.UnsupportedMarshalShape,
         .map_entries => return error.UnsupportedMarshalShape,
         .record_fields => return error.UnsupportedMarshalShape,
         .tuple_fields => return error.UnsupportedMarshalShape,
@@ -1901,6 +2194,7 @@ fn emit_lift(
             \\local.set $__gc_result
             \\
         ),
+        .list_tuple_elements => return error.UnsupportedMarshalShape,
         .map_entries => return error.UnsupportedMarshalShape,
         .record_fields => return error.UnsupportedMarshalShape,
         .tuple_fields => return error.UnsupportedMarshalShape,
@@ -4478,6 +4772,7 @@ fn append_source_length(
             \\    local.set $__gc_length
             \\
         , .{ .input_local = input_local }),
+        .list_tuple_elements => return error.UnsupportedMarshalShape,
         .map_entries => return error.UnsupportedMarshalShape,
         .record_fields => return error.UnsupportedMarshalShape,
         .tuple_fields => return error.UnsupportedMarshalShape,
@@ -4529,6 +4824,7 @@ fn append_source_byte(
             \\        array.get_s $do_u8
             \\
         , .{ .input_local = input_local }),
+        .list_tuple_elements => return error.UnsupportedMarshalShape,
         .map_entries => return error.UnsupportedMarshalShape,
         .record_fields => return error.UnsupportedMarshalShape,
         .tuple_fields => return error.UnsupportedMarshalShape,
@@ -4997,6 +5293,86 @@ test "canonical marshal WAT emits typed u32 list lower and lift copies" {
     try std.testing.expect(std.mem.indexOf(u8, lift_wat, "(ref null $do_u32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, lift_wat, "array.set $do_u32") != null);
     try std.testing.expect(std.mem.indexOf(u8, lift_wat, "i32.load") != null);
+}
+
+test "canonical marshal WAT lowers and lifts a list of scalar tuples" {
+    var first = wit_abi_types.AbiType.scalar(std.testing.allocator, .u32);
+    defer first.deinit();
+    var second = wit_abi_types.AbiType.scalar(std.testing.allocator, .i32);
+    defer second.deinit();
+    var element = try wit_abi_types.AbiType.tuple(std.testing.allocator, &.{ &first, &second });
+    defer element.deinit();
+    var value = try wit_abi_types.AbiType.list(std.testing.allocator, &element);
+    defer value.deinit();
+    const measured = marshal.MeasuredNode{
+        .layout = .{ .list = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .element_byte_size = 8,
+            .element_stride = 8,
+            .element_alignment = 4,
+            .ticket_offset = 0,
+            .capacity = 2,
+            .accepted_lengths = &.{ 0, 1, 2 },
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } },
+        .children = &.{.{
+            .layout = .{ .tuple = .{
+                .byte_size = 8,
+                .alignment = 4,
+                .fields = &.{
+                    .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+                    .{ .offset = 4, .byte_size = 4, .alignment = 4 },
+                },
+            } },
+            .children = &.{
+                .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+                .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            },
+        }},
+    };
+    const lower_plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-list-tuple-wat@1.0.0",
+        .world = "probe",
+        .member = "api.send",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:3838383838383838383838383838383838383838383838383838383838383838",
+    }, &value, .lower, measured);
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, lower_plan);
+    const lower = try emit_sync_marshal_function(std.testing.allocator, &lower_plan, .{});
+    defer std.testing.allocator.free(lower);
+    try std.testing.expect(std.mem.indexOf(u8, lower, "(ref null $do_list_tuple_array)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower, "struct.get $do_list_tuple_element $field0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower, "struct.get $do_list_tuple_element $field1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower, "i32.store") != null);
+
+    const lift_plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-list-tuple-wat@1.0.0",
+        .world = "probe",
+        .member = "api.receive",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:3838383838383838383838383838383838383838383838383838383838383838",
+    }, &value, .lift, measured);
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, lift_plan);
+    const lift = try emit_sync_marshal_function(std.testing.allocator, &lift_plan, .{});
+    defer std.testing.allocator.free(lift);
+    try std.testing.expect(std.mem.indexOf(u8, lift, "array.new_default $do_list_tuple_array") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lift, "i32.load") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lift, "struct.new $do_list_tuple_element") != null);
+    const lift_struct = std.mem.lastIndexOf(u8, lift, "struct.new $do_list_tuple_element") orelse unreachable;
+    const lift_set = std.mem.indexOf(u8, lift, "array.set $do_list_tuple_array") orelse unreachable;
+    try std.testing.expect(lift_struct < lift_set);
+
+    const module = try marshal_module.emit_sync_marshal_module(std.testing.allocator, &lower_plan, .{
+        .direction = .lower,
+        .canonical_import_module = "demo:marshal-list-tuple-wat/api@1.0.0",
+        .canonical_import_name = "send",
+    });
+    defer std.testing.allocator.free(module);
+    try std.testing.expect(std.mem.indexOf(u8, module, "(type $do_list_tuple_element (struct (field $field0 i32) (field $field1 i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, module, "(type $do_list_tuple_array (array (mut (ref null $do_list_tuple_element))))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, module, "(type $canonical_lower (func (param i32 i32)))") != null);
 }
 
 test "canonical marshal WAT emits every supported scalar list shape" {
@@ -6547,7 +6923,10 @@ test "canonical marshal WAT lowers a list inside a nested tuple" {
                         .allocation = .cabi_realloc,
                         .free = .cabi_realloc,
                     } }, .children = &.{.{ .layout = .{ .scalar = .{
-                        .offset = 0, .byte_size = 8, .alignment = 8, .core_type = .f64,
+                        .offset = 0,
+                        .byte_size = 8,
+                        .alignment = 8,
+                        .core_type = .f64,
                     } } }} },
                     .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
                 },
@@ -6618,7 +6997,10 @@ test "canonical marshal WAT lifts a list inside a nested tuple using absolute of
                         .allocation = .cabi_realloc,
                         .free = .cabi_realloc,
                     } }, .children = &.{.{ .layout = .{ .scalar = .{
-                        .offset = 0, .byte_size = 8, .alignment = 8, .core_type = .f64,
+                        .offset = 0,
+                        .byte_size = 8,
+                        .alignment = 8,
+                        .core_type = .f64,
                     } } }} },
                     .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
                 },
@@ -6791,7 +7173,10 @@ test "canonical marshal WAT lifts a tuple with a non byte scalar list" {
                 .allocation = .cabi_realloc,
                 .free = .cabi_realloc,
             } }, .children = &.{.{ .layout = .{ .scalar = .{
-                .offset = 0, .byte_size = 8, .alignment = 8, .core_type = .f64,
+                .offset = 0,
+                .byte_size = 8,
+                .alignment = 8,
+                .core_type = .f64,
             } } }} },
             .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
         },
