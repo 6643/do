@@ -1422,13 +1422,10 @@ fn emit_tuple_lift_linear(
         .root_type_name = config.root_type_name,
     });
     for (lists, 0..) |list, list_index| {
-        const list_node = tuple_node_at_path(&plan.root, list.path) orelse return error.MeasuredChildMissing;
-        const list_facts = list_node.measured orelse return error.MeasuredChildMissing;
         const array_type = tuple_list_array_type(list.scalar_kind);
         const load_instruction = tuple_list_linear_load_instruction(list.scalar_kind);
         const array_set_instruction = tuple_list_array_set_instruction(list.scalar_kind);
         try generated_text.append_fmt(allocator, out, "    (local $__tuple_list_pointer_{[index]d} i32)\n    (local $__tuple_list_length_{[index]d} i32)\n    (local $__tuple_list_bytes_{[index]d} i32)\n    (local $__tuple_list_bytes64_{[index]d} i64)\n    (local $__tuple_list_index_{[index]d} i32)\n    (local $__tuple_list_array_{[index]d} (ref {[array_type]s}))\n", .{ .index = list_index, .array_type = array_type });
-        _ = list_facts;
         _ = load_instruction;
         _ = array_set_instruction;
     }
@@ -1437,8 +1434,6 @@ fn emit_tuple_lift_linear(
         .canonical_call_name = config.canonical_call_name,
     });
     for (lists, 0..) |list, list_index| {
-        const list_node = tuple_node_at_path(&plan.root, list.path) orelse return error.MeasuredChildMissing;
-        const list_facts = list_node.measured orelse return error.MeasuredChildMissing;
         const array_type = tuple_list_array_type(list.scalar_kind);
         const load_instruction = tuple_list_linear_load_instruction(list.scalar_kind);
         const array_set_instruction = tuple_list_array_set_instruction(list.scalar_kind);
@@ -1454,11 +1449,12 @@ fn emit_tuple_lift_linear(
         defer allocator.free(index_local);
         const array_local = try std.fmt.allocPrint(allocator, "__tuple_list_array_{d}", .{list_index});
         defer allocator.free(array_local);
+        const list_offset = try tuple_absolute_offset(&plan.root, list.path);
         try generated_text.append_fmt(allocator, out, "    local.get $__result_area\n    i32.const {[pointer_offset]d}\n    i32.add\n    i32.load\n    local.set ${[pointer_local]s}\n    local.get $__result_area\n    i32.const {[length_offset]d}\n    i32.add\n    i32.load\n    local.set ${[length_local]s}\n", .{
             .pointer_local = pointer_local,
             .length_local = length_local,
-            .pointer_offset = std.math.add(u32, list_facts.offset, list.pointer_offset) catch return error.OffsetOverflow,
-            .length_offset = std.math.add(u32, list_facts.offset, list.length_offset) catch return error.OffsetOverflow,
+            .pointer_offset = std.math.add(u32, list_offset, list.pointer_offset) catch return error.OffsetOverflow,
+            .length_offset = std.math.add(u32, list_offset, list.length_offset) catch return error.OffsetOverflow,
         });
     try append_copy_byte_count_for_locals(
         allocator,
@@ -1486,13 +1482,14 @@ fn emit_tuple_lift_linear(
     }
     var path = std.ArrayList(usize).empty;
     defer path.deinit(allocator);
-    try emit_tuple_lift_linear_value(allocator, out, &plan.root, &path, lists, config.root_type_name);
+    try emit_tuple_lift_linear_value(allocator, out, &plan.root, &plan.root, &path, lists, config.root_type_name);
     try out.appendSlice(allocator, "  )\n");
 }
 
 fn emit_tuple_lift_linear_value(
     allocator: std.mem.Allocator,
     out: *std.ArrayList(u8),
+    root: *const marshal.MarshalNode,
     node: *const marshal.MarshalNode,
     path: *std.ArrayList(usize),
     lists: []const marshal_ops.TupleLinearList,
@@ -1501,6 +1498,7 @@ fn emit_tuple_lift_linear_value(
     switch (node.kind) {
         .scalar => {
             const facts = node.measured orelse return error.MeasuredChildMissing;
+            const offset = try tuple_absolute_offset(root, path.items);
             const load = switch (facts.core_type orelse return error.MeasuredScalarCoreTypeMissing) {
                 .i32 => "i32.load",
                 .i64 => "i64.load",
@@ -1512,12 +1510,12 @@ fn emit_tuple_lift_linear_value(
                 \\i32.const {[offset]d}
                 \\i32.add
                 \\{[load]s}
-            , .{ .offset = facts.offset, .load = load });
+            , .{ .offset = offset, .load = load });
         },
         .tuple => {
             for (node.children, 0..) |*child, index| {
                 try path.append(allocator, index);
-                try emit_tuple_lift_linear_value(allocator, out, child, path, lists, root_type_name);
+                try emit_tuple_lift_linear_value(allocator, out, root, child, path, lists, root_type_name);
                 _ = path.pop();
             }
             try out.appendSlice(allocator, "    struct.new ");
@@ -1546,6 +1544,20 @@ fn tuple_node_at_path(root: *const marshal.MarshalNode, path: []const u32) ?*con
         node = &node.children[field_index];
     }
     return node;
+}
+
+fn tuple_absolute_offset(root: *const marshal.MarshalNode, path: anytype) !u32 {
+    var node = root;
+    var offset: u32 = 0;
+    for (path) |field_index| {
+        const index: usize = @intCast(field_index);
+        if (node.kind != .tuple or index >= node.children.len) return error.MeasuredChildMissing;
+        const child = &node.children[index];
+        const facts = child.measured orelse return error.MeasuredChildMissing;
+        offset = std.math.add(u32, offset, facts.offset) catch return error.OffsetOverflow;
+        node = child;
+    }
+    return offset;
 }
 
 fn tuple_scalar_leaf_count(node: *const marshal.MarshalNode) !usize {
@@ -6550,6 +6562,76 @@ test "canonical marshal WAT lowers a list inside a nested tuple" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "struct.get $do_tuple_1 $field0") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "f64.store") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "call $canonical_call") != null);
+}
+
+test "canonical marshal WAT lifts a list inside a nested tuple using absolute offsets" {
+    var count = wit_abi_types.AbiType.scalar(std.testing.allocator, .u32);
+    defer count.deinit();
+    var value = wit_abi_types.AbiType.scalar(std.testing.allocator, .f64);
+    defer value.deinit();
+    var values = try wit_abi_types.AbiType.list(std.testing.allocator, &value);
+    defer values.deinit();
+    var tail = wit_abi_types.AbiType.scalar(std.testing.allocator, .i32);
+    defer tail.deinit();
+    var nested = try wit_abi_types.AbiType.tuple(std.testing.allocator, &.{ &values, &tail });
+    defer nested.deinit();
+    var source = try wit_abi_types.AbiType.tuple(std.testing.allocator, &.{ &count, &nested });
+    defer source.deinit();
+
+    const plan = try marshal.build_sync_value_plan_with_layout(std.testing.allocator, .{
+        .package = "demo:marshal-nested-tuple-list-lift-wat@1.0.0",
+        .world = "probe",
+        .member = "api.receive",
+        .revision = "wit-resolver-v1",
+        .schema_hash = "sha256:3535353535353535353535353535353535353535353535353535353535353535",
+    }, &source, .lift, .{
+        .layout = .{ .tuple = .{
+            .byte_size = 16,
+            .alignment = 4,
+            .fields = &.{
+                .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+                .{ .offset = 4, .byte_size = 12, .alignment = 4 },
+            },
+            .indirect = .{ .core_words = &.{.i32}, .allocation = .cabi_realloc, .free = .cabi_realloc },
+        } },
+        .children = &.{
+            .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            .{
+                .layout = .{ .tuple = .{
+                    .byte_size = 12,
+                    .alignment = 4,
+                    .fields = &.{
+                        .{ .offset = 0, .byte_size = 8, .alignment = 4 },
+                        .{ .offset = 8, .byte_size = 4, .alignment = 4 },
+                    },
+                } },
+                .children = &.{
+                    .{ .layout = .{ .list = .{
+                        .pointer_offset = 0,
+                        .length_offset = 4,
+                        .element_byte_size = 8,
+                        .element_stride = 8,
+                        .element_alignment = 8,
+                        .ticket_offset = 0,
+                        .capacity = 4,
+                        .accepted_lengths = &.{ 0, 4 },
+                        .allocation = .cabi_realloc,
+                        .free = .cabi_realloc,
+                    } }, .children = &.{.{ .layout = .{ .scalar = .{
+                        .offset = 0, .byte_size = 8, .alignment = 8, .core_type = .f64,
+                    } } }} },
+                    .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+                },
+            },
+        },
+    });
+    defer marshal.deinit_sync_value_plan(std.testing.allocator, plan);
+
+    const wat = try emit_sync_marshal_function(std.testing.allocator, &plan, .{ .root_type_name = "do_tuple" });
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 4\n    i32.add\n    i32.load") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i32.const 12\n    i32.add\n    i32.load") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "f64.load") != null);
 }
 
 test "canonical marshal WAT lifts a tuple with an indirect byte list child" {

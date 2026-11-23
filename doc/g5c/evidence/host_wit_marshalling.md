@@ -270,7 +270,8 @@ offsets, and independent linear allocation/free sequence. Lift frees all copied
 linear spans before constructing and publishing the GC Tuple.
 
 The focused Zig emitter suite covers a non-byte `list<f64>` Tuple and the
-operation-order regression. This is compiler/WAT evidence only; it does not add
+operation-order regression. Nested Tuple lift reads list and scalar fields from
+the accumulated measured path offsets. This is compiler/WAT evidence only; it does not add
 a new manifest-backed Component host descriptor, and it does not authorize
 `list<list<T>>`, list of records/Tuples/text, map children, async/resource
 payloads, arbitrary indirect layouts, or full G5c cutover.

@@ -84,9 +84,9 @@ lists inside nested Tuples. Lower represents each list as canonical
 reverse allocation order after the canonical call. Lift requires root indirect
 metadata with one `i32` core word and `cabi_realloc` allocation/free actions;
 the canonical import receives the result-area pointer, then the compiler reads
-each Tuple field and list `(ptr,len)` from its measured offsets, copies every
-list into a GC typed array, frees all linear spans, and only then constructs
-and publishes the GC Tuple. Lists nested inside lists, complex list elements,
+each Tuple field and list `(ptr,len)` from the sum of its measured path offsets,
+copies every list into a GC typed array, frees all linear spans, and only then
+constructs and publishes the GC Tuple. Lists nested inside lists, complex list elements,
 and resource, future, and stream shapes remain rejected by the registry or
 marshal plan.
 

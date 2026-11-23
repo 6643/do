@@ -60,6 +60,7 @@
 - [x] **Task 12: Wire the exact Tuple u32-list lift through the compiler manifest route.** Pin the 4-byte list measurement, reuse the indirect result-area path, deduplicate shared `$do_u32` type emission, reject element-type drift, and execute the generated Component with a host callback.
 - [x] **Task 13: Verify non-final list position in Tuple lift.** Add a measured `Tuple<list<u8>, u32>` WAT regression so the list copy and scalar load use their positional measured offsets rather than assuming the list is the final field.
 - [x] **Task 14: Generalize Tuple scalar-list paths.** Admit all current scalar typed-array kinds, multiple direct list children, and lists inside nested Tuples. Keep list-of-list, complex list elements, map/record/text children, async/resource payloads, and arbitrary unmeasured indirect layouts fail-closed. Validate reverse lower cleanup and pre-construction lift cleanup order.
+- [x] **Task 15: Fix nested Tuple lift offsets.** Accumulate measured offsets along every Tuple path before reading scalar fields or list `(ptr,len)` pairs from the indirect result area. Add a regression for a list and scalar inside a nested Tuple, while preserving overflow rejection.
 
 ## Verification Commands
 
