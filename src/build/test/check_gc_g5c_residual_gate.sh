@@ -139,6 +139,34 @@ run_u32_lift_equivalence_gate() {
     printf '[PASS] manifest-backed list<u32> lift ARC/GC equivalence gate included\n'
 }
 
+run_list_tuple_lower_host_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-list-tuple-lower-host.output"
+    if ! ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        DO_BIN="$DO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_list_tuple_lower_host.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed list<Tuple> lower host gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed list<Tuple> lower host gate included\n'
+}
+
+run_list_tuple_lift_host_gate() {
+    local gate_output="$TMP_DIR/gc-marshal-list-tuple-lift-host.output"
+    if ! ZIG_BIN="$ZIG_BIN" \
+        CARGO_BIN="$CARGO_BIN" \
+        DO_BIN="$DO_BIN" \
+        bash "$ROOT_DIR/examples/gc-p3-runtime/test_gc_marshal_list_tuple_lift_host.sh" >"$gate_output" 2>&1; then
+        cat "$gate_output" >&2
+        printf '[FAIL] manifest-backed list<Tuple> lift host gate failed\n' >&2
+        return 1
+    fi
+    tail -n 1 "$gate_output"
+    printf '[PASS] manifest-backed list<Tuple> lift host gate included\n'
+}
+
 run_record_lower_manifest_host_gate() {
     local gate_output="$TMP_DIR/gc-marshal-record-lower-manifest-host.output"
     if ! WASM_TOOLS_BIN="$WASM_TOOLS_BIN" \
@@ -955,6 +983,8 @@ run_random_equivalence_gate
 run_text_equivalence_gate
 run_u32_lower_equivalence_gate
 run_u32_lift_equivalence_gate
+run_list_tuple_lower_host_gate
+run_list_tuple_lift_host_gate
 run_record_lower_manifest_host_gate
 run_record_lower_manifest_equivalence_gate
 run_record_lift_manifest_host_gate
@@ -1272,7 +1302,7 @@ else
 fi
 
 if [[ "$MODE" == baseline ]]; then
-    printf 'G5c residual baseline gate passed: bounded Future G5b equivalence, admitted GC, residual ARC, gc-core oracle, manifest random/text/list<u32>/scalar-record/mixed/mixed-lower/managed-field/managed-field-lower/byte-list-record-lower/nested-record/mixed-text-u32-list lift-lower/two-u32-list lower equivalence including three-level and four-level nested lower/lift, default multi-managed-text and C14 nested-record/mixed-lower/mixed-text-u32-list-lower/mixed-text-u32-list-lift/two-u32-list lower host/equivalence/negative, inventory pending\n'
+    printf 'G5c residual baseline gate passed: bounded Future G5b equivalence, admitted GC, residual ARC, gc-core oracle, manifest random/text/list<u32>/scalar-record/mixed/mixed-lower/managed-field/managed-field-lower/byte-list-record/list<Tuple>/nested-record/mixed-text-u32-list lift-lower/two-u32-list lower equivalence including three-level and four-level nested lower/lift, default multi-managed-text and C14 nested-record/mixed-lower/mixed-text-u32-list-lower/mixed-text-u32-list-lift/two-u32-list lower host/equivalence/negative, inventory pending\n'
 else
     printf 'G5c cutover residual gate passed: bounded Future G5b equivalence, admitted GC, mixed-lower coverage, no ARC residual, no gc-core selector, inventory complete\n'
 fi

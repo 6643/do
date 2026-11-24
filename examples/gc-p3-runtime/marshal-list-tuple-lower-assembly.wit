@@ -1,0 +1,10 @@
+package demo:marshal-list-tuple-lower@1.0.0;
+
+interface api {
+  send: func(value: list<tuple<u32, s64>>);
+}
+
+world probe {
+  import api;
+  export run: func() -> u32;
+}

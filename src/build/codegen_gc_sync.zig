@@ -4310,7 +4310,9 @@ fn emit_gc_host_support_functions(
         try out.appendSlice(allocator, scalar_bridge);
         return;
     }
-    const root_type_name = switch (route.plan.direction) {
+    const root_type_name = if (is_list_tuple_plan(route.plan))
+        "do_list_tuple_array"
+    else switch (route.plan.direction) {
         .lower => if (route.host_import.params.len == 1)
             route.host_import.params[0]
         else
@@ -4326,6 +4328,11 @@ fn emit_gc_host_support_functions(
     });
     defer allocator.free(function_wat);
     try out.appendSlice(allocator, function_wat);
+}
+
+fn is_list_tuple_plan(plan: *const marshal_plan.SyncValuePlan) bool {
+    return plan.root.kind == .list and plan.root.children.len == 1 and
+        plan.root.children[0].kind == .tuple;
 }
 
 fn is_pure_scalar_record_plan(plan: *const marshal_plan.SyncValuePlan) !bool {

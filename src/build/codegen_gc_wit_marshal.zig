@@ -27,6 +27,8 @@ pub const map_u32_u32_lower_descriptor = host_boundary.map_u32_u32_lower_descrip
 pub const map_u32_u32_lift_descriptor = host_boundary.map_u32_u32_lift_descriptor;
 pub const tuple_byte_list_lift_descriptor = host_boundary.tuple_byte_list_lift_descriptor;
 pub const tuple_u32_list_lift_descriptor = host_boundary.tuple_u32_list_lift_descriptor;
+pub const list_tuple_lower_descriptor = host_boundary.list_tuple_lower_descriptor;
+pub const list_tuple_lift_descriptor = host_boundary.list_tuple_lift_descriptor;
 
 pub fn emit_module(
     io: std.Io,
@@ -56,6 +58,8 @@ pub fn emit_module(
     const is_map_u32_u32_lift = std.mem.eql(u8, descriptor_id, map_u32_u32_lift_descriptor);
     const is_tuple_byte_list_lift = std.mem.eql(u8, descriptor_id, tuple_byte_list_lift_descriptor);
     const is_tuple_u32_list_lift = std.mem.eql(u8, descriptor_id, tuple_u32_list_lift_descriptor);
+    const is_list_tuple_lower = std.mem.eql(u8, descriptor_id, list_tuple_lower_descriptor);
+    const is_list_tuple_lift = std.mem.eql(u8, descriptor_id, list_tuple_lift_descriptor);
     var loaded = try descriptor_loader.load_request_from_manifest(
         io,
         allocator,
@@ -67,6 +71,9 @@ pub fn emit_module(
     defer loaded.deinit();
     try descriptor_loader.validate_loaded_host_boundary(&loaded, entry_tokens);
 
+    if (is_list_tuple_lower or is_list_tuple_lift) {
+        return emit_list_tuple_host_wrapper(allocator, &loaded, is_list_tuple_lower);
+    }
     if (is_tuple_byte_list_lift or is_tuple_u32_list_lift) {
         return emit_tuple_list_lift_wrapper(
             allocator,
@@ -665,6 +672,77 @@ fn emit_tuple_list_lift_wrapper(
     return out.toOwnedSlice(allocator);
 }
 
+fn emit_list_tuple_host_wrapper(
+    allocator: std.mem.Allocator,
+    loaded: *const descriptor_loader.LoadedRequest,
+    lower: bool,
+) ![]u8 {
+    const base = try manifest_route.emit_sync_marshal_module_from_loaded_request(
+        allocator,
+        loaded,
+        null,
+        true,
+    );
+    defer allocator.free(base);
+    if (!std.mem.endsWith(u8, base, ")\n")) return error.InvalidGeneratedModule;
+
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+    try out.appendSlice(allocator, base[0 .. base.len - 2]);
+    if (lower) {
+        try generated_text.append_block(allocator, &out, 2,
+            \\  (func $run (result i32)
+            \\    i32.const 10
+            \\    i64.const 20
+            \\    struct.new $do_list_tuple_element
+            \\    i32.const 30
+            \\    i64.const 40
+            \\    struct.new $do_list_tuple_element
+            \\    array.new_fixed $do_list_tuple_array 2
+            \\    call $marshal
+            \\    i32.const 42)
+            \\  (export "run" (func $run))
+            \\
+        );
+    } else {
+        try generated_text.append_block(allocator, &out, 2,
+            \\  (func $run (result i32)
+            \\    (local $items (ref null $do_list_tuple_array))
+            \\    call $marshal
+            \\    local.set $items
+            \\    local.get $items
+            \\    ref.as_non_null
+            \\    i32.const 0
+            \\    array.get $do_list_tuple_array
+            \\    struct.get $do_list_tuple_element $field0
+            \\    local.get $items
+            \\    ref.as_non_null
+            \\    i32.const 0
+            \\    array.get $do_list_tuple_array
+            \\    struct.get $do_list_tuple_element $field1
+            \\    i32.wrap_i64
+            \\    i32.add
+            \\    local.get $items
+            \\    ref.as_non_null
+            \\    i32.const 1
+            \\    array.get $do_list_tuple_array
+            \\    struct.get $do_list_tuple_element $field0
+            \\    i32.add
+            \\    local.get $items
+            \\    ref.as_non_null
+            \\    i32.const 1
+            \\    array.get $do_list_tuple_array
+            \\    struct.get $do_list_tuple_element $field1
+            \\    i32.wrap_i64
+            \\    i32.add)
+            \\  (export "run" (func $run))
+            \\
+        );
+    }
+    try out.appendSlice(allocator, ")\n");
+    return out.toOwnedSlice(allocator);
+}
+
 test "GC WIT marshal adapter emits the pinned managed lower module" {
     const source = @embedFile("test/compile_ok/565_gc_wit_managed_record_host_boundary.do");
     const tokens = try lexer.tokenize(std.testing.allocator, source);
@@ -673,6 +751,43 @@ test "GC WIT marshal adapter emits the pinned managed lower module" {
     defer std.testing.allocator.free(wat);
     try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-record-managed-lower/api@1.0.0") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(type $canonical_lower (func (param i32 i32 i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"run\" (func $run))") != null);
+}
+
+test "GC WIT marshal adapter emits the list Tuple lower host module" {
+    const source = @embedFile("test/compile_ok/686_gc_wit_list_tuple_lower_host_boundary.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    const wat = try emit_module(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        "demo:marshal-list-tuple-lower/api.send@1.0.0/lower",
+        tokens,
+    );
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-list-tuple-lower/api@1.0.0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.new_fixed $do_list_tuple_array 2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i64.const 20") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"run\" (func $run))") != null);
+}
+
+test "GC WIT marshal adapter emits the list Tuple lift host module" {
+    const source = @embedFile("test/compile_ok/687_gc_wit_list_tuple_lift_host_boundary.do");
+    const tokens = try lexer.tokenize(std.testing.allocator, source);
+    defer std.testing.allocator.free(tokens);
+    const wat = try emit_module(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        "demo:marshal-list-tuple-lift/api.receive@1.0.0/lift",
+        tokens,
+    );
+    defer std.testing.allocator.free(wat);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "demo:marshal-list-tuple-lift/api@1.0.0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "struct.new $do_list_tuple_element") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "array.set $do_list_tuple_array") != null);
+    try std.testing.expect(std.mem.indexOf(u8, wat, "i64.load") != null);
     try std.testing.expect(std.mem.indexOf(u8, wat, "(export \"run\" (func $run))") != null);
 }
 

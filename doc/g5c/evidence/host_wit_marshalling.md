@@ -23,6 +23,30 @@ The row gate did not widen a compiler matcher or add a public type. The H-chain
 parser fix only recognizes the two forms accepted by `embed-component`: a
 `.wit` file or an existing WIT package directory.
 
+### G5c measured list-of-Tuple host gates (2026-11-23)
+
+The manifest-backed `list<tuple<u32, s64>>` route now has both directions
+covered by real Component host execution:
+
+- lower: the generated canonical import is `(param i32 i32)`, the GC typed
+  Tuple array is copied into measured linear memory, and the host observes two
+  Tuple values with one callback;
+- lift: the generated canonical import is `(param i32)`, the host returns two
+  WIT Tuple values, and the GC typed Tuple array is reconstructed and consumed
+  by the generated export.
+
+Both gates run `parse-core`, `embed-component`, `new-component`, and
+`validate-component` before the Wasmtime host callback. The manifest pins the
+source hash and the measured element facts: byte size 16, stride 16,
+alignment 8, and field offsets 0 and 8. A lower-route Do signature drift from
+`[Tuple<u32, i64>]` to `[Tuple<u32, u32>]` is rejected with
+`GcWitHostSignatureMismatch` before WAT output.
+
+This evidence admits only lists whose Tuple element tree consists of measured
+scalar leaves. list-of-list, managed/text/record/resource elements,
+async/stream payloads, and unmeasured indirect layouts remain outside the
+route.
+
 ## Verification
 
 The row gate command was:

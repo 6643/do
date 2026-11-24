@@ -241,6 +241,18 @@ fn load_request_internal(
             .shape = .lift_tuple,
             .root_type = root_type_name,
         });
+    } else if (root_type.kind == .list) {
+        const root_type_name = try render_do_list_type(allocator, root_type);
+        defer allocator.free(root_type_name);
+        owned_host_boundary = try host_boundary.OwnedHostBoundarySpec.from_spec(allocator, .{
+            .locator = descriptor.canonical_import.module,
+            .member = descriptor.member,
+            .shape = switch (descriptor.direction) {
+                .lower => .lower_list_tuple,
+                .lift => .lift_list_tuple,
+            },
+            .root_type = root_type_name,
+        });
     }
     errdefer if (owned_host_boundary) |*boundary| boundary.deinit();
 
@@ -325,24 +337,28 @@ fn convert_manifest_measurement(
             };
         },
         .list => {
-            // The manifest schema stores list container facts only. C17's
-            // admitted list shape is list<u32>, whose canonical scalar
-            // element is i32; materialize that child for the marshal binder.
-            if (children.len != 0 or
-                node.element_byte_size.? != 4 or
-                node.element_stride.? != 4 or
-                node.element_alignment.? != 4)
-            {
+            // Scalar list descriptors omit child nodes because the scalar
+            // element facts are implied by the list measurement. Aggregate
+            // list descriptors retain their measured element tree.
+            if (children.len > 1) {
                 return error.DescriptorMeasurementInvalid;
             }
-            children = try allocator.alloc(marshal.MeasuredNode, 1);
-            children[0] = .{ .layout = .{ .scalar = .{
-                .offset = 0,
-                .byte_size = 4,
-                .alignment = 4,
-                .core_type = .i32,
-            } } };
-            initialized_children = 1;
+            if (children.len == 0) {
+                if (node.element_byte_size.? != 4 or
+                    node.element_stride.? != 4 or
+                    node.element_alignment.? != 4)
+                {
+                    return error.DescriptorMeasurementInvalid;
+                }
+                children = try allocator.alloc(marshal.MeasuredNode, 1);
+                children[0] = .{ .layout = .{ .scalar = .{
+                    .offset = 0,
+                    .byte_size = 4,
+                    .alignment = 4,
+                    .core_type = .i32,
+                } } };
+                initialized_children = 1;
+            }
             return .{
                 .layout = .{ .list = .{
                     .pointer_offset = node.pointer_offset orelse return error.DescriptorMeasurementInvalid,
@@ -607,6 +623,15 @@ fn render_do_tuple_type(allocator: std.mem.Allocator, type_ref: *const wit_model
     errdefer out.deinit(allocator);
     try append_do_tuple_type(allocator, &out, type_ref);
     return out.toOwnedSlice(allocator);
+}
+
+fn render_do_list_type(allocator: std.mem.Allocator, type_ref: *const wit_model.TypeRef) ![]u8 {
+    if (type_ref.kind != .list or type_ref.args.len != 1 or type_ref.args[0].kind != .tuple) {
+        return error.UnsupportedWitShape;
+    }
+    const tuple = try render_do_tuple_type(allocator, type_ref.args[0]);
+    defer allocator.free(tuple);
+    return std.fmt.allocPrint(allocator, "[{s}]", .{tuple});
 }
 
 fn append_do_tuple_type(

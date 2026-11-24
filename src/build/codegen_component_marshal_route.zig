@@ -569,6 +569,190 @@ test "component marshal route lowers a tuple with a nested list child" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "__tuple_list_array_0") != null);
 }
 
+test "component marshal route resolves a parser-backed list of scalar tuples" {
+    const source =
+        \\package demo:marshal-route-list-tuple@1.0.0;
+        \\
+        \\interface api {
+        \\  exchange: func(value: list<tuple<u32, s64>>) -> list<tuple<u32, s64>>;
+        \\
+        \\world probe { import api; }
+    ;
+    const measured = marshal.MeasuredNode{
+        .layout = .{ .list = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .element_byte_size = 16,
+            .element_stride = 16,
+            .element_alignment = 8,
+            .ticket_offset = 0,
+            .capacity = 2,
+            .accepted_lengths = &.{ 0, 1, 2 },
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } },
+        .children = &.{.{
+            .layout = .{ .tuple = .{
+                .byte_size = 16,
+                .alignment = 8,
+                .fields = &.{
+                    .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+                    .{ .offset = 8, .byte_size = 8, .alignment = 8 },
+                },
+            } },
+            .children = &.{
+                .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+                .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 8, .alignment = 8, .core_type = .i64 } } },
+            },
+        }},
+    };
+
+    const lower = try emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "exchange",
+        .direction = .lower,
+        .measured = measured,
+    });
+    defer std.testing.allocator.free(lower);
+    try std.testing.expect(std.mem.indexOf(u8, lower, "(type $canonical_lower (func (param i32 i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower, "(type $do_list_tuple_element (struct (field $field0 i32) (field $field1 i64)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lower, "i64.store") != null);
+
+    const lift = try emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "exchange",
+        .direction = .lift,
+        .measured = measured,
+    });
+    defer std.testing.allocator.free(lift);
+    try std.testing.expect(std.mem.indexOf(u8, lift, "(type $canonical_lift (func (param i32)))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lift, "struct.new $do_list_tuple_element") != null);
+    try std.testing.expect(std.mem.indexOf(u8, lift, "i64.load") != null);
+}
+
+test "component marshal route rejects unsupported list tuple shapes before WAT" {
+    const source =
+        \\package demo:marshal-route-list-tuple-negative@1.0.0;
+        \\
+        \\interface api {
+        \\  text_value: func(value: list<tuple<string, u32>>);
+        \\  nested_list: func(value: list<tuple<list<u32>, u32>>);
+        \\  stride_value: func(value: list<tuple<u32, s64>>);
+        \\
+        \\world probe { import api; }
+    ;
+    const scalar_measured = marshal.MeasuredNode{ .layout = .{ .scalar = .{
+        .offset = 0,
+        .byte_size = 4,
+        .alignment = 4,
+        .core_type = .i32,
+    } } };
+    try std.testing.expectError(error.UnsupportedWitMarshalShape, emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "text_value",
+        .direction = .lower,
+        .measured = scalar_measured,
+    }));
+
+    const nested_list_measured = marshal.MeasuredNode{
+        .layout = .{ .list = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .element_byte_size = 12,
+            .element_stride = 12,
+            .element_alignment = 4,
+            .ticket_offset = 0,
+            .capacity = 2,
+            .accepted_lengths = &.{ 0, 1, 2 },
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } },
+        .children = &.{.{
+            .layout = .{ .tuple = .{
+                .byte_size = 12,
+                .alignment = 4,
+                .fields = &.{
+                    .{ .offset = 0, .byte_size = 8, .alignment = 4 },
+                    .{ .offset = 8, .byte_size = 4, .alignment = 4 },
+                },
+            } },
+            .children = &.{
+                .{ .layout = .{ .list = .{
+                    .pointer_offset = 0,
+                    .length_offset = 4,
+                    .element_byte_size = 4,
+                    .element_stride = 4,
+                    .element_alignment = 4,
+                    .ticket_offset = 0,
+                    .capacity = 2,
+                    .accepted_lengths = &.{ 0, 1, 2 },
+                    .allocation = .cabi_realloc,
+                    .free = .cabi_realloc,
+                } },
+                .children = &.{.{ .layout = .{ .scalar = .{
+                    .offset = 0,
+                    .byte_size = 4,
+                    .alignment = 4,
+                    .core_type = .i32,
+                } } }},
+                },
+                .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+            },
+        }},
+    };
+    try std.testing.expectError(error.UnsupportedMarshalShape, emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "nested_list",
+        .direction = .lower,
+        .measured = nested_list_measured,
+    }));
+
+    const stride_measured = marshal.MeasuredNode{
+        .layout = .{ .list = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .element_byte_size = 16,
+            .element_stride = 24,
+            .element_alignment = 8,
+            .ticket_offset = 0,
+            .capacity = 2,
+            .accepted_lengths = &.{ 0, 1, 2 },
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } },
+        .children = &.{.{
+            .layout = .{ .tuple = .{
+                .byte_size = 16,
+                .alignment = 8,
+                .fields = &.{
+                    .{ .offset = 0, .byte_size = 4, .alignment = 4 },
+                    .{ .offset = 8, .byte_size = 8, .alignment = 8 },
+                },
+            } },
+            .children = &.{
+                .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 4, .alignment = 4, .core_type = .i32 } } },
+                .{ .layout = .{ .scalar = .{ .offset = 0, .byte_size = 8, .alignment = 8, .core_type = .i64 } } },
+            },
+        }},
+    };
+    try std.testing.expectError(error.UnsupportedMarshalShape, emit_sync_marshal_module_from_wit_source(std.testing.allocator, .{
+        .source = source,
+        .world_name = "probe",
+        .interface_name = "api",
+        .member_name = "stride_value",
+        .direction = .lower,
+        .measured = stride_measured,
+    }));
+}
+
 test "component marshal route rejects resource and async variant payloads before WAT" {
     const source =
         \\package demo:marshal-route-unsupported-variants@1.0.0;

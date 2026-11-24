@@ -24,6 +24,10 @@ pub const tuple_byte_list_lift_descriptor =
     "demo:marshal-tuple-list-lift/api.receive@1.0.0/lift";
 pub const tuple_u32_list_lift_descriptor =
     "demo:marshal-tuple-u32-list-lift/api.receive@1.0.0/lift";
+pub const list_tuple_lower_descriptor =
+    "demo:marshal-list-tuple-lower/api.send@1.0.0/lower";
+pub const list_tuple_lift_descriptor =
+    "demo:marshal-list-tuple-lift/api.receive@1.0.0/lift";
 pub const managed_record_lower_descriptor =
     "demo:marshal-record-managed-lower/api.write@1.0.0/lower";
 pub const managed_record_lift_descriptor =
@@ -70,6 +74,8 @@ const ADMITTED_DESCRIPTORS = [_]AdmissionEntry{
     .{ .locator = "demo:marshal-record-byte-list-lift/api@1.0.0", .member = "read", .descriptor_id = record_byte_list_lift_descriptor, .explicit_probe = true },
     .{ .locator = "demo:marshal-tuple-list-lift/api@1.0.0", .member = "receive", .descriptor_id = tuple_byte_list_lift_descriptor, .explicit_probe = true },
     .{ .locator = "demo:marshal-tuple-u32-list-lift/api@1.0.0", .member = "receive", .descriptor_id = tuple_u32_list_lift_descriptor, .explicit_probe = true },
+    .{ .locator = "demo:marshal-list-tuple-lower/api@1.0.0", .member = "send", .descriptor_id = list_tuple_lower_descriptor, .explicit_probe = true },
+    .{ .locator = "demo:marshal-list-tuple-lift/api@1.0.0", .member = "receive", .descriptor_id = list_tuple_lift_descriptor, .explicit_probe = true },
     .{ .locator = "demo:marshal-record-managed-lower/api@1.0.0", .member = "write", .descriptor_id = managed_record_lower_descriptor, .explicit_probe = true },
     .{ .locator = "demo:marshal-record-managed-lift/api@1.0.0", .member = "read", .descriptor_id = managed_record_lift_descriptor, .explicit_probe = true },
     .{ .locator = "demo:marshal-record-managed-lower-multi/api@1.0.0", .member = "write", .descriptor_id = managed_record_lower_multi_descriptor, .explicit_probe = true },
@@ -120,7 +126,15 @@ pub const HostBoundaryField = struct {
     nested_fields: ?[]const HostBoundaryField = null,
 };
 
-pub const HostBoundaryShape = enum { lower_record, lift_record, lower_map, lift_map, lift_tuple };
+pub const HostBoundaryShape = enum {
+    lower_record,
+    lift_record,
+    lower_map,
+    lift_map,
+    lift_tuple,
+    lower_list_tuple,
+    lift_list_tuple,
+};
 
 pub const HostBoundarySpec = struct {
     locator: []const u8,
@@ -526,7 +540,7 @@ pub fn validate_with_spec(tokens: []const lexer.Token, spec: HostBoundarySpec) !
         const record = switch (spec.shape) {
             .lower_record, .lift_record => fixed_record orelse
                 (find_record_for_host(tokens, host, spec.shape) orelse return error.GcWitHostRecordMismatch),
-            .lower_map, .lift_map, .lift_tuple => null,
+            .lower_map, .lift_map, .lift_tuple, .lower_list_tuple, .lift_list_tuple => null,
         };
         try validate_target_signature(tokens, host, record, spec);
         i = host.close_idx;
@@ -550,7 +564,7 @@ fn find_record_for_host(tokens: []const lexer.Token, host: HostDecl, shape: Host
             tokens[host.result_idx].lexeme
         else
             return null,
-        .lower_map, .lift_map, .lift_tuple => return null,
+        .lower_map, .lift_map, .lift_tuple, .lower_list_tuple, .lift_list_tuple => return null,
     };
     return find_record(tokens, record_name);
 }
@@ -655,6 +669,27 @@ fn validate_target_signature(tokens: []const lexer.Token, host: HostDecl, record
             return;
         },
         .lift_tuple => {
+            if (param_count != 0 or
+                !match_do_root_type(tokens, host.result_idx, host.close_idx, spec.root_type))
+            {
+                return error.GcWitHostSignatureMismatch;
+            }
+            return;
+        },
+        .lower_list_tuple => {
+            if (host.result_idx >= host.close_idx or host.result_idx + 1 != host.close_idx or
+                tokens[host.result_idx].kind != .ident or !tok_eq(tokens[host.result_idx], "nil"))
+            {
+                return error.GcWitHostSignatureMismatch;
+            }
+            if (param_count != 1 or
+                !match_do_root_type(tokens, host.params_open + 1, host.params_close, spec.root_type))
+            {
+                return error.GcWitHostSignatureMismatch;
+            }
+            return;
+        },
+        .lift_list_tuple => {
             if (param_count != 0 or
                 !match_do_root_type(tokens, host.result_idx, host.close_idx, spec.root_type))
             {
@@ -804,6 +839,30 @@ test "manifest-derived host boundary accepts a positional Tuple list result" {
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     try validate_with_spec(tokens, spec);
+}
+
+test "manifest-derived host boundary accepts a scalar Tuple list lower and lift" {
+    const lower_spec = HostBoundarySpec{
+        .locator = "demo:marshal-list-tuple-lower/api@1.0.0",
+        .member = "send",
+        .shape = .lower_list_tuple,
+        .root_type = "[Tuple<u32, i64>]",
+    };
+    const lower_source = "send = @host_func(\"demo:marshal-list-tuple-lower/api@1.0.0\", \"send\", ([Tuple<u32, i64>]) -> nil)";
+    const lower_tokens = try lexer.tokenize(std.testing.allocator, lower_source);
+    defer std.testing.allocator.free(lower_tokens);
+    try validate_with_spec(lower_tokens, lower_spec);
+
+    const lift_spec = HostBoundarySpec{
+        .locator = "demo:marshal-list-tuple-lift/api@1.0.0",
+        .member = "receive",
+        .shape = .lift_list_tuple,
+        .root_type = "[Tuple<u32, i64>]",
+    };
+    const lift_source = "receive = @host_func(\"demo:marshal-list-tuple-lift/api@1.0.0\", \"receive\", () -> [Tuple<u32, i64>])";
+    const lift_tokens = try lexer.tokenize(std.testing.allocator, lift_source);
+    defer std.testing.allocator.free(lift_tokens);
+    try validate_with_spec(lift_tokens, lift_spec);
 }
 
 test "C16-C managed record lift declaration is accepted" {

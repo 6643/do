@@ -1374,4 +1374,11 @@ payload 或任意未测量 aggregate 的限制。text/record/resource 元素, ne
 async/stream payload, 含复杂子项的 Tuple 以及
 map lowering 不属于该能力，因此不能据此宣称任意 list/map/tuple 的 WASI lowering 已完成。
 
+当前 `list<tuple<u32, s64>>` 已有 manifest-backed Component lower/lift host gate。
+gate 固定 source hash、Tuple 元素大小 16、stride 16、alignment 8 以及字段偏移
+`0`/`8`，并在 Component 验证后执行真实 host callback。编译器会在生成 WAT 前校验
+Do 签名和 measured layout；例如把 lower 的第二个 Tuple 字段改成 `u32` 会以
+`GcWitHostSignatureMismatch` 失败并不留下 WAT。这个证据只覆盖该 measured scalar
+Tuple list 形状，不覆盖 async/resource payload 或任意 indirect layout。
+
 1. 本版不承诺 timezone、calendar、duration 类型或本地化时间格式化；`lib/time.do` 当前只提供已声明的基础时间戳、单调时钟和毫秒换算辅助。

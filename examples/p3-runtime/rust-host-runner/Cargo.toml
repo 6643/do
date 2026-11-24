@@ -418,6 +418,14 @@ name = "do-p3-gc-marshal-tuple-u32-list-lift-host-runner"
 path = "src/bin/gc_marshal_tuple_u32_list_lift.rs"
 
 [[bin]]
+name = "do-p3-gc-marshal-list-tuple-lower-host-runner"
+path = "src/bin/gc_marshal_list_tuple_lower.rs"
+
+[[bin]]
+name = "do-p3-gc-marshal-list-tuple-lift-host-runner"
+path = "src/bin/gc_marshal_list_tuple_lift.rs"
+
+[[bin]]
 name = "do-p3-gc-marshal-record-byte-list-lift-equivalence-runner"
 path = "src/bin/gc_marshal_record_byte_list_lift_equivalence.rs"
 

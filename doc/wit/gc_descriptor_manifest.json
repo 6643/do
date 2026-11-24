@@ -1018,6 +1018,100 @@
         "module": "demo:marshal-tuple-u32-list-lift/api@1.0.0",
         "name": "receive"
       }
+    },
+    {
+      "id": "demo:marshal-list-tuple-lower/api.send@1.0.0/lower",
+      "source": "examples/gc-p3-runtime/marshal-list-tuple-lower-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_list_tuple_lower_imports.wit",
+      "package": "demo:marshal-list-tuple-lower@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "send",
+      "direction": "lower",
+      "params": ["list<tuple<u32, s64>>"],
+      "result": "_",
+      "source_sha256": "sha256:4ae04f8d3cfb233e7c1974ab29e8d18839c704b2a8d704f943a3f9b563b1e4de",
+      "measured_layout": {
+        "kind": "list",
+        "byte_size": 8,
+        "alignment": 4,
+        "pointer_offset": 0,
+        "length_offset": 4,
+        "element_byte_size": 16,
+        "element_stride": 16,
+        "element_alignment": 8,
+        "ticket_offset": 0,
+        "capacity": 2,
+        "accepted_lengths": [0, 1, 2],
+        "allocation": "cabi_realloc",
+        "free": "cabi_realloc",
+        "children": [
+          {
+            "kind": "tuple",
+            "byte_size": 16,
+            "alignment": 8,
+            "fields": [
+              {"offset": 0, "byte_size": 4, "alignment": 4},
+              {"offset": 8, "byte_size": 8, "alignment": 8}
+            ],
+            "children": [
+              {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+              {"kind": "scalar", "offset": 8, "byte_size": 8, "alignment": 8, "core_type": "i64"}
+            ]
+          }
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-list-tuple-lower/api@1.0.0",
+        "name": "send"
+      }
+    },
+    {
+      "id": "demo:marshal-list-tuple-lift/api.receive@1.0.0/lift",
+      "source": "examples/gc-p3-runtime/marshal-list-tuple-lift-manifest-source.wit",
+      "world_source": "doc/wit/gc_marshal_list_tuple_lift_imports.wit",
+      "package": "demo:marshal-list-tuple-lift@1.0.0",
+      "world": "probe",
+      "interface": "api",
+      "member": "receive",
+      "direction": "lift",
+      "params": [],
+      "result": "list<tuple<u32, s64>>",
+      "source_sha256": "sha256:452b470bad78d6d83b1faa89834d126ec5f5d0930770e884910771863343b4aa",
+      "measured_layout": {
+        "kind": "list",
+        "byte_size": 8,
+        "alignment": 4,
+        "pointer_offset": 0,
+        "length_offset": 4,
+        "element_byte_size": 16,
+        "element_stride": 16,
+        "element_alignment": 8,
+        "ticket_offset": 0,
+        "capacity": 2,
+        "accepted_lengths": [0, 1, 2],
+        "allocation": "cabi_realloc",
+        "free": "cabi_realloc",
+        "children": [
+          {
+            "kind": "tuple",
+            "byte_size": 16,
+            "alignment": 8,
+            "fields": [
+              {"offset": 0, "byte_size": 4, "alignment": 4},
+              {"offset": 8, "byte_size": 8, "alignment": 8}
+            ],
+            "children": [
+              {"kind": "scalar", "offset": 0, "byte_size": 4, "alignment": 4, "core_type": "i32"},
+              {"kind": "scalar", "offset": 8, "byte_size": 8, "alignment": 8, "core_type": "i64"}
+            ]
+          }
+        ]
+      },
+      "canonical_import": {
+        "module": "demo:marshal-list-tuple-lift/api@1.0.0",
+        "name": "receive"
+      }
     }
   ]
 }

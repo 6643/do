@@ -364,6 +364,13 @@ fn parse_measured_node(allocator: std.mem.Allocator, value: std.json.Value) (Man
                 }
                 node.accepted_lengths = accepted;
             }
+            if (kind == .list) {
+                if (object.get("children")) |raw_children| {
+                    const child_values = array_value(raw_children) orelse return error.DescriptorMeasurementInvalid;
+                    if (child_values.items.len != 1) return error.DescriptorMeasurementInvalid;
+                    node.children = try parse_measured_children(allocator, child_values);
+                }
+            }
         },
         .map => {
             node.pointer_offset = bounded_u32(object.get("pointer_offset"));
@@ -458,7 +465,7 @@ fn parse_measured_node(allocator: std.mem.Allocator, value: std.json.Value) (Man
         },
     }
 
-    if (kind != .record and kind != .tuple) {
+    if (kind != .record and kind != .tuple and kind != .list) {
         if (object.get("children")) |raw_children| {
             const children = array_value(raw_children) orelse return error.DescriptorMeasurementInvalid;
             if (children.items.len != 0) return error.DescriptorMeasurementInvalid;

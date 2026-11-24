@@ -63,6 +63,18 @@
 - [x] **Task 15: Fix nested Tuple lift offsets.** Accumulate measured offsets along every Tuple path before reading scalar fields or list `(ptr,len)` pairs from the indirect result area. Add a regression for a list and scalar inside a nested Tuple, while preserving overflow rejection.
 - [x] **Task 16: Add measured `list<tuple<scalar...>>` lowering.** Admit a list whose element is a pure scalar or nested scalar Tuple when measured element size, alignment, and stride match. Emit a typed GC array of Tuple structs, copy each scalar field through linear memory in source order, and keep list-of-list, managed, resource, async, and unmeasured aggregate elements fail-closed.
 
+## Continuation: parser and host evidence
+
+### Task 17: Close the parser-backed `list<tuple<scalar...>>` route
+
+- [ ] Add one WIT source route that resolves `list<tuple<u32, s64>>` for both lower and lift, with measured element size/alignment/stride and assertions for the typed Tuple array and canonical signature.
+- [ ] Add route negatives for `list<tuple<string, u32>>`, `list<tuple<list<u32>, u32>>`, and measured stride drift; all must fail before WAT assembly.
+
+### Task 18: Add a real Component host gate for the admitted list-of-Tuple route
+
+- [ ] Pin the exact WIT/source identity and measured layout in the existing manifest-backed probe pattern, generate and validate the Component, execute both lower and lift host callbacks, and preserve a type-drift negative case.
+- [ ] Do not admit async/resource payloads or arbitrary indirect layouts as part of this gate.
+
 ## Verification Commands
 
 ```bash
