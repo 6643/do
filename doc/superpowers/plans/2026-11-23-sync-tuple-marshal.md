@@ -67,13 +67,13 @@
 
 ### Task 17: Close the parser-backed `list<tuple<scalar...>>` route
 
-- [ ] Add one WIT source route that resolves `list<tuple<u32, s64>>` for both lower and lift, with measured element size/alignment/stride and assertions for the typed Tuple array and canonical signature.
-- [ ] Add route negatives for `list<tuple<string, u32>>`, `list<tuple<list<u32>, u32>>`, and measured stride drift; all must fail before WAT assembly.
+- [x] Add one WIT source route that resolves `list<tuple<u32, s64>>` for both lower and lift, with measured element size/alignment/stride and assertions for the typed Tuple array and canonical signature.
+- [x] Add route negatives for `list<tuple<string, u32>>`, `list<tuple<list<u32>, u32>>`, and measured stride drift; all must fail before WAT assembly.
 
 ### Task 18: Add a real Component host gate for the admitted list-of-Tuple route
 
-- [ ] Pin the exact WIT/source identity and measured layout in the existing manifest-backed probe pattern, generate and validate the Component, execute both lower and lift host callbacks, and preserve a type-drift negative case.
-- [ ] Do not admit async/resource payloads or arbitrary indirect layouts as part of this gate.
+- [x] Pin the exact WIT/source identity and measured layout in the existing manifest-backed probe pattern, generate and validate the Component, execute both lower and lift host callbacks, and preserve a type-drift negative case.
+- [x] Keep async/resource payloads and arbitrary indirect layouts outside this gate.
 
 ## Verification Commands
 

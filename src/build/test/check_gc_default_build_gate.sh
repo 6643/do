@@ -192,6 +192,7 @@ u16-list.do
 u32-list-literal.do
 u32-list-set.do
 u64-list.do
+unbounded-nested-field-path.do
 usize-list.do
 EOF
 )

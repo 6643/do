@@ -2,11 +2,12 @@
 
 这是当前主线的接手入口。状态以本文为准; 计划摘要见 `doc/master_plan.md`; 近期变更见 `CHANGELOG.md`。不保留向后兼容旧路径或历史流水账。
 
-当前基线日期: `2026-11-22`。
+当前基线日期: `2026-11-24`。
 
 当前内存模型是 GC-first: 普通 Do 对象由 Wasm GC 按可达性回收，词法块退出不释放普通对象；普通赋值保持逻辑独立值，允许共享不可变存储并对可变动态字段使用 COW；`@set` 按是否接收结果区分新值和语句式修改，函数参数只读；外部 resource 必须显式 close/drop，Future 必须显式 await/cancel。生产编译器和源码契约均以 Wasm GC 为准，详见 `doc/memory.md`。
 
-最新闭环: G6.2 pinned HTTP error payload closeout、HTTP payload cancellation
+最新闭环: G5c measured `list<tuple<u32, s64>>` lower/lift Component host gates
+与 inventory residual gate 同步、G6.2 pinned HTTP error payload closeout、HTTP payload cancellation
 header-size canonical probe、G6.2 private HTTP producer write-error probe、
 G5c 15-row migration inventory final gate、D2 `descriptor.advise` private
 bounded compiler/runtime slice、G6.2 shared
@@ -71,9 +72,15 @@ G6.2 HTTP error payload 的证据范围和 variant coverage matrix 见
 Component ABI 往返, 不证明真实 HTTP provider 的错误产生行为。
 
 当前 G5c inventory 为 `complete_rows=15 pending_rows=0`、退出码 `0`；GC default
-gate 为 `87 fixtures`，semantic-equivalence 为 `26 rows; 0 pending`，evidence
+gate 为 `88 fixtures`，semantic-equivalence 为 `26 rows; 0 pending`，evidence
 checker、ReleaseSmall 与 release smoke 均通过。本文下方带日期的旧 checkpoint
 保留当时快照；其中旧的 `pending_rows=15` 不代表当前状态。
+
+`list<tuple<u32, s64>>` 现有精确 manifest-backed lower/lift Component host
+证据，element 为 16 bytes、stride 16、alignment 8、字段偏移 `0/8`；WIT
+source identity 与 layout drift 在 WAT 前拒绝。该固定同步标量 Tuple 列表
+形状已纳入 G5c residual gate，不代表任意 list/map/tuple 或 async/resource
+payload lowering。
 
 2026-11-20 GC synchronous core parity 已推进：默认 GC route 现在覆盖数值算术
 与除/余、整数 bitwise、clz/ctz/popcnt、标量转换、布尔 `not` 与短路

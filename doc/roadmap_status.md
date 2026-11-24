@@ -1,10 +1,20 @@
 # Roadmap 执行状态
 
-更新时间: 2026-11-22
+更新时间: 2026-11-24
 
 **本文只保留当前状态与阻断。** 历史小任务勾选与逐条 gate 证据已从仓库移除; 追溯用 git 历史与 `CHANGELOG.md`。
 总规划: `doc/master_plan.md`。接手入口: `doc/start_here.md`。
 G5b async/resource coverage ledger: `doc/g5b_async_resource_coverage.md`。
+
+## 2026-11-24 measured list-of-Tuple Component gates
+
+Manifest-backed `list<tuple<u32, s64>>` lower/lift 已通过真实 Component
+host execution，并纳入 G5c residual gate。测量为 element byte size/stride
+16、alignment 8、字段偏移 `0/8`；lower host 观察两个 Tuple、一次 callback，
+lift host 返回两个 Tuple 并观察结果 `45`、一次 callback。Do 类型漂移在
+WAT 前 fail-closed，byte-list WASI random route 仍使用原边界。默认 GC gate
+覆盖 88 个 fixture；G5c inventory 为 `complete_rows=15 pending_rows=0`。
+通用 list/map/tuple、async/resource payload 和任意 indirect layout 不因此开放。
 
 ## 2026-11-22 synchronous recursive variant canonical marshal
 

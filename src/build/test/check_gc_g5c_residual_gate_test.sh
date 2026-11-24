@@ -25,6 +25,8 @@ if ! rg -q 'export ZIG_GLOBAL_CACHE_DIR=' "$GATE" ||
 fi
 
 for gate in \
+    test_gc_marshal_list_tuple_lower_host.sh \
+    test_gc_marshal_list_tuple_lift_host.sh \
     test_gc_default_host_route_nested_record_deeper.sh \
     test_gc_default_host_route_nested_record_deeper_equivalence.sh \
     test_gc_default_host_route_nested_record_deeper_negative.sh \
@@ -75,5 +77,10 @@ for gate in \
         exit 1
     fi
 done
+
+if rg -q '^    check_inventory 1$' "$GATE" || ! rg -q '^check_inventory 0$' "$GATE"; then
+    printf '[FAIL] G5c residual baseline gate still expects an open migration inventory\n' >&2
+    exit 1
+fi
 
 printf '[PASS] G5c residual gate includes verified Future G5b, C14 nested-record, mixed-lower default-routes, mixed text/u32-list lift/lower, byte-list record lift, u32-list record-lift, two-u32-list lower, and mixed text/byte-u32-list lower gates\n'

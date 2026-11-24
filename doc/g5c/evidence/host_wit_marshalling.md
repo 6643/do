@@ -47,6 +47,11 @@ scalar leaves. list-of-list, managed/text/record/resource elements,
 async/stream payloads, and unmeasured indirect layouts remain outside the
 route.
 
+The gates are included in `check_gc_g5c_residual_gate.sh`. The current
+15-row migration inventory remains closed at `complete_rows=15 pending_rows=0`;
+this bounded descriptor does not add an inventory row or claim arbitrary
+list/map/tuple WASI lowering.
+
 ## Verification
 
 The row gate command was:

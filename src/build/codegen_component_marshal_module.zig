@@ -89,14 +89,7 @@ pub fn emit_sync_marshal_module(
             try emit_u32_type_once(allocator, &out);
         }
         if (memory_plan.element_scalar_kind) |kind| {
-            if (kind != .u8) {
-                try runtime_gc_wat.emit_scalar_array_type(
-                    allocator,
-                    &out,
-                    scalar_list_array_name(kind),
-                    scalar_list_element_name(kind),
-                );
-            }
+            try emit_tuple_scalar_array_type_once(allocator, &out, kind);
         }
         if (memory_plan.copy_shape == .map_entries) {
             const map_value_type = try map_gc_value_array_type(plan);

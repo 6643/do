@@ -534,6 +534,36 @@ test "manifest route emits the pinned random GC lift" {
     try std.testing.expect(std.mem.indexOf(u8, wat, "(import \"wasi:random/random@0.3.0-rc-2025-09-16\" \"get-random-bytes\" (func $canonical_call (param (ref") == null);
 }
 
+test "manifest route does not duplicate the u32 list lift GC array type" {
+    const wat = try manifest_route.emit_sync_marshal_module_from_manifest(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        manifest_path,
+        u32_list_lift_descriptor,
+        .{ .layout = .{ .list = .{
+            .pointer_offset = 0,
+            .length_offset = 4,
+            .element_byte_size = 4,
+            .element_stride = 4,
+            .element_alignment = 4,
+            .ticket_offset = 0,
+            .capacity = 3,
+            .accepted_lengths = &.{ 0, 1, 2, 3 },
+            .allocation = .cabi_realloc,
+            .free = .cabi_realloc,
+        } }, .children = &.{.{ .layout = .{ .scalar = .{
+            .offset = 0,
+            .byte_size = 4,
+            .alignment = 4,
+            .core_type = .i32,
+        } } }} },
+        null,
+    );
+    defer std.testing.allocator.free(wat);
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, wat, "(type $do_u32 "));
+}
+
 test "manifest route rejects an unknown descriptor before emission" {
     try std.testing.expectError(error.DescriptorNotFound, manifest_route.emit_sync_marshal_module_from_manifest(
         std.testing.io,

@@ -1,5 +1,15 @@
 # Changelog
 
+# 2026-11-24 measured list-of-Tuple Component gates:
+  added manifest-pinned lower/lift host execution for `list<tuple<u32, s64>>`,
+  with measured element size/stride `16`, alignment `8`, field offsets `0/8`,
+  and a pre-WAT type-drift negative. Tuple list GC arrays now reuse existing
+  scalar array type declarations without duplicate `$do_u32` types; the existing
+  WASI random `list<u8>` descriptor remains on its byte-list boundary route.
+  The default GC gate now accounts for all 88 tracked fixtures. The G5c
+  residual baseline expects its already closed 15-row inventory to exit 0;
+  async/resource payloads and arbitrary indirect layouts remain unsupported.
+
 # 2026-11-22 synchronous scalar list canonical marshal:
   promoted the measured value-only canonical `list<T>` route from `list<u8>` and
   `list<u32>` to `bool`, `u8`, `u16`, `u32`, `u64`, `i32`, `i64`, `f32`, and `f64`.

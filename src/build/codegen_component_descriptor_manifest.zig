@@ -241,7 +241,9 @@ fn load_request_internal(
             .shape = .lift_tuple,
             .root_type = root_type_name,
         });
-    } else if (root_type.kind == .list) {
+    } else if (root_type.kind == .list and
+        root_type.args.len == 1 and root_type.args[0].kind == .tuple)
+    {
         const root_type_name = try render_do_list_type(allocator, root_type);
         defer allocator.free(root_type_name);
         owned_host_boundary = try host_boundary.OwnedHostBoundarySpec.from_spec(allocator, .{
@@ -813,6 +815,30 @@ test "loaded request owns host boundary facts" {
     const tokens = try lexer.tokenize(std.testing.allocator, source);
     defer std.testing.allocator.free(tokens);
     try validate_loaded_host_boundary(&loaded, tokens);
+}
+
+test "toolchain scalar list manifest descriptor loads without Tuple boundary metadata" {
+    const measured = marshal.MeasuredNode{ .layout = .{ .byte_list = .{
+        .pointer_offset = 0,
+        .length_offset = 4,
+        .element_byte_size = 1,
+        .element_stride = 1,
+        .element_alignment = 1,
+        .capacity = 16,
+        .accepted_lengths = &.{ 0, 1, 16 },
+        .allocation = .cabi_realloc,
+        .free = .cabi_realloc,
+    } } };
+    var loaded = try load_request(
+        std.testing.io,
+        std.testing.allocator,
+        "..",
+        "doc/wit/gc_descriptor_manifest.json",
+        "wasi:random/random.get-random-bytes@0.3.0-rc-2025-09-16/lift",
+        measured,
+        16,
+    );
+    defer loaded.deinit();
 }
 
 test "descriptor WIT renderer preserves map syntax while boundary admission stays unsupported" {

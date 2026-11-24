@@ -1295,14 +1295,10 @@ else
     printf '[PASS] --gc-core is rejected after cutover\n'
 fi
 
-if [[ "$MODE" == baseline ]]; then
-    check_inventory 1
-else
-    check_inventory 0
-fi
+check_inventory 0
 
 if [[ "$MODE" == baseline ]]; then
-    printf 'G5c residual baseline gate passed: bounded Future G5b equivalence, admitted GC, residual ARC, gc-core oracle, manifest random/text/list<u32>/scalar-record/mixed/mixed-lower/managed-field/managed-field-lower/byte-list-record/list<Tuple>/nested-record/mixed-text-u32-list lift-lower/two-u32-list lower equivalence including three-level and four-level nested lower/lift, default multi-managed-text and C14 nested-record/mixed-lower/mixed-text-u32-list-lower/mixed-text-u32-list-lift/two-u32-list lower host/equivalence/negative, inventory pending\n'
+    printf 'G5c residual baseline gate passed: bounded Future G5b equivalence, admitted GC, residual ARC, gc-core oracle, manifest random/text/list<u32>/scalar-record/mixed/mixed-lower/managed-field/managed-field-lower/byte-list-record/list<Tuple>/nested-record/mixed-text-u32-list lift-lower/two-u32-list lower equivalence including three-level and four-level nested lower/lift, default multi-managed-text and C14 nested-record/mixed-lower/mixed-text-u32-list-lower/mixed-text-u32-list-lift/two-u32-list lower host/equivalence/negative, inventory complete\n'
 else
     printf 'G5c cutover residual gate passed: bounded Future G5b equivalence, admitted GC, mixed-lower coverage, no ARC residual, no gc-core selector, inventory complete\n'
 fi
